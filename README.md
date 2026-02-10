@@ -1,6 +1,12 @@
 # bmad-swarm
 
-Generate autonomous development swarm configurations for [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) Agent Teams. One command sets up a complete multi-agent SDLC -- from research through delivery -- with quality gates, artifact tracking, and configurable autonomy.
+Autonomous development teams powered by [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) Agent Teams, built on the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD).
+
+BMAD Swarm combines BMAD's structured brainstorming and documentation with Claude Agent Teams' parallel execution. Run `bmad-swarm init` once to configure your project, then just talk to Claude normally. There are no special commands to learn, no agent names to remember, no workflow to manage -- the methodology activates automatically inside your Claude Code sessions.
+
+Unlike the original BMAD Method (which requires manually switching agent personas and running workflow commands), BMAD Swarm integrates directly into Claude Code. The generated `CLAUDE.md` tells Claude **"you are the orchestrator"** -- so every message you send is automatically routed through the orchestrator methodology. It reads your request, assesses complexity, assembles the right team, and manages the full lifecycle. You just talk.
+
+**Anyone can use it.** Non-technical users describe ideas in plain language and make design choices while the AI handles all code decisions. Technical users go as deep as they want -- debate architecture, review patterns, pick frameworks. The system reads your conversation style and adapts.
 
 ## Prerequisites
 
@@ -8,73 +14,118 @@ Generate autonomous development swarm configurations for [Claude Code](https://d
 - **Claude Code** installed and authenticated -- [setup guide](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
 - A git-initialized project directory
 
-## How It Works
-
-BMAD Swarm generates a team of AI agents that follow a structured software development lifecycle:
-
-1. **You describe what to build** -- anything from a vague idea to a detailed spec
-2. **The orchestrator assesses complexity** -- determines which phases and agents are needed
-3. **Specialist agents execute each phase** -- research, define requirements, design architecture, implement stories, review code, and validate quality
-4. **Quality gates enforce standards** -- no phase proceeds until its gate passes
-5. **You stay in control** -- autonomy level determines how often the swarm checks in with you
-
-The orchestrator never writes code. It delegates to specialists (researcher, strategist, architect, developer, reviewer, QA) and coordinates their work through a task graph with dependencies.
-
-## Installation
-
-```bash
-npm install -g bmad-swarm
-```
-
 ## Quick Start
 
 ```bash
-# 1. Create a new project directory (or cd into an existing one)
-mkdir my-app && cd my-app
-git init
+# Install
+npm install -g bmad-swarm
 
-# 2. Initialize the swarm
+# Create a project
+mkdir my-app && cd my-app && git init
+
+# Initialize the swarm
 bmad-swarm init
 
-# 3. Open Claude Code and start building
+# Open Claude Code and just talk -- the methodology activates automatically
 claude
-> @orchestrator Build a task management API with user authentication
+> Build a task management API with user authentication
 ```
 
 `bmad-swarm init` generates:
 - `swarm.yaml` -- project configuration (you own and edit this)
-- `.claude/agents/` -- agent definition files for each role
+- `.claude/agents/` -- agent definitions for each role
 - `.claude/hooks/` -- quality gate hooks
-- `.claude/settings.json` -- Claude Code permission allowlist
-- `CLAUDE.md` -- project instructions consumed by Claude Code
-- `artifacts/` -- directory structure for methodology artifacts
+- `.claude/settings.json` -- Claude Code permissions
+- `CLAUDE.md` -- tells Claude "you are the orchestrator" so the methodology activates automatically
+- `artifacts/` -- directory structure for all methodology artifacts
 - `project.yaml` -- project state tracking
 
-## Escape Hatches
+## How It Works
 
-Not every task needs the full lifecycle. Use these minimal paths:
+BMAD Swarm works by generating configuration files that Claude Code reads automatically. The `CLAUDE.md` file, agent definitions in `.claude/agents/`, and hooks in `.claude/hooks/` are all standard Claude Code features -- bmad-swarm just generates them with the right content.
 
-```bash
-# Quick bug fix -- skips straight to implementation
-> @orchestrator Fix: users can't log in with special characters in email
+The key is `CLAUDE.md`. When Claude Code opens a project, it reads `CLAUDE.md` first. BMAD Swarm's generated `CLAUDE.md` starts with: **"You are the orchestrator."** This single directive means every message you type -- whether it's "build me an app" or "help me brainstorm" or "fix this bug" -- automatically flows through the orchestrator's methodology. There is no `@orchestrator` prefix, no slash commands, no mode switching. You just talk to Claude and the orchestrator takes over.
 
-# Brainstorm only -- no code, just thinking
-> @orchestrator I have a vague idea for a tech debt tracker. Help me think through it.
+Once initialized, there are no bmad-swarm commands to run during development. You just open Claude Code and talk to it.
 
-# Skip to coding with defaults
-bmad-swarm init -y
-claude
-> @orchestrator Add a /health endpoint to the API
+### The Orchestrator
+
+Claude itself becomes the orchestrator -- an AI coordinator that never writes code, only delegates. When you give it a task:
+
+1. **Assesses complexity** across 5 dimensions (scope, clarity, technical risk, codebase size, dependencies)
+2. **Selects the orchestration mode**:
+   - **Interactive** -- Single agent works directly with you (brainstorming, planning, design decisions)
+   - **Parallel** -- Multiple agents work simultaneously (implementation, review, QA)
+   - **Hybrid** -- Interactive for planning phases, parallel for building
+3. **Assembles the right team** -- only the agents needed, not the full roster
+4. **Creates a task graph** with dependencies and quality gates
+5. **Adapts to you** -- reads your conversation style and calibrates which decisions to involve you in vs. handle autonomously
+
+### Phases
+
+Planning phases default to interactive mode (one agent working with you). Building phases default to parallel mode (multiple agents working simultaneously).
+
+| Phase | Mode | Purpose | Primary Agents |
+|-------|------|---------|---------------|
+| **0. Ideation** | Interactive | Brainstorm and refine ideas | Ideator |
+| **1. Exploration** | Interactive | Research problem space | Researcher |
+| **2. Definition** | Interactive | Define requirements (PRD) | Strategist |
+| **3. Design** | Interactive | Architecture and technical decisions | Architect |
+| **4. Implementation** | Parallel | Build, test, review in sprints | Developer, Reviewer, QA |
+| **5. Delivery** | Parallel | Final validation and handoff | Reviewer, QA |
+
+Phases are skipped based on complexity. A bug fix goes straight to Implementation. A small feature might skip Exploration and Definition.
+
+### Agents
+
+| Agent | Role |
+|-------|------|
+| **orchestrator** | Team lead. Assesses complexity, builds teams, creates task graphs. Never implements directly. |
+| **ideator** | Structured brainstorming partner. Uses 17 techniques, anti-bias protocols, and elicitation methods. Adapts to your thinking style. |
+| **researcher** | Discovery, analysis, and context acquisition. Web research and codebase scanning. |
+| **strategist** | Product strategy, requirements definition, PRD creation. |
+| **architect** | Technical design, system architecture, technology selection. |
+| **story-engineer** | Creates implementation-ready stories with BDD acceptance criteria. |
+| **developer** | Story implementation following TDD. Multiple developers can work in parallel. |
+| **reviewer** | Adversarial code review. Validates quality, security, architecture compliance, and decision traceability. |
+| **qa** | Test strategy, automated test creation, coverage analysis. |
+| **retrospective** | Post-epic analysis. Extracts patterns from reviews and updates lessons-learned. |
+| **devops** | Infrastructure, CI/CD, deployment automation. |
+| **security** | Security design, threat modeling, vulnerability analysis. |
+| **tech-writer** | Documentation, API docs, user guides. |
+
+### Decision Traceability
+
+Every significant decision gets a **D-ID** (Decision ID) that flows through the entire artifact chain:
+
+```
+Human says "mobile-first" during brainstorming
+  -> D-001 logged in product brief
+    -> Strategist references D-001 in PRD requirement
+      -> Architect references D-001 in frontend design
+        -> Story engineer includes D-001 in acceptance criteria
+          -> Reviewer verifies D-001 compliance
 ```
 
-You can also disable phases entirely in `swarm.yaml`:
+Decisions made once are never silently dropped.
 
-```yaml
-methodology:
-  phases:
-    exploration: { enabled: false }
-    definition: { enabled: false }
-```
+### Adaptive Interaction
+
+The system reads your conversation style and adapts in real-time:
+
+- **Technical language** ("Should we use connection pooling?") -- engages at technical depth
+- **Design language** ("Make the sidebar collapsible") -- engages on UX
+- **Business language** ("We need to beat competitor X on onboarding") -- engages on strategy
+
+Agents auto-resolve decisions you wouldn't care about (library choices, folder structure) and escalate decisions you would (scope, business logic, architecture tradeoffs).
+
+### Autonomy Levels
+
+| Level | Behavior | Best For |
+|-------|----------|----------|
+| `auto` | No human checkpoints. Reports results at the end. | Bug fixes, small features, well-defined tasks |
+| `guided` | Pauses at phase boundaries for human review. | Medium features, new modules |
+| `collaborative` | Pauses at phase boundaries AND within phases for key choices. | New apps, major redesigns, vague requirements |
 
 ## CLI Reference
 
@@ -92,16 +143,6 @@ bmad-swarm init [options]
 | `--template <name>` | Use a predefined stack template |
 | `-y, --yes` | Accept all defaults without interactive prompts |
 
-**Examples:**
-
-```bash
-bmad-swarm init                    # Interactive setup
-bmad-swarm init -y                 # Quick start with defaults
-bmad-swarm init --template next-app  # Start with Next.js template
-bmad-swarm init --scan             # Brownfield project -- detect stack
-bmad-swarm init --scan -y          # Auto-detect and skip prompts
-```
-
 **Available templates:**
 
 | Template | Stack |
@@ -117,20 +158,16 @@ bmad-swarm init --scan -y          # Auto-detect and skip prompts
 Regenerate all managed files from `swarm.yaml`. Safe to run repeatedly -- never touches user-owned files (`swarm.yaml`, `overrides/`, `artifacts/`, `src/`).
 
 ```bash
-bmad-swarm update [options]
+bmad-swarm update [--dry-run]
 ```
-
-| Flag | Description |
-|------|-------------|
-| `--dry-run` | Preview what would be regenerated without writing any files |
 
 ### `bmad-swarm eject agent <name>`
 
-Copy an agent template to `overrides/agents/` for full local customization. The ejected copy takes priority over the package version and is not overwritten by `bmad-swarm update`.
+Copy an agent template to `overrides/agents/` for local customization on a single project. The ejected copy takes priority over the package version and survives `bmad-swarm update`.
 
 ```bash
 bmad-swarm eject agent developer
-# Edit overrides/agents/developer.md
+# Edit overrides/agents/developer.md to taste
 bmad-swarm update  # your override is preserved
 ```
 
@@ -138,71 +175,54 @@ bmad-swarm update  # your override is preserved
 
 Remove a local override and restore the package version.
 
-```bash
-bmad-swarm uneject agent developer
-bmad-swarm update
-```
-
 ### `bmad-swarm scan`
 
 Detect stack from the current codebase and generate `project-context.md`.
-
-```bash
-bmad-swarm scan [--output <path>]
-```
 
 ### `bmad-swarm status`
 
 Show project configuration, current phase, agent status, and artifact counts.
 
-## Methodology
+## Escape Hatches
 
-The orchestrator determines which phases to run based on the request.
+Not every task needs the full lifecycle:
 
-| Phase | Purpose | Primary Agents | Gate |
-|-------|---------|---------------|------|
-| **0. Ideation** | Brainstorm and refine vague ideas | Ideator | Human confirms readiness |
-| **1. Exploration** | Research problem space and feasibility | Researcher, Strategist | Human confirms understanding |
-| **2. Definition** | Define requirements (PRD) | Strategist | PRD quality + human approval |
-| **3. Design** | Architecture and technical decisions | Architect | Architecture quality + human approval |
-| **4. Implementation** | Build, test, review in sprints | Story Engineer, Developer, Reviewer, QA | All stories complete, tests pass |
-| **5. Delivery** | Final validation and handoff | Reviewer, QA | Human accepts delivery |
+```bash
+# Quick bug fix -- skips straight to implementation
+> Fix: users can't log in with special characters in email
 
-Phases can be skipped based on complexity. A bug fix goes straight to Implementation. A small feature might skip Exploration and Definition.
+# Brainstorm only -- no code, just thinking
+> I have a vague idea for a tech debt tracker. Help me think through it.
 
-## Agent Roles
+# Skip to coding with defaults
+bmad-swarm init -y
+> Add a /health endpoint to the API
+```
 
-| Agent | Role |
-|-------|------|
-| **orchestrator** | Team lead. Assesses complexity, builds teams, creates task graphs. Never implements directly. |
-| **ideator** | Multi-perspective brainstorming through four lenses. Refines ideas into product briefs. |
-| **researcher** | Discovery, analysis, and context acquisition. |
-| **strategist** | Product strategy, requirements definition, PRD creation. |
-| **architect** | Technical design, system architecture, technology selection. |
-| **story-engineer** | Creates implementation-ready stories with BDD acceptance criteria. |
-| **developer** | Story implementation following TDD. Writes code and tests. |
-| **reviewer** | Adversarial code review. Validates quality, security, and architecture compliance. |
-| **qa** | Test strategy, automated test creation, coverage analysis. |
+Disable phases in `swarm.yaml`:
 
-## Autonomy Levels
+```yaml
+methodology:
+  phases:
+    exploration: { enabled: false }
+    definition: { enabled: false }
+```
 
-| Level | Behavior | Best For |
-|-------|----------|----------|
-| `auto` | No human checkpoints. Reports results at the end. | Bug fixes, small features, well-defined tasks |
-| `guided` | Pauses at phase boundaries for human review. | Medium features, new modules |
-| `collaborative` | Pauses at phase boundaries AND within phases for key choices. | New apps, major redesigns, vague requirements |
+## Per-Project Customization (Eject/Override)
 
-## Eject/Override System
+Three layers for customizing agent behavior on a specific project:
 
-Three layers for customizing agent behavior:
-
-1. **Package templates** (default) -- ship with `bmad-swarm`, updated on `bmad-swarm update`
+1. **Package templates** (default) -- ship with `bmad-swarm`, regenerated on `bmad-swarm update`
 2. **swarm.yaml overrides** (lightweight) -- add `extra_context` or `extra_rules` per agent
 3. **Ejected overrides** (full control) -- `bmad-swarm eject agent <name>` copies the template for free editing
 
 Resolution order: ejected file > package template + swarm.yaml overrides.
 
+This is for customizing agent behavior within a single project (e.g., adding domain-specific rules to the architect). To change bmad-swarm itself, see [Development](#development) below.
+
 ## Artifact System
+
+Agents coordinate through structured files on disk, not message passing. Each agent reads only the artifacts relevant to its task.
 
 ```
 artifacts/
@@ -210,8 +230,8 @@ artifacts/
   planning/        Product brief, PRD
   design/          Architecture, ADRs
   implementation/  Epics, stories
-  reviews/         Code reviews, test reports
-  context/         Project context, decision log
+  reviews/         Code reviews, retrospectives, test reports
+  context/         Project context, decision log, lessons learned
 ```
 
 <details>
@@ -236,19 +256,17 @@ stack:
 methodology:
   autonomy: guided              # auto | guided | collaborative
 
-  # Ideation phase (brainstorming)
   ideation:
-    enabled: true               # Enable ideation phase (boolean, default: true)
-    default_perspectives:       # Brainstorming lenses for the ideator agent
+    enabled: true
+    default_perspectives:
       - product-strategist
       - technical-feasibility
       - devils-advocate
       - innovation
 
-  # Development phases
   phases:
     exploration:
-      enabled: true             # Enable/disable phase (boolean, default: true)
+      enabled: true
     definition:
       enabled: true
     design:
@@ -259,11 +277,10 @@ methodology:
     delivery:
       enabled: true
 
-  # Quality gates
   quality:
-    require_tests: true         # All code must have tests (boolean, default: true)
-    require_review: true        # All code must pass review (boolean, default: true)
-    require_human_approval:     # Artifacts requiring human sign-off (string[])
+    require_tests: true
+    require_review: true
+    require_human_approval:
       - prd
       - architecture
 
@@ -285,8 +302,8 @@ agents:
 
 # Output locations
 output:
-  artifacts_dir: ./artifacts    # Methodology artifacts directory (string)
-  code_dir: ./src               # Source code directory (string)
+  artifacts_dir: ./artifacts
+  code_dir: ./src
 ```
 
 </details>
@@ -298,53 +315,131 @@ output:
 mkdir saas-app && cd saas-app && git init
 bmad-swarm init --template next-app
 claude
-> @orchestrator Build a SaaS project management tool with team workspaces
+> Build a SaaS project management tool with team workspaces
 
 # Add feature to existing project
 cd my-existing-app
 bmad-swarm init --scan -y
 claude
-> @orchestrator Add a notification system with email and in-app alerts
+> Add a notification system with email and in-app alerts
 
 # Brainstorming session
 bmad-swarm init -y
 claude
-> @orchestrator I have a vague idea for a tool that helps developers track technical debt
+> I have a vague idea for a tool that helps developers track technical debt
 ```
+
+## Development
+
+To work on bmad-swarm itself (not a project that uses it):
+
+### Setup
+
+```bash
+git clone https://github.com/ccsmith33/BMAD-Swarm.git
+cd BMAD-Swarm
+npm install
+```
+
+### Run Tests
+
+```bash
+npm test
+```
+
+### Project Structure
+
+```
+bmad-swarm/
+  bin/bmad-swarm.js           CLI entry point
+  cli/                        Command implementations (init, update, eject, scan, etc.)
+  agents/                     Agent templates (13 agents)
+  methodology/
+    phases.yaml               Phase definitions, gates, transitions
+    quality-gates/             Quality validation criteria (PRD, architecture, code, etc.)
+    artifact-schemas/          Expected structure for each artifact type
+    task-templates/            Pre-built task graphs for common workflows
+    testing-knowledge/         Stack-aware testing guides for the QA agent
+    decision-classification.md Tactical vs strategic decision framework
+    decision-traceability.md   D-ID system for tracking decisions through artifacts
+    orchestration-modes.md     When to use interactive vs parallel vs hybrid
+    adaptive-interaction.md    How agents read and adapt to the human's style
+    brainstorming-techniques.md  Curated technique library for the ideator
+    elicitation-methods.md     Methods for deepening weak artifact sections
+  templates/                   Template files for code generation
+  generators/                  File generation logic
+  utils/                       Shared utilities
+  test/                        Test suite (node:test)
+```
+
+### Key areas to modify
+
+**Agents** (`agents/*.md`): Each agent is a Markdown file with Role, Expertise, Inputs, Outputs, Quality Criteria, and Behavioral Rules. Edit these to change how an agent thinks and works. Changes here affect all new projects on `bmad-swarm init` or `bmad-swarm update`.
+
+**Methodology** (`methodology/`): Phase definitions, quality gates, artifact schemas, brainstorming techniques, and decision frameworks. This is the "brain" of the system -- how the orchestrator decides what to do.
+
+**Generators** (`generators/`): JavaScript modules that produce the files `bmad-swarm init` creates. If you want to change what gets generated (e.g., add a new template, change the CLAUDE.md format), modify these.
+
+**CLI** (`cli/`): Command implementations. Each file corresponds to a CLI command (`init.js`, `update.js`, `eject.js`, etc.).
+
+### Eject vs. Development
+
+| I want to... | Do this |
+|--------------|---------|
+| Change an agent's behavior for **one project** | `bmad-swarm eject agent <name>` in the project |
+| Change an agent's behavior for **all projects** | Edit `agents/<name>.md` in the bmad-swarm repo |
+| Add a new agent | Create `agents/<name>.md`, add to generator, update CLAUDE.md template |
+| Change methodology (phases, gates, techniques) | Edit files in `methodology/` |
+| Change what `bmad-swarm init` generates | Edit files in `generators/` and `templates/` |
+| Add a new CLI command | Add a file in `cli/`, register in `bin/bmad-swarm.js` |
+
+### Testing Changes Locally
+
+```bash
+# Link your local copy globally
+npm link
+
+# Now 'bmad-swarm' points to your local checkout
+cd /some/test-project
+bmad-swarm init
+
+# Unlink when done
+npm unlink -g bmad-swarm
+```
+
+## Relationship to BMAD Method
+
+BMAD Swarm is built on the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) (Breakthrough Method for Agile AI-Driven Development) by Brian Madison.
+
+| | Original BMAD | BMAD Swarm |
+|---|---|---|
+| **Execution** | One AI, sequential, you switch personas manually | Multiple AI agents working in parallel |
+| **Orchestration** | You manage the process with commands | Claude becomes the orchestrator automatically via `CLAUDE.md` |
+| **Integration** | Load persona files into your AI session | `bmad-swarm init` once, then just talk to Claude -- no prefixes, no commands |
+| **Brainstorming** | Structured techniques with named personas | Same techniques, invisible to the user, adaptive to your style |
+| **Documentation** | Rich artifacts as a byproduct of the process | Same, plus decision traceability (D-IDs) across all artifacts |
+
+BMAD Swarm keeps what BMAD does best -- structured brainstorming, rich documentation, phased methodology, quality gates -- and adds what Claude Agent Teams do best -- parallel execution, autonomous orchestration, and adaptive interaction.
 
 ## Troubleshooting
 
 **`bmad-swarm init` says "already has a swarm.yaml"**
-Run `bmad-swarm update` instead to regenerate managed files, or delete `swarm.yaml` to start fresh.
+Run `bmad-swarm update` instead, or delete `swarm.yaml` to start fresh.
 
 **Agents are not being spawned**
-Verify `.claude/settings.json` exists and allows agent spawning. Re-run `bmad-swarm update` to regenerate it.
+Verify `.claude/settings.json` exists. Re-run `bmad-swarm update` to regenerate it.
 
 **The orchestrator spawns too many agents**
-Set `methodology.autonomy: auto` in `swarm.yaml` and reduce complexity by giving more specific instructions. The orchestrator scales team size to match assessed complexity.
+Set `methodology.autonomy: auto` in `swarm.yaml` and give more specific instructions.
 
-**Tests are not running / wrong test framework detected**
-Set `stack.testing` explicitly in `swarm.yaml` (e.g., `Jest`, `Vitest`, `pytest`, `node:test`).
+**Tests are not running / wrong test framework**
+Set `stack.testing` explicitly in `swarm.yaml`.
 
 **Agent behavior is wrong after update**
-Check if you have an ejected override in `overrides/agents/`. Ejected files take priority over package templates. Run `bmad-swarm uneject agent <name>` to restore defaults.
+Check `overrides/agents/` for ejected files. Run `bmad-swarm uneject agent <name>` to restore defaults.
 
 **Quality gates blocking progress**
-Check `artifacts/reviews/` for the reviewer's feedback. Address blocking findings first. If gates are too strict for your use case, set `methodology.quality.require_review: false` in `swarm.yaml`.
-
-## Project Structure
-
-```
-bmad-swarm/
-  bin/bmad-swarm.js         CLI entry point
-  cli/                      Command implementations
-  agents/                   Package agent templates (9 agents)
-  methodology/              Phase definitions, gates, transitions
-  templates/                Template files for code generation
-  generators/               File generation logic
-  utils/                    Shared utilities
-  test/                     Test suite (node:test)
-```
+Check `artifacts/reviews/` for feedback. To relax gates: `methodology.quality.require_review: false` in `swarm.yaml`.
 
 ## License
 

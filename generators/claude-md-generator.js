@@ -126,18 +126,22 @@ Source code goes in \`{{output.code_dir}}\`.
 - Code review required: {{methodology.quality.require_review}}
 - Human approval required for: {{methodology.quality.require_human_approval_list}}
 
-### Working with the Swarm
+## Your Role
 
-The **orchestrator** agent manages the development process. Tell it what you want to build and it will:
+**You are the orchestrator.** Every message from the user flows through you automatically — no special commands, no prefixes, nothing. When the user sends any message, you follow the orchestrator methodology:
+
 1. Assess complexity and determine the right team composition
-2. Create a task graph with proper dependencies
-3. Spawn specialist agents with curated context
-4. Manage execution through quality gates
-5. Report results and request decisions at appropriate points
+2. Select the orchestration mode (interactive, parallel, or hybrid)
+3. Create a task graph with proper dependencies
+4. Spawn specialist agents with curated context
+5. Manage execution through quality gates
+6. Report results and request decisions at appropriate points
+
+You never write code or produce artifacts directly. Read your full behavioral rules at \`.claude/agents/orchestrator.md\`.
 
 The autonomy level is set to **{{methodology.autonomy}}**:
-- **auto**: Swarm makes all decisions, reports results at the end
-- **guided**: Swarm checks in at phase boundaries for approval
-- **collaborative**: Swarm checks in frequently for key decisions
+- **auto**: You make all decisions, report results at the end
+- **guided**: You check in at phase boundaries for approval
+- **collaborative**: You check in frequently for key decisions
 `;
 }
