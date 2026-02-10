@@ -1,0 +1,79 @@
+# Task Template: Design Phase
+# Used to make technical and UX design decisions before implementation.
+# Produces architecture document and optional UX design.
+
+id: design
+name: Design Phase
+description: >
+  Translate requirements into technical design. Make architecture decisions,
+  select technologies, define API contracts and data models, and establish
+  system boundaries. Optionally create UX design specifications.
+
+tasks:
+  - id: create-architecture
+    type: artifact
+    agent: architect
+    description: >
+      Create a comprehensive architecture document that translates PRD
+      requirements into technical design. Must include:
+      - Technology stack selections with rationale
+      - System architecture (components, boundaries, interactions)
+      - Data models and database design
+      - API contracts (endpoints, request/response schemas)
+      - Authentication and authorization design
+      - Infrastructure and deployment approach
+      - Key architectural decisions with tradeoff analysis (ADRs)
+      - Non-functional requirement strategies (performance, scaling, security)
+      - Development environment and tooling setup
+      - Project structure and file organization conventions
+
+      Every technical decision must trace back to a PRD requirement.
+      The architecture must be specific enough for a developer to
+      implement without making their own architectural decisions.
+    inputs:
+      - artifacts/planning/prd.md
+      - artifacts/exploration/technical-research.md  # If available
+      - project-context  # If brownfield
+    outputs:
+      - artifacts/design/architecture.md
+      - artifacts/design/decisions/  # ADR files
+    quality_gate: architecture-quality
+    dependencies: []
+
+  - id: create-ux
+    type: artifact
+    agent: researcher
+    optional: true
+    description: >
+      Research UX patterns and create UX design specifications. This task
+      is optional and typically included for user-facing applications.
+      Covers interaction patterns, component layouts, responsive design
+      considerations, and accessibility requirements.
+    inputs:
+      - artifacts/planning/prd.md
+    outputs:
+      - artifacts/design/ux-design.md
+    quality_gate: null
+    dependencies: []
+
+  - id: human-approval-architecture
+    type: decision
+    agent: orchestrator
+    description: >
+      Present the architecture to the human for review and approval.
+      The architecture must pass the architecture-quality gate before
+      being presented. The human reviews key technical decisions
+      and either approves or requests changes.
+
+      Key areas for human review:
+      - Technology selections (language, framework, database)
+      - Infrastructure approach (hosting, scaling strategy)
+      - Major tradeoffs (build vs. buy, monolith vs. microservices)
+      - Cost implications of architectural choices
+    inputs:
+      - artifacts/design/architecture.md
+      - artifacts/design/decisions/
+    outputs: []
+    quality_gate: null
+    dependencies:
+      - create-architecture

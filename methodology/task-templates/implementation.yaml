@@ -1,0 +1,152 @@
+# Task Template: Implementation Phase
+# The build-test-review cycle. Decomposes design into stories,
+# develops them in sprints, reviews each one, and validates quality.
+
+id: implementation
+name: Implementation Phase
+description: >
+  Build the software. Decompose architecture and PRD into implementable
+  epics and stories, develop them following TDD practices, review each
+  story against acceptance criteria and architecture compliance, and
+  validate test coverage and quality.
+
+tasks:
+  - id: create-epics-stories
+    type: artifact
+    agent: story-engineer
+    description: >
+      Decompose the PRD and architecture into epics and stories.
+      Each epic groups related functionality. Each story must include:
+      - User story format (As a..., I want..., So that...)
+      - BDD acceptance criteria (Given/When/Then)
+      - Task breakdown with ordered subtasks
+      - Dev notes with architecture-specific implementation guidance
+      - File references and dependency information
+      - Testing requirements
+
+      Stories must be sequenced so that foundational work (project setup,
+      data models, core infrastructure) comes first. Each story should
+      be independently implementable given its dependencies are complete.
+
+      Requirements coverage: every PRD functional requirement must map
+      to at least one story. Track coverage explicitly.
+    inputs:
+      - artifacts/planning/prd.md
+      - artifacts/design/architecture.md
+      - artifacts/design/ux-design.md  # If available
+      - project-context  # If available
+    outputs:
+      - artifacts/implementation/epics.md
+      - artifacts/implementation/stories/  # Individual story files
+    quality_gate: story-quality
+    dependencies: []
+
+  - id: sprint-planning
+    type: artifact
+    agent: story-engineer
+    description: >
+      Organize stories into sprints based on dependencies and priority.
+      Create a sprint status tracker that maps epics to stories with
+      their current status. Validate that story sequencing respects
+      dependencies - no story should be scheduled before its
+      prerequisites are complete.
+    inputs:
+      - artifacts/implementation/epics.md
+      - artifacts/implementation/stories/
+    outputs:
+      - artifacts/implementation/sprint-status.yaml
+    quality_gate: null
+    dependencies:
+      - create-epics-stories
+
+  # The following tasks repeat per story within each sprint.
+  # The orchestrator creates concrete instances from this template.
+
+  - id: develop-story
+    type: implementation
+    agent: developer
+    per_story: true
+    description: >
+      Implement the story following TDD practices (red-green-refactor).
+      The developer reads the story file as their authoritative guide
+      and implements each task/subtask in the specified order.
+
+      Requirements:
+      - Write tests first, then implementation code
+      - Follow architecture patterns and conventions from the story
+      - Mark each task/subtask as complete in the story file
+      - Update the file list with all created/modified files
+      - Record implementation notes in the dev agent record
+      - Halt on blockers rather than making assumptions
+      - Never falsify test results or completion status
+    inputs:
+      - "artifacts/implementation/stories/{{story_file}}"
+      - artifacts/context/project-context.md  # If available
+    outputs:
+      - source-code  # Files specified in the story
+      - test-code  # Test files for the implementation
+    quality_gate: code-quality
+    dependencies:
+      - sprint-planning
+      - "story-dependencies"  # Dynamic: depends on story's blockedBy
+
+  - id: review-story
+    type: validation
+    agent: reviewer
+    per_story: true
+    description: >
+      Perform adversarial code review of the completed story. Review
+      against acceptance criteria, architecture compliance, code quality
+      standards, security best practices, and test coverage.
+
+      Produce a review report with findings categorized by severity:
+      - Critical: Must fix before merge (security, data loss, broken functionality)
+      - Major: Should fix (performance, maintainability, architecture violation)
+      - Minor: Nice to fix (style, documentation, naming)
+
+      If critical or major findings exist, the story is sent back to
+      the developer for fixes. The review-fix cycle continues until
+      the reviewer approves.
+    inputs:
+      - "artifacts/implementation/stories/{{story_file}}"
+      - source-code-changes  # The code the developer wrote
+      - artifacts/design/architecture.md
+    outputs:
+      - "artifacts/reviews/review-{{story_key}}.md"
+    quality_gate: review-quality
+    dependencies:
+      - "develop-story-{{story_key}}"
+
+  - id: qa-validation
+    type: validation
+    agent: qa
+    description: >
+      Validate overall test coverage and quality after all stories in
+      a sprint are complete. Identify gaps in test coverage, create
+      additional E2E tests for critical user flows, and run full
+      regression testing.
+    inputs:
+      - artifacts/implementation/stories/
+      - source-code
+      - test-code
+    outputs:
+      - artifacts/reviews/test-report.md
+    quality_gate: null
+    dependencies:
+      - all-reviews-complete  # Dynamic: all review-story tasks in sprint
+
+  - id: sprint-retrospective
+    type: artifact
+    agent: orchestrator
+    description: >
+      Review what went well, what could be improved, and capture
+      learnings from the sprint. Update project context with
+      patterns and conventions established during implementation.
+    inputs:
+      - artifacts/implementation/sprint-status.yaml
+      - artifacts/reviews/
+    outputs:
+      - artifacts/context/decision-log.md  # Append learnings
+    quality_gate: null
+    dependencies:
+      - qa-validation

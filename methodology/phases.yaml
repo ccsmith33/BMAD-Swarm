@@ -1,0 +1,503 @@
+# BMAD Swarm - Phase Definitions & Transitions
+# Defines the SDLC phases, their agents, gates, and transition rules.
+
+phases:
+  # Default orchestration mode per phase. See methodology/orchestration-modes.md
+  # for full definitions of interactive, parallel, and hybrid modes.
+
+  ideation:
+    name: Ideation
+    order: 0
+    default_mode: interactive  # Brainstorming is conversational — parallelism doesn't help
+    purpose: >
+      Refine vague ideas into concrete, actionable concepts through
+      interactive brainstorming and multi-perspective analysis. This phase
+      happens before any team is assembled or formal process begins.
+    sub_modes:
+      - id: interactive-brainstorming
+        name: Interactive Brainstorming (Mode A)
+        description: >
+          Single ideator agent works directly with the human in a
+          conversational session. No team, no delegation. The ideator
+          applies four lenses (product strategist, technical feasibility,
+          devil's advocate, innovation) to refine the concept. Ends when
+          the human declares readiness to build.
+        agents: [ideator]
+        team: false
+      - id: parallel-exploration
+        name: Parallel Exploration (Mode B)
+        description: >
+          Ideator and researcher work in parallel. The ideator refines
+          the concept while the researcher investigates market context,
+          technical feasibility, or domain requirements. Both produce
+          artifacts that inform the next phase.
+        agents: [ideator, researcher]
+        team: true
+    agents:
+      primary:
+        - ideator
+      supporting:
+        - researcher
+    artifacts:
+      - type: product-brief
+        path: artifacts/planning/product-brief.md
+        producer: ideator
+        required: true
+    gate:
+      name: ideation-complete
+      type: human-decision
+      description: >
+        Human confirms the brainstormed concept is sufficiently refined
+        and they are ready to proceed to building. The product brief
+        captures the agreed-upon direction.
+      criteria:
+        - Product brief exists with vision, users, and value proposition
+        - All four ideation lenses have been applied
+        - Key assumptions have been identified and challenged
+        - Scope is bounded with clear v1 definition
+        - Human explicitly confirms readiness to proceed
+    skip_when:
+      - Requirements are already clearly defined
+      - Human provides a complete product brief or equivalent
+      - Scope is small (single feature, bug fix)
+
+  exploration:
+    name: Exploration
+    order: 1
+    default_mode: interactive  # Or hybrid when Mode B parallel exploration is used
+    purpose: >
+      Understand the problem space, research market and domain context,
+      evaluate technical feasibility, and validate that the team has
+      sufficient understanding to proceed with product definition.
+    agents:
+      primary:
+        - researcher
+      supporting:
+        - strategist  # Devil's advocate, challenges assumptions
+    artifacts:
+      - type: research-document
+        path: artifacts/exploration/market-research.md
+        producer: researcher
+        required: false
+      - type: research-document
+        path: artifacts/exploration/domain-research.md
+        producer: researcher
+        required: false
+      - type: research-document
+        path: artifacts/exploration/technical-research.md
+        producer: researcher
+        required: false
+      - type: product-brief
+        path: artifacts/planning/product-brief.md
+        producer: strategist
+        required: true
+    gate:
+      name: exploration-complete
+      type: human-decision
+      description: >
+        Human confirms the team's understanding of the problem space
+        is sufficient to proceed. Research outputs and product brief
+        are reviewed and accepted.
+      criteria:
+        - Product brief exists and covers vision, users, and scope
+        - Key risks and unknowns have been identified
+        - Technical feasibility has been assessed
+        - Human confirms understanding is sufficient
+    skip_when:
+      - Requirements are already clearly defined by the human
+      - Scope is small (single feature, bug fix)
+      - Human provides comprehensive research and context upfront
+
+  definition:
+    name: Definition
+    order: 2
+    default_mode: interactive  # Requirements need human conversation to get right
+    purpose: >
+      Define what to build - comprehensive requirements, scope boundaries,
+      success criteria, and user journeys. Produces the PRD that drives
+      all downstream work.
+    agents:
+      primary:
+        - strategist
+      supporting: []
+    artifacts:
+      - type: prd
+        path: artifacts/planning/prd.md
+        producer: strategist
+        required: true
+    gate:
+      name: prd-approved
+      type: quality-check-and-human
+      description: >
+        PRD passes automated quality validation, then human approves
+        scope, requirements, and priorities before design begins.
+      criteria:
+        - PRD passes prd-quality gate
+        - All functional requirements are testable and specific
+        - Non-functional requirements have measurable targets
+        - User journeys cover primary use cases
+        - Success criteria are defined and measurable
+        - Human approves scope and priorities
+      quality_gate: prd-quality
+    skip_when:
+      - Bug fix with obvious scope
+      - Small feature where requirements fit in the request
+      - Human provides a complete PRD or equivalent spec
+
+  design:
+    name: Design
+    order: 3
+    default_mode: interactive  # Architecture decisions need human judgment; for complexity 11+, deliberation adds parallel review
+    purpose: >
+      Make technical and UX design decisions. Translate requirements
+      into architecture, technology selections, API contracts, data
+      models, and system boundaries. For complexity 11+, architecture
+      receives a parallel security review during this phase.
+    agents:
+      primary:
+        - architect
+      supporting:
+        - researcher  # UX patterns, technical research as needed
+    artifacts:
+      - type: architecture
+        path: artifacts/design/architecture.md
+        producer: architect
+        required: true
+      - type: adr
+        path: artifacts/design/decisions/
+        producer: architect
+        required: false
+    gate:
+      name: architecture-approved
+      type: quality-check-and-human
+      description: >
+        Architecture passes quality validation, aligns with PRD
+        requirements, and human approves key technical decisions
+        before implementation begins.
+      criteria:
+        - Architecture passes architecture-quality gate
+        - All PRD functional requirements are addressable by the design
+        - Non-functional requirements have corresponding architectural decisions
+        - Technology selections have documented rationale
+        - API contracts and data models are defined
+        - Human approves key technical decisions
+      quality_gate: architecture-quality
+    skip_when:
+      - Single-file change with trivial implementation
+      - Bug fix in existing, well-understood code
+      - Feature that follows existing established patterns exactly
+
+  implementation:
+    name: Implementation
+    order: 4
+    default_mode: parallel  # Well-defined stories benefit from parallel execution
+    purpose: >
+      Build, test, and review the software. Decompose design into
+      implementable stories, develop in sprints, review each story,
+      and validate quality throughout.
+    agents:
+      primary:
+        - story-engineer
+        - developer
+        - reviewer
+      supporting:
+        - qa
+        - retrospective
+    sub_phases:
+      - id: sprint-planning
+        name: Sprint Planning
+        description: >
+          Story engineer creates all epics and stories from PRD and
+          architecture. Stories are sequenced into sprints based on
+          dependencies and priority.
+        agents: [story-engineer]
+      - id: story-development
+        name: Story Development
+        description: >
+          Developers implement stories following TDD practices.
+          Multiple developers can work in parallel on independent stories.
+        agents: [developer]
+        parallel: true
+        max_parallel: "{{methodology.phases.implementation.parallel_devs}}"
+      - id: code-review
+        name: Code Review
+        description: >
+          Reviewer performs adversarial review of each completed story
+          against acceptance criteria, architecture compliance, and
+          code quality standards.
+        agents: [reviewer]
+      - id: qa-validation
+        name: QA Validation
+        description: >
+          QA engineer validates test coverage, creates additional
+          test suites as needed, and runs end-to-end validation.
+        agents: [qa]
+      - id: retrospective
+        name: Retrospective
+        description: >
+          Runs after all stories in an epic are complete and reviewed.
+          Analyzes review reports for recurring patterns, traces root
+          causes through the artifact chain, and updates the project
+          lessons-learned file with actionable findings.
+        agents: [retrospective]
+    artifacts:
+      - type: epic
+        path: artifacts/implementation/epics.md
+        producer: story-engineer
+        required: true
+      - type: story
+        path: artifacts/implementation/stories/
+        producer: story-engineer
+        required: true
+      - type: source-code
+        path: "{{output.code_dir}}"
+        producer: developer
+        required: true
+      - type: review-report
+        path: artifacts/reviews/
+        producer: reviewer
+        required: true
+    gate:
+      name: implementation-complete
+      type: quality-check
+      description: >
+        All stories are implemented, reviewed, and tests pass.
+        Code quality and coverage meet project standards.
+      criteria:
+        - All stories in all epics are marked complete
+        - All code reviews are approved (no open blockers)
+        - All tests pass (unit, integration, e2e)
+        - Code quality checks pass (linting, static analysis)
+        - Test coverage meets project minimum threshold
+      quality_gate: code-quality
+    feedback_loops:
+      review_rejection:
+        trigger: reviewer sends REJECTED message
+        action: orchestrator creates retry task for original developer
+        max_retries: 2
+        escalation: human review after 3 rejections
+    skip_when: []  # Implementation is never skipped
+
+  delivery:
+    name: Delivery
+    order: 5
+    default_mode: parallel  # Review and QA run independently
+    purpose: >
+      Final validation, documentation, and handoff. Ensure everything
+      works together, documentation is complete, and the human
+      accepts the delivered product.
+    agents:
+      primary:
+        - reviewer
+        - qa
+      supporting:
+        - researcher  # Final documentation if needed
+    artifacts:
+      - type: final-review
+        path: artifacts/reviews/final-review.md
+        producer: reviewer
+        required: true
+      - type: test-report
+        path: artifacts/reviews/test-report.md
+        producer: qa
+        required: true
+    gate:
+      name: delivery-accepted
+      type: human-decision
+      description: >
+        All quality gates pass and human accepts the delivered work.
+      criteria:
+        - Final review report shows no open blockers
+        - All test suites pass
+        - Documentation is complete and accurate
+        - Human accepts the delivery
+    skip_when:
+      - Bug fix (delivery is implicit in implementation completion)
+      - Trivial changes where formal delivery adds no value
+
+# Transition rules define how phases connect
+transitions:
+  ideation-to-exploration:
+    from: ideation
+    to: exploration
+    requires:
+      - gate: ideation-complete
+        status: passed
+    description: >
+      Product brief is complete and human confirms readiness to proceed.
+      If the concept needs deeper research, route to Exploration.
+      If requirements are already clear, this transition can be skipped
+      and the orchestrator routes directly to Definition.
+
+  exploration-to-definition:
+    from: exploration
+    to: definition
+    requires:
+      - gate: exploration-complete
+        status: passed
+    description: >
+      Product brief is complete and human confirms sufficient
+      understanding to define requirements.
+
+  definition-to-design:
+    from: definition
+    to: design
+    requires:
+      - gate: prd-approved
+        status: passed
+    description: >
+      PRD passes quality gate and human approves scope.
+      All requirements are testable and complete.
+
+  design-to-implementation:
+    from: design
+    to: implementation
+    requires:
+      - gate: architecture-approved
+        status: passed
+    description: >
+      Architecture passes quality gate, aligns with PRD,
+      and human approves technical decisions.
+
+  implementation-to-delivery:
+    from: implementation
+    to: delivery
+    requires:
+      - gate: implementation-complete
+        status: passed
+    description: >
+      All stories complete, all reviews approved, all tests pass.
+
+# Entry points define where to start based on context
+entry_points:
+  vague-idea:
+    description: "Human has a vague concept or idea to explore"
+    start_phase: exploration
+    phases: [exploration, definition, design, implementation, delivery]
+    autonomy_default: collaborative
+
+  clear-requirements:
+    description: "Human provides clear requirements or a spec"
+    start_phase: definition
+    phases: [definition, design, implementation, delivery]
+    autonomy_default: guided
+
+  add-feature:
+    description: "Adding a feature to an existing project"
+    start_phase: design
+    phases: [design, implementation, delivery]
+    autonomy_default: guided
+
+  bug-fix:
+    description: "Fixing a specific bug"
+    start_phase: implementation
+    phases: [implementation]
+    autonomy_default: auto
+
+  exploration-only:
+    description: "Research and analysis without building"
+    start_phase: exploration
+    phases: [exploration]
+    autonomy_default: collaborative
+
+  refactor:
+    description: "Restructuring existing code"
+    start_phase: design
+    phases: [design, implementation, delivery]
+    autonomy_default: guided
+
+  brainstorm:
+    description: "Interactive brainstorming to refine a vague idea (Mode A)"
+    start_phase: ideation
+    phases: [ideation]
+    autonomy_default: collaborative
+
+  ideate-then-build:
+    description: "Brainstorm an idea and then build it through the full lifecycle"
+    start_phase: ideation
+    phases: [ideation, exploration, definition, design, implementation, delivery]
+    autonomy_default: collaborative
+
+  debug:
+    description: Investigate and fix a bug with hypothesis-driven debugging
+    start_phase: implementation
+    phases: [implementation]
+    agents: [developer, reviewer]
+    triggers:
+      - "fix this bug"
+      - "debug this"
+      - "investigate why"
+
+  migrate:
+    description: Migrate between frameworks, languages, or major versions
+    start_phase: design
+    phases: [design, implementation, delivery]
+    agents: [architect, developer, reviewer]
+    triggers:
+      - "migrate from"
+      - "upgrade to"
+      - "convert to"
+
+  audit:
+    description: Security or code quality audit of existing codebase
+    start_phase: exploration
+    phases: [exploration]
+    agents: [researcher, reviewer]
+    triggers:
+      - "audit this"
+      - "security review"
+      - "code quality check"
+
+  maintain:
+    description: Routine maintenance - dependency updates, deprecation fixes, test coverage
+    start_phase: implementation
+    phases: [implementation]
+    agents: [developer, reviewer]
+    triggers:
+      - "update dependencies"
+      - "fix deprecations"
+      - "improve test coverage"
+
+# Complexity determines team size, process depth, and check-in frequency
+complexity:
+  factors:
+    scope:
+      low: "Single feature, bug fix, or small change"
+      medium: "Multi-feature, new module, or significant enhancement"
+      high: "Full application, platform, or major system redesign"
+    clarity:
+      low: "Specific, detailed requirements provided"
+      medium: "General direction with some ambiguity"
+      high: "Vague concept requiring substantial discovery"
+    technical_risk:
+      low: "Known patterns and proven technologies"
+      medium: "Some unknowns or new-to-team technologies"
+      high: "Novel technology, unproven approach, or research required"
+    codebase:
+      low: "Greenfield or small existing codebase"
+      medium: "Medium existing codebase with established patterns"
+      high: "Large complex codebase with many interdependencies"
+    dependencies:
+      low: "Self-contained, no external integrations"
+      medium: "Some integrations with known APIs"
+      high: "Multiple external systems, complex data flows"
+
+  autonomy_mapping:
+    auto:
+      description: >
+        No human decision points. Orchestrator makes all calls.
+        Reports results at the end.
+      typical_complexity: low
+      decision_points: none
+    guided:
+      description: >
+        Decision points at phase boundaries. Human approves
+        key artifacts before the next phase begins.
+      typical_complexity: medium
+      decision_points: phase-boundaries
+    collaborative:
+      description: >
+        Decision points at phase boundaries AND within phases
+        for key choices. Human is actively involved in decisions.
+      typical_complexity: high
+      decision_points: phase-boundaries-and-within

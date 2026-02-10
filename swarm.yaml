@@ -1,0 +1,29 @@
+project:
+  name: bmad-swarm
+  description: adding the brainstorming features to the existing bmad-swarm
+  type: web-app
+stack:
+  language: JavaScript
+methodology:
+  autonomy: auto
+  phases:
+    exploration:
+      enabled: true
+    definition:
+      enabled: true
+    design:
+      enabled: true
+    implementation:
+      enabled: true
+      parallel_devs: 2
+    delivery:
+      enabled: true
+  quality:
+    require_tests: true
+    require_review: true
+    require_human_approval:
+      - prd
+      - architecture
+output:
+  artifacts_dir: ./artifacts
+  code_dir: ./src

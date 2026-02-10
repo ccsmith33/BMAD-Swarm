@@ -1,0 +1,39 @@
+{
+  "name": "bmad-swarm",
+  "version": "1.0.1",
+  "description": "Autonomous development swarm powered by Claude Code Agent Teams",
+  "type": "module",
+  "bin": {
+    "bmad-swarm": "bin/bmad-swarm.js"
+  },
+  "files": [
+    "bin/",
+    "cli/",
+    "agents/",
+    "methodology/",
+    "templates/",
+    "generators/",
+    "utils/"
+  ],
+  "scripts": {
+    "test": "node --test test/**/*.test.js",
+    "start": "node bin/bmad-swarm.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "claude",
+    "agent",
+    "swarm",
+    "bmad",
+    "ai",
+    "development",
+    "autonomous"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.0.0",
+    "js-yaml": "^4.1.0"
+  }
+}

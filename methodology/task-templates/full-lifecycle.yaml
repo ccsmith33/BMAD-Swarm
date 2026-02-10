@@ -1,0 +1,317 @@
+# Task Template: Full Lifecycle
+# Complete task graph from exploration through delivery.
+# Used for greenfield projects starting from a vague idea.
+
+id: full-lifecycle
+name: Full Project Lifecycle
+description: >
+  The complete BMAD Swarm development lifecycle, from initial idea
+  exploration through final delivery. This is the most comprehensive
+  task graph, used for new projects where the human starts with a
+  concept and wants the swarm to handle the full journey.
+
+  The orchestrator adapts this template based on complexity assessment,
+  skipping optional tasks and adjusting parallelism as appropriate.
+
+tasks:
+  # ── Phase 1: Exploration ──────────────────────────────────────────
+
+  - id: research-domain
+    type: research
+    agent: researcher
+    phase: exploration
+    description: >
+      Analyze the problem domain: target users, pain points, existing
+      solutions, competitive landscape, market opportunities and risks.
+    inputs:
+      - human-description
+      - provided-research
+    outputs:
+      - artifacts/exploration/domain-research.md
+    quality_gate: null
+    dependencies: []
+
+  - id: research-technical
+    type: research
+    agent: researcher
+    phase: exploration
+    description: >
+      Evaluate technical feasibility: relevant technologies, frameworks,
+      architectural patterns, technical risks and constraints. For
+      brownfield projects, analyze existing codebase.
+    inputs:
+      - human-description
+      - project-context
+    outputs:
+      - artifacts/exploration/technical-research.md
+    quality_gate: null
+    dependencies: []
+
+  - id: create-brief
+    type: artifact
+    agent: strategist
+    phase: exploration
+    description: >
+      Synthesize research into a product brief capturing vision,
+      target users, differentiators, success metrics, and initial scope.
+    inputs:
+      - artifacts/exploration/domain-research.md
+      - artifacts/exploration/technical-research.md
+      - human-description
+    outputs:
+      - artifacts/planning/product-brief.md
+    quality_gate: null
+    dependencies:
+      - research-domain
+      - research-technical
+
+  - id: human-confirm-exploration
+    type: decision
+    agent: orchestrator
+    phase: exploration
+    description: >
+      Human reviews research and brief, confirms sufficient
+      understanding to proceed with requirements definition.
+    inputs:
+      - artifacts/planning/product-brief.md
+    outputs: []
+    quality_gate: null
+    dependencies:
+      - create-brief
+
+  # ── Phase 2: Definition ───────────────────────────────────────────
+
+  - id: create-prd
+    type: artifact
+    agent: strategist
+    phase: definition
+    description: >
+      Create comprehensive PRD with executive summary, success criteria,
+      phased scope, user journeys, functional requirements, non-functional
+      requirements, and domain-specific requirements.
+    inputs:
+      - artifacts/planning/product-brief.md
+      - artifacts/exploration/domain-research.md
+      - artifacts/exploration/technical-research.md
+      - human-description
+    outputs:
+      - artifacts/planning/prd.md
+    quality_gate: prd-quality
+    dependencies:
+      - human-confirm-exploration
+
+  - id: human-approve-prd
+    type: decision
+    agent: orchestrator
+    phase: definition
+    description: >
+      Human reviews and approves the PRD. Must pass prd-quality gate
+      first. Human may request revisions before approval.
+    inputs:
+      - artifacts/planning/prd.md
+    outputs: []
+    quality_gate: null
+    dependencies:
+      - create-prd
+
+  # ── Phase 3: Design ───────────────────────────────────────────────
+
+  - id: create-architecture
+    type: artifact
+    agent: architect
+    phase: design
+    description: >
+      Create architecture document with technology selections, system
+      design, data models, API contracts, security design, infrastructure
+      approach, and architectural decision records.
+    inputs:
+      - artifacts/planning/prd.md
+      - artifacts/exploration/technical-research.md
+      - project-context
+    outputs:
+      - artifacts/design/architecture.md
+      - artifacts/design/decisions/
+    quality_gate: architecture-quality
+    dependencies:
+      - human-approve-prd
+
+  - id: create-ux
+    type: artifact
+    agent: researcher
+    phase: design
+    optional: true
+    description: >
+      Research UX patterns and create UX design specifications for
+      user-facing applications.
+    inputs:
+      - artifacts/planning/prd.md
+    outputs:
+      - artifacts/design/ux-design.md
+    quality_gate: null
+    dependencies:
+      - human-approve-prd
+
+  - id: human-approve-architecture
+    type: decision
+    agent: orchestrator
+    phase: design
+    description: >
+      Human reviews and approves architecture and key technical
+      decisions. Must pass architecture-quality gate first.
+    inputs:
+      - artifacts/design/architecture.md
+    outputs: []
+    quality_gate: null
+    dependencies:
+      - create-architecture
+
+  # ── Phase 4: Implementation ───────────────────────────────────────
+
+  - id: create-epics-stories
+    type: artifact
+    agent: story-engineer
+    phase: implementation
+    description: >
+      Decompose PRD and architecture into epics and stories with
+      BDD acceptance criteria, task breakdowns, and dev notes.
+      Ensure full requirements coverage.
+    inputs:
+      - artifacts/planning/prd.md
+      - artifacts/design/architecture.md
+      - artifacts/design/ux-design.md
+      - project-context
+    outputs:
+      - artifacts/implementation/epics.md
+      - artifacts/implementation/stories/
+    quality_gate: story-quality
+    dependencies:
+      - human-approve-architecture
+
+  - id: sprint-planning
+    type: artifact
+    agent: story-engineer
+    phase: implementation
+    description: >
+      Organize stories into sprints based on dependencies and priority.
+      Create sprint status tracker.
+    inputs:
+      - artifacts/implementation/epics.md
+      - artifacts/implementation/stories/
+    outputs:
+      - artifacts/implementation/sprint-status.yaml
+    quality_gate: null
+    dependencies:
+      - create-epics-stories
+
+  # Per-story tasks are generated dynamically by the orchestrator
+  # based on the stories created above. For each story:
+  #   develop-story-{key} → review-story-{key}
+  # Stories within the same sprint can run in parallel.
+
+  - id: develop-story-template
+    type: implementation
+    agent: developer
+    phase: implementation
+    per_story: true
+    description: >
+      Implement story using TDD. Read story file as authoritative guide.
+      Write tests first, implement, mark tasks complete, update file list.
+    inputs:
+      - story-file
+      - project-context
+    outputs:
+      - source-code
+      - test-code
+    quality_gate: code-quality
+    dependencies:
+      - sprint-planning
+      - story-dependencies
+
+  - id: review-story-template
+    type: validation
+    agent: reviewer
+    phase: implementation
+    per_story: true
+    description: >
+      Adversarial review against acceptance criteria, architecture
+      compliance, security, performance, and test coverage. Categorize
+      findings by severity.
+    inputs:
+      - story-file
+      - source-code-changes
+      - artifacts/design/architecture.md
+    outputs:
+      - review-report
+    quality_gate: review-quality
+    dependencies:
+      - develop-story
+
+  - id: qa-validation
+    type: validation
+    agent: qa
+    phase: implementation
+    description: >
+      Validate test coverage, create E2E tests for critical flows,
+      run full regression. Produce test report.
+    inputs:
+      - source-code
+      - test-code
+      - artifacts/implementation/stories/
+    outputs:
+      - artifacts/reviews/test-report.md
+    quality_gate: null
+    dependencies:
+      - all-reviews-complete
+
+  # ── Phase 5: Delivery ─────────────────────────────────────────────
+
+  - id: final-review
+    type: validation
+    agent: reviewer
+    phase: delivery
+    description: >
+      Comprehensive final review of the entire codebase. Validate
+      overall architecture compliance, cross-cutting concerns (security,
+      performance, error handling), and documentation completeness.
+    inputs:
+      - source-code
+      - artifacts/design/architecture.md
+      - artifacts/planning/prd.md
+    outputs:
+      - artifacts/reviews/final-review.md
+    quality_gate: review-quality
+    dependencies:
+      - qa-validation
+
+  - id: final-testing
+    type: validation
+    agent: qa
+    phase: delivery
+    description: >
+      Final end-to-end testing across all features. Validate all
+      user journeys from PRD work correctly. Produce final test report.
+    inputs:
+      - source-code
+      - artifacts/planning/prd.md
+    outputs:
+      - artifacts/reviews/test-report.md
+    quality_gate: null
+    dependencies:
+      - qa-validation
+
+  - id: human-accept-delivery
+    type: decision
+    agent: orchestrator
+    phase: delivery
+    description: >
+      Present final delivery to the human. All quality gates must pass.
+      Human reviews the delivered product and either accepts or
+      requests final changes.
+    inputs:
+      - artifacts/reviews/final-review.md
+      - artifacts/reviews/test-report.md
+    outputs: []
+    quality_gate: null
+    dependencies:
+      - final-review
+      - final-testing

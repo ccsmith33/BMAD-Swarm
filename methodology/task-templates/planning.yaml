@@ -1,0 +1,59 @@
+# Task Template: Planning (Definition) Phase
+# Used to define requirements, scope, and success criteria.
+# Produces the PRD that drives all downstream work.
+
+id: planning
+name: Planning Phase
+description: >
+  Define what to build. Create a comprehensive PRD with functional and
+  non-functional requirements, user journeys, success criteria, and
+  scope boundaries. The PRD is the authoritative source for all
+  downstream design and implementation decisions.
+
+tasks:
+  - id: create-prd
+    type: artifact
+    agent: strategist
+    description: >
+      Create a comprehensive Product Requirements Document. Synthesize
+      the product brief, research findings, and human input into a
+      structured PRD with:
+      - Executive summary and vision
+      - Measurable success criteria (SMART)
+      - Phased scope (MVP, growth, vision)
+      - User journeys covering primary use cases
+      - Functional requirements (testable capabilities, not implementation)
+      - Non-functional requirements (measurable quality attributes)
+      - Domain-specific requirements (compliance, regulatory)
+
+      The PRD must serve dual audiences: human stakeholders for review
+      and LLM agents for downstream consumption. Every requirement must
+      be specific, measurable, and traceable to a user need.
+    inputs:
+      - artifacts/planning/product-brief.md
+      - artifacts/exploration/domain-research.md  # If available
+      - artifacts/exploration/technical-research.md  # If available
+      - human-description
+    outputs:
+      - artifacts/planning/prd.md
+    quality_gate: prd-quality
+    dependencies: []
+
+  - id: human-approval-prd
+    type: decision
+    agent: orchestrator
+    description: >
+      Present the PRD to the human for review and approval. The PRD
+      must pass the prd-quality gate before being presented. The human
+      reviews scope, requirements, and priorities, and either approves
+      or requests changes.
+
+      If changes are requested, the strategist revises the PRD and
+      resubmits for approval. This cycle continues until the human
+      is satisfied.
+    inputs:
+      - artifacts/planning/prd.md
+    outputs: []
+    quality_gate: null
+    dependencies:
+      - create-prd

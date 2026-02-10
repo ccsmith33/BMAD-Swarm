@@ -1,0 +1,8 @@
+_archive/
+test/
+.claude/
+.git/
+.gitignore
+*.log
+.DS_Store
+Thumbs.db

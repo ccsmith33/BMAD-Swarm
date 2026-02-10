@@ -1,0 +1,78 @@
+# Task Template: Exploration Phase
+# Used when the project starts from a vague idea or concept that needs
+# research and discovery before requirements can be defined.
+
+id: exploration
+name: Exploration Phase
+description: >
+  Research the problem space, analyze the market and domain, evaluate
+  technical feasibility, and synthesize findings into a product brief
+  that captures the vision and scope.
+
+tasks:
+  - id: research-domain
+    type: research
+    agent: researcher
+    description: >
+      Analyze the problem domain. Understand the target users, their pain
+      points, existing solutions, and the competitive landscape. Identify
+      market opportunities, risks, and constraints that will inform
+      product decisions.
+    inputs:
+      - human-description  # The human's initial idea or concept
+      - provided-research  # Any research the human has already done
+    outputs:
+      - artifacts/exploration/domain-research.md
+    quality_gate: null  # Research is validated by human review
+    dependencies: []
+
+  - id: research-technical
+    type: research
+    agent: researcher
+    description: >
+      Evaluate technical feasibility. Research relevant technologies,
+      frameworks, and architectural patterns. Identify technical risks,
+      constraints, and opportunities. For brownfield projects, analyze
+      the existing codebase structure and patterns.
+    inputs:
+      - human-description
+      - project-context  # Existing codebase context if brownfield
+    outputs:
+      - artifacts/exploration/technical-research.md
+    quality_gate: null
+    dependencies: []
+
+  - id: create-brief
+    type: artifact
+    agent: strategist
+    description: >
+      Synthesize research findings into a product brief that captures
+      the product vision, target users, key differentiators, success
+      metrics, and initial scope. The brief serves as the foundation
+      for the PRD.
+    inputs:
+      - artifacts/exploration/domain-research.md
+      - artifacts/exploration/technical-research.md
+      - human-description
+    outputs:
+      - artifacts/planning/product-brief.md
+    quality_gate: null  # Validated as part of exploration gate
+    dependencies:
+      - research-domain
+      - research-technical
+
+  - id: human-confirm-exploration
+    type: decision
+    agent: orchestrator
+    description: >
+      Present research findings and product brief to the human for review.
+      The human confirms that the team's understanding is sufficient to
+      proceed with defining requirements, or requests additional research.
+    inputs:
+      - artifacts/exploration/domain-research.md
+      - artifacts/exploration/technical-research.md
+      - artifacts/planning/product-brief.md
+    outputs: []
+    quality_gate: null
+    dependencies:
+      - create-brief
