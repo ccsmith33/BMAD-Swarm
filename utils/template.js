@@ -144,7 +144,10 @@ function replacePlaceholders(template, data) {
   return template.replace(/\{\{([^#/][^}]*)\}\}/g, (match, key) => {
     const trimmedKey = key.trim();
     const value = getNestedValue(data, trimmedKey);
-    if (value === undefined || value === null) return match;
+    if (value === undefined || value === null) {
+      console.warn(`Template warning: unresolved variable "{{${trimmedKey}}}"`);
+      return match;
+    }
     return String(value);
   });
 }

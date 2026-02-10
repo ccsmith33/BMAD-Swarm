@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, existsSync, unlinkSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { PACKAGE_AGENTS_DIR } from '../utils/paths.js';
 import { AGENT_NAMES } from '../utils/config.js';
-import { writeFileSafe, ensureDir, readFileSafe } from '../utils/fs-helpers.js';
+import { writeFileSafe, ensureDir, readFileSafe, writeGeneratedFile, isFileManuallyModified } from '../utils/fs-helpers.js';
 
 /**
  * Generate .claude/agents/ files by merging:
@@ -12,13 +12,16 @@ import { writeFileSafe, ensureDir, readFileSafe } from '../utils/fs-helpers.js';
  *
  * @param {object} config - Parsed swarm.yaml config
  * @param {object} projectPaths - Project paths from getProjectPaths()
- * @returns {object} Result with generated files list and skipped (ejected) list
+ * @param {object} [options] - Options
+ * @param {boolean} [options.force] - Overwrite even if manually modified
+ * @returns {object} Result with generated, skipped (ejected), and modified (manually changed) lists
  */
-export function generateAgents(config, projectPaths) {
+export function generateAgents(config, projectPaths, options = {}) {
   ensureDir(projectPaths.agentsDir);
 
   const generated = [];
   const skipped = [];
+  const modified = [];
 
   for (const agentName of AGENT_NAMES) {
     // Check if agent is disabled in config
@@ -38,6 +41,12 @@ export function generateAgents(config, projectPaths) {
       continue;
     }
 
+    // Check for manual modifications (unless --force)
+    if (!options.force && isFileManuallyModified(outputPath)) {
+      modified.push(agentName);
+      continue;
+    }
+
     // Layer 1: Load package base template
     const packageTemplatePath = join(PACKAGE_AGENTS_DIR, `${agentName}.md`);
     if (!existsSync(packageTemplatePath)) {
@@ -54,11 +63,11 @@ export function generateAgents(config, projectPaths) {
     // Inject project context section
     content = injectProjectContext(content, config);
 
-    writeFileSafe(outputPath, content);
+    writeGeneratedFile(outputPath, content);
     generated.push(agentName);
   }
 
-  return { generated, skipped };
+  return { generated, skipped, modified };
 }
 
 /**
@@ -93,11 +102,18 @@ function applyAgentOverrides(content, agentConfig, agentName, config) {
 
 /**
  * Inject project context into agent template (project name, type, stack info).
+ * Strips any existing Project Info section first to prevent duplicates.
  * @param {string} content - Agent template content
  * @param {object} config - Full swarm config
  * @returns {string} Content with project context injected
  */
 function injectProjectContext(content, config) {
+  // Strip any existing Project Info section(s) to prevent duplicates.
+  // Project Info is always the last section, so strip from first occurrence to EOF.
+  content = content.replace(/\n+## Project Info\n[\s\S]*$/, '');
+  // Remove trailing whitespace left after stripping
+  content = content.trimEnd();
+
   const contextLines = [];
   contextLines.push(`## Project Info`);
   contextLines.push('');

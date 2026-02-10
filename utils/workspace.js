@@ -1,3 +1,4 @@
+// NOTE: This module is not yet wired into the CLI. It is intended for future workspace/monorepo support.
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve, relative } from 'node:path';
 import { loadYaml } from './config.js';

@@ -33,6 +33,8 @@ export function getProjectPaths(projectRoot) {
     agentsDir: join(root, '.claude', 'agents'),
     hooksDir: join(root, '.claude', 'hooks'),
     settingsJson: join(root, '.claude', 'settings.json'),
+    rulesDir: join(root, '.claude', 'rules'),
+    systemPrompt: join(root, '.claude', 'system-prompt.txt'),
     claudeMd: join(root, 'CLAUDE.md'),
     overridesDir: join(root, 'overrides'),
     overridesAgentsDir: join(root, 'overrides', 'agents'),

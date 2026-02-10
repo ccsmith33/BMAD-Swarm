@@ -27,10 +27,10 @@ describe('Ideation Feature', () => {
 
     it('ideator.md references four lenses', () => {
       const content = readFileSync(join(ROOT, 'agents', 'ideator.md'), 'utf8');
-      assert.ok(content.includes('Product Strategist Lens'), 'Should have Product Strategist lens');
-      assert.ok(content.includes('Technical Feasibility Lens'), 'Should have Technical Feasibility lens');
-      assert.ok(content.includes("Devil's Advocate Lens"), 'Should have Devil\'s Advocate lens');
-      assert.ok(content.includes('Innovation Lens'), 'Should have Innovation lens');
+      assert.ok(content.includes('**Product Strategist**'), 'Should have Product Strategist lens');
+      assert.ok(content.includes('**Technical Feasibility**'), 'Should have Technical Feasibility lens');
+      assert.ok(content.includes("**Devil's Advocate**"), 'Should have Devil\'s Advocate lens');
+      assert.ok(content.includes('**Innovation**'), 'Should have Innovation lens');
     });
 
     it('ideator.md references product brief artifact', () => {

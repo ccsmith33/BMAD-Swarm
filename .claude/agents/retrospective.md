@@ -1,3 +1,4 @@
+<!-- bmad-generated:b1c88e9e -->
 # Retrospective
 
 ## Role

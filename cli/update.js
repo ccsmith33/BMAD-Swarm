@@ -6,6 +6,8 @@ import { generateAgents } from '../generators/agent-generator.js';
 import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
+import { generateRules } from '../generators/rules-generator.js';
+import { generateSystemPrompt } from '../generators/system-prompt-generator.js';
 
 /**
  * Register the update command with the CLI program.
@@ -16,14 +18,17 @@ export function registerUpdateCommand(program) {
     .command('update')
     .description('Regenerate all managed files (.claude/agents, CLAUDE.md, hooks, settings) from swarm.yaml')
     .option('--dry-run', 'Preview what would be regenerated without writing any files')
+    .option('--force', 'Overwrite files even if they have been manually modified')
     .addHelpText('after', `
 Examples:
   $ bmad-swarm update              Regenerate all managed files
   $ bmad-swarm update --dry-run    See what would change without writing
+  $ bmad-swarm update --force      Overwrite even if files were manually edited
 
 Safe to run repeatedly. Never touches user-owned files:
   swarm.yaml, overrides/, artifacts/, src/
 Ejected agents (in overrides/agents/) are preserved and used as-is.
+Files with manual edits are skipped unless --force is used.
 `)
     .action(async (options) => {
       try {
@@ -50,6 +55,7 @@ async function runUpdate(options) {
   }
 
   const config = loadSwarmConfig(paths.swarmYaml);
+  const genOptions = { force: !!options.force };
 
   if (options.dryRun) {
     console.log('Dry run - showing what would be regenerated:\n');
@@ -61,10 +67,14 @@ async function runUpdate(options) {
   if (options.dryRun) {
     console.log('  Would regenerate .claude/agents/');
   } else {
-    const agentResult = generateAgents(config, paths);
+    const agentResult = generateAgents(config, paths, genOptions);
     console.log(`  \u2713 Regenerated .claude/agents/ (${agentResult.generated.length} generated, ${agentResult.skipped.length} ejected)`);
     if (agentResult.skipped.length > 0) {
       console.log(`    Ejected (using local override): ${agentResult.skipped.join(', ')}`);
+    }
+    if (agentResult.modified.length > 0) {
+      console.log(`    Skipped (manually modified): ${agentResult.modified.join(', ')}`);
+      console.log(`    Use --force to overwrite, or 'bmad-swarm eject agent <name>' to keep your changes.`);
     }
   }
 
@@ -72,8 +82,13 @@ async function runUpdate(options) {
   if (options.dryRun) {
     console.log('  Would regenerate CLAUDE.md');
   } else {
-    generateClaudeMd(config, paths);
-    console.log('  \u2713 Regenerated CLAUDE.md');
+    const claudeResult = generateClaudeMd(config, paths, genOptions);
+    if (claudeResult.modified) {
+      console.log('  ! Skipped CLAUDE.md (manually modified)');
+      console.log('    Use --force to overwrite.');
+    } else {
+      console.log('  \u2713 Regenerated CLAUDE.md');
+    }
   }
 
   // 3. Regenerate hooks
@@ -84,7 +99,32 @@ async function runUpdate(options) {
     console.log(`  \u2713 Regenerated .claude/hooks/ (${hookPaths.length} hooks)`);
   }
 
-  // 4. Regenerate settings.json
+  // 4. Regenerate rules
+  if (options.dryRun) {
+    console.log('  Would regenerate .claude/rules/');
+  } else {
+    const rulesResult = generateRules(config, paths, genOptions);
+    console.log(`  \u2713 Regenerated .claude/rules/ (${rulesResult.generated.length} rules)`);
+    if (rulesResult.modified.length > 0) {
+      console.log(`    Skipped (manually modified): ${rulesResult.modified.join(', ')}`);
+      console.log(`    Use --force to overwrite.`);
+    }
+  }
+
+  // 4.5. Regenerate system-prompt.txt
+  if (options.dryRun) {
+    console.log('  Would regenerate .claude/system-prompt.txt');
+  } else {
+    const promptResult = generateSystemPrompt(config, paths, genOptions);
+    if (promptResult.modified) {
+      console.log('  ! Skipped .claude/system-prompt.txt (manually modified)');
+      console.log('    Use --force to overwrite.');
+    } else {
+      console.log('  \u2713 Regenerated .claude/system-prompt.txt');
+    }
+  }
+
+  // 5. Regenerate settings.json
   if (options.dryRun) {
     console.log('  Would regenerate .claude/settings.json');
   } else {

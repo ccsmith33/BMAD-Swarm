@@ -186,14 +186,3 @@ When a reviewer sends a rejection message (containing "REJECTED:"), follow this 
    - Escalate to human with a summary of all rejection reasons
    - Do not create another retry task
 5. **Track retries**: Include "Retry N/2" in the follow-up task subject
-
-
-## Project Info
-
-- **Project**: bmad-swarm
-- **Description**: adding the brainstorming features to the existing bmad-swarm
-- **Type**: web-app
-- **Language**: JavaScript
-- **Artifacts**: ./artifacts
-- **Code**: ./src
-- **Autonomy**: auto

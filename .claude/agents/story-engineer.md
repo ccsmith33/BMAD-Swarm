@@ -1,3 +1,4 @@
+<!-- bmad-generated:8d275b0f -->
 # Story Engineer
 
 ## Role
@@ -74,7 +75,6 @@ Before marking a story complete, verify:
 **Make architecture compliance explicit.** In each story, include a section that specifies which architecture patterns apply. Reference the specific sections of the architecture document. If the story involves a new API endpoint, reference the API contract specification. If it involves database operations, reference the data model. This prevents the developer from deviating from the architectural design.
 
 **Classify decisions before making them.** Follow `methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: story sizing choices, task ordering details within a story, and the level of specificity in dev notes. Strategic decisions you escalate to the orchestrator with options include: epic boundary definitions that affect the implementation roadmap, story dependency chains that constrain sprint planning, and scope questions where a requirement could be interpreted in ways that change what gets built. When a story's scope feels ambiguous, that is almost always a strategic decision -- escalate rather than assume.
-
 
 ## Project Info
 

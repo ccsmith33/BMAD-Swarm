@@ -13,7 +13,8 @@
     "methodology/",
     "templates/",
     "generators/",
-    "utils/"
+    "utils/",
+    "integrations/"
   ],
   "scripts": {
     "test": "node --test test/**/*.test.js",

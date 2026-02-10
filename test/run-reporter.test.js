@@ -78,12 +78,12 @@ describe('Run Reporter', () => {
 phase: implementation
 status: active
 phase_history:
-  - from: exploration
-    to: definition
-    timestamp: "2026-01-01"
-  - from: definition
-    to: design
-    timestamp: "2026-01-02"
+  - phase: exploration
+    entered_at: "2026-01-01"
+    exited_at: "2026-01-02"
+  - phase: definition
+    entered_at: "2026-01-02"
+    exited_at: "2026-01-03"
 `);
 
     const config = {

@@ -86,7 +86,7 @@ output:
       for (const name of [...coreAgents, ...optionalAgents]) {
         assert.ok(AGENT_NAMES.includes(name), `Missing agent: ${name}`);
       }
-      assert.equal(AGENT_NAMES.length, 12);
+      assert.equal(AGENT_NAMES.length, 13);
     });
 
     it('is sorted alphabetically', () => {

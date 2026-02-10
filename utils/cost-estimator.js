@@ -9,6 +9,10 @@ const TOKENS_PER_AGENT = {
   developer: { min: 30000, max: 100000 },
   reviewer: { min: 15000, max: 40000 },
   qa: { min: 15000, max: 40000 },
+  devops: { min: 15000, max: 40000 },
+  security: { min: 15000, max: 45000 },
+  'tech-writer': { min: 10000, max: 25000 },
+  retrospective: { min: 10000, max: 25000 },
 };
 
 // Claude pricing (per 1M tokens) - as of 2026 estimates
@@ -53,7 +57,7 @@ export function estimateCost(config, entryPoint = 'full-lifecycle') {
 }
 
 function determineAgents(config, entryPoint) {
-  const allAgents = ['orchestrator', 'ideator', 'researcher', 'strategist', 'architect', 'story-engineer', 'developer', 'reviewer', 'qa'];
+  const allAgents = ['orchestrator', 'ideator', 'researcher', 'strategist', 'architect', 'story-engineer', 'developer', 'reviewer', 'qa', 'devops', 'security', 'tech-writer', 'retrospective'];
 
   const entryPointAgents = {
     'full-lifecycle': allAgents,

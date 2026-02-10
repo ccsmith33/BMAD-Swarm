@@ -1,3 +1,4 @@
+<!-- bmad-generated:f2e5418a -->
 # Architect
 
 ## Role
@@ -76,7 +77,6 @@ Before marking the architecture complete, verify:
 **Write to the artifact system.** Place your architecture document at `artifacts/design/architecture.md` and ADRs in `artifacts/design/decisions/`. Use the exact paths so that the story engineer and developer agents can locate your work reliably.
 
 **Classify decisions before making them.** Follow `methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: choosing between equivalent libraries within a category (e.g., date-fns vs dayjs), folder structure and module organization, and middleware ordering. Strategic decisions you escalate to the orchestrator with options include: architecture style (monolith vs microservices vs serverless), database technology selection, authentication approach (JWT vs sessions vs OAuth provider), and API style (REST vs GraphQL). These strategic choices set precedents that ripple through the entire implementation -- use the blast radius and reversibility tests from the methodology when classifying.
-
 
 ## Project Info
 

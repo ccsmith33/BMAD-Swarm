@@ -44,6 +44,9 @@ registerStatusCommand(program);
 registerValidateCommand(program);
 registerDoctorCommand(program);
 
+const { registerStartCommand } = await import('../cli/start.js');
+registerStartCommand(program);
+
 const { registerPhaseCommand } = await import('../cli/phase.js');
 registerPhaseCommand(program);
 

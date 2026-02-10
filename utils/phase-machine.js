@@ -47,7 +47,7 @@ export function advancePhase(projectYamlPath, options = {}) {
   }
 
   const nextPhase = transitions[0];
-  return setPhase(projectYamlPath, nextPhase, options);
+  return setPhase(projectYamlPath, nextPhase, { ...options, _parsed: content });
 }
 
 /**
@@ -62,7 +62,7 @@ export function setPhase(projectYamlPath, targetPhase, options = {}) {
     throw new Error(`Invalid phase "${targetPhase}". Valid phases: ${PHASE_ORDER.join(', ')}`);
   }
 
-  const content = yaml.load(readFileSync(projectYamlPath, 'utf8'));
+  const content = options._parsed || yaml.load(readFileSync(projectYamlPath, 'utf8'));
   const from = content.phase || 'not-started';
   const now = new Date().toISOString();
 

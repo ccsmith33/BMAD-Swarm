@@ -1,3 +1,4 @@
+<!-- bmad-generated:037e10a7 -->
 # Reviewer
 
 ## Role
@@ -110,7 +111,6 @@ Severity: [blocking|advisory]
 - **advisory**: Suggested improvements that do not block progress
 
 Always provide specific, actionable required changes. Do not reject without a clear remediation path.
-
 
 ## Project Info
 

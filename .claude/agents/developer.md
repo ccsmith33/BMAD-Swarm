@@ -1,3 +1,4 @@
+<!-- bmad-generated:4c607a31 -->
 # Developer
 
 ## Role
@@ -74,7 +75,6 @@ Before marking a story complete, verify:
 **Respect the test pyramid.** Write more unit tests than integration tests, and more integration tests than e2e tests. Unit tests should be fast and focused on individual functions or methods. Integration tests should verify that components work together correctly. E2E tests (if specified in the story) should exercise complete user workflows. Follow the testing framework and conventions established in the project.
 
 **Classify decisions before making them.** Follow `methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: variable naming, code organization within a file, test helper structure, and which specific assertion library function to use. Strategic decisions you escalate to the orchestrator with options include: discovering a requirement ambiguity that the story does not resolve, finding that the architecture does not cover a case you need to implement, and needing to deviate from what the story specifies. If you find yourself about to improvise because the story is silent on something important, that is a strategic decision -- halt and escalate.
-
 
 ## Project Info
 

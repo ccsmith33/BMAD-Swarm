@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { PACKAGE_TEMPLATES_DIR } from '../utils/paths.js';
 import { AGENT_NAMES } from '../utils/config.js';
-import { writeFileSafe, readFileSafe } from '../utils/fs-helpers.js';
+import { writeGeneratedFile, isFileManuallyModified } from '../utils/fs-helpers.js';
 import { render } from '../utils/template.js';
 
 /**
@@ -10,9 +10,16 @@ import { render } from '../utils/template.js';
  *
  * @param {object} config - Parsed swarm.yaml config
  * @param {object} projectPaths - Project paths from getProjectPaths()
- * @returns {string} Path to the generated CLAUDE.md
+ * @param {object} [options] - Options
+ * @param {boolean} [options.force] - Overwrite even if manually modified
+ * @returns {{ path: string, modified: boolean }} Path and whether it was skipped
  */
-export function generateClaudeMd(config, projectPaths) {
+export function generateClaudeMd(config, projectPaths, options = {}) {
+  // Check for manual modifications (unless --force)
+  if (!options.force && isFileManuallyModified(projectPaths.claudeMd)) {
+    return { path: projectPaths.claudeMd, modified: true };
+  }
+
   const templatePath = join(PACKAGE_TEMPLATES_DIR, 'CLAUDE.md.template');
 
   let template;
@@ -29,8 +36,8 @@ export function generateClaudeMd(config, projectPaths) {
   // Render the template
   const content = render(template, data);
 
-  writeFileSafe(projectPaths.claudeMd, content);
-  return projectPaths.claudeMd;
+  writeGeneratedFile(projectPaths.claudeMd, content);
+  return { path: projectPaths.claudeMd, modified: false };
 }
 
 /**

@@ -2,9 +2,9 @@
 
 Autonomous development teams powered by [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) Agent Teams, built on the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD).
 
-BMAD Swarm combines BMAD's structured brainstorming and documentation with Claude Agent Teams' parallel execution. Run `bmad-swarm init` once to configure your project, then just talk to Claude normally. There are no special commands to learn, no agent names to remember, no workflow to manage -- the methodology activates automatically inside your Claude Code sessions.
+BMAD Swarm combines BMAD's structured brainstorming and documentation with Claude Agent Teams' parallel execution. Run `bmad-swarm init` once to configure your project, then `bmad-swarm start` to launch. There are no special commands to learn, no agent names to remember, no workflow to manage -- the methodology activates automatically.
 
-Unlike the original BMAD Method (which requires manually switching agent personas and running workflow commands), BMAD Swarm integrates directly into Claude Code. The generated `CLAUDE.md` tells Claude **"you are the orchestrator"** -- so every message you send is automatically routed through the orchestrator methodology. It reads your request, assesses complexity, assembles the right team, and manages the full lifecycle. You just talk.
+Unlike the original BMAD Method (which requires manually switching agent personas and running workflow commands), BMAD Swarm integrates directly into Claude Code. `bmad-swarm start` launches Claude with the orchestrator identity injected at the system prompt level -- so every message you send is automatically routed through the orchestrator methodology. It reads your request, assesses complexity, assembles the right team, and manages the full lifecycle. You just talk.
 
 **Anyone can use it.** Non-technical users describe ideas in plain language and make design choices while the AI handles all code decisions. Technical users go as deep as they want -- debate architecture, review patterns, pick frameworks. The system reads your conversation style and adapts.
 
@@ -26,8 +26,8 @@ mkdir my-app && cd my-app && git init
 # Initialize the swarm
 bmad-swarm init
 
-# Open Claude Code and just talk -- the methodology activates automatically
-claude
+# Launch Claude with orchestrator instructions
+bmad-swarm start
 > Build a task management API with user authentication
 ```
 
@@ -36,17 +36,19 @@ claude
 - `.claude/agents/` -- agent definitions for each role
 - `.claude/hooks/` -- quality gate hooks
 - `.claude/settings.json` -- Claude Code permissions
-- `CLAUDE.md` -- tells Claude "you are the orchestrator" so the methodology activates automatically
+- `.claude/system-prompt.txt` -- orchestrator identity injected into Claude's system prompt
+- `.claude/rules/` -- methodology rules (coding standards, quality standards, orchestrator methodology)
+- `CLAUDE.md` -- project context (type, stack, phases, artifacts)
 - `artifacts/` -- directory structure for all methodology artifacts
 - `project.yaml` -- project state tracking
 
 ## How It Works
 
-BMAD Swarm works by generating configuration files that Claude Code reads automatically. The `CLAUDE.md` file, agent definitions in `.claude/agents/`, and hooks in `.claude/hooks/` are all standard Claude Code features -- bmad-swarm just generates them with the right content.
+BMAD Swarm works by generating configuration files that Claude Code reads automatically. The agent definitions in `.claude/agents/`, hooks in `.claude/hooks/`, and rules in `.claude/rules/` are all standard Claude Code features -- bmad-swarm just generates them with the right content.
 
-The key is `CLAUDE.md`. When Claude Code opens a project, it reads `CLAUDE.md` first. BMAD Swarm's generated `CLAUDE.md` starts with: **"You are the orchestrator."** This single directive means every message you type -- whether it's "build me an app" or "help me brainstorm" or "fix this bug" -- automatically flows through the orchestrator's methodology. There is no `@orchestrator` prefix, no slash commands, no mode switching. You just talk to Claude and the orchestrator takes over.
+The key is the **three-tier instruction system**. `bmad-swarm start` launches Claude Code with `--append-system-prompt`, injecting the orchestrator identity directly into Claude's system prompt -- the highest priority instruction level. This is reinforced by `.claude/rules/` files that define agent routing and quality standards. `CLAUDE.md` provides project context (stack, phases, artifact locations). This layered approach ensures Claude follows the orchestrator methodology reliably, even in long sessions.
 
-Once initialized, there are no bmad-swarm commands to run during development. You just open Claude Code and talk to it.
+After initialization, launch with `bmad-swarm start` and just talk. No special commands, no agent names to remember.
 
 ### The Orchestrator
 
@@ -153,9 +155,22 @@ bmad-swarm init [options]
 | `node-cli` | JavaScript + node:test |
 | `python-api` | Python + FastAPI + pytest |
 
+### `bmad-swarm start`
+
+Launch Claude Code with the orchestrator system prompt. This injects the orchestrator identity at the system prompt level (highest priority).
+
+```bash
+bmad-swarm start [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--print` | Print the claude command instead of running it |
+| `--dangerous` | Launch in dangerously-skip-permissions mode (skips all permission prompts) |
+
 ### `bmad-swarm update`
 
-Regenerate all managed files from `swarm.yaml`. Safe to run repeatedly -- never touches user-owned files (`swarm.yaml`, `overrides/`, `artifacts/`, `src/`).
+Regenerate all managed files from `swarm.yaml` including agents, CLAUDE.md, system prompt, hooks, rules, and settings. Safe to run repeatedly -- never touches user-owned files (`swarm.yaml`, `overrides/`, `artifacts/`, `src/`).
 
 ```bash
 bmad-swarm update [--dry-run]
@@ -196,6 +211,7 @@ Not every task needs the full lifecycle:
 
 # Skip to coding with defaults
 bmad-swarm init -y
+bmad-swarm start
 > Add a /health endpoint to the API
 ```
 
@@ -314,18 +330,18 @@ output:
 # Greenfield web app -- full lifecycle
 mkdir saas-app && cd saas-app && git init
 bmad-swarm init --template next-app
-claude
+bmad-swarm start
 > Build a SaaS project management tool with team workspaces
 
 # Add feature to existing project
 cd my-existing-app
 bmad-swarm init --scan -y
-claude
+bmad-swarm start
 > Add a notification system with email and in-app alerts
 
 # Brainstorming session
 bmad-swarm init -y
-claude
+bmad-swarm start
 > I have a vague idea for a tool that helps developers track technical debt
 ```
 
@@ -352,7 +368,7 @@ npm test
 ```
 bmad-swarm/
   bin/bmad-swarm.js           CLI entry point
-  cli/                        Command implementations (init, update, eject, scan, etc.)
+  cli/                        Command implementations (init, update, start, eject, scan, etc.)
   agents/                     Agent templates (13 agents)
   methodology/
     phases.yaml               Phase definitions, gates, transitions
@@ -366,8 +382,8 @@ bmad-swarm/
     adaptive-interaction.md    How agents read and adapt to the human's style
     brainstorming-techniques.md  Curated technique library for the ideator
     elicitation-methods.md     Methods for deepening weak artifact sections
-  templates/                   Template files for code generation
-  generators/                  File generation logic
+  templates/                   Template files for code generation (includes system-prompt.txt.template)
+  generators/                  File generation logic (includes system-prompt-generator.js)
   utils/                       Shared utilities
   test/                        Test suite (node:test)
 ```
@@ -378,7 +394,7 @@ bmad-swarm/
 
 **Methodology** (`methodology/`): Phase definitions, quality gates, artifact schemas, brainstorming techniques, and decision frameworks. This is the "brain" of the system -- how the orchestrator decides what to do.
 
-**Generators** (`generators/`): JavaScript modules that produce the files `bmad-swarm init` creates. If you want to change what gets generated (e.g., add a new template, change the CLAUDE.md format), modify these.
+**Generators** (`generators/`): JavaScript modules that produce the files `bmad-swarm init` creates. If you want to change what gets generated (e.g., add a new template, change the system prompt or CLAUDE.md format), modify these.
 
 **CLI** (`cli/`): Command implementations. Each file corresponds to a CLI command (`init.js`, `update.js`, `eject.js`, etc.).
 
@@ -414,8 +430,8 @@ BMAD Swarm is built on the [BMAD Method](https://github.com/bmad-code-org/BMAD-M
 | | Original BMAD | BMAD Swarm |
 |---|---|---|
 | **Execution** | One AI, sequential, you switch personas manually | Multiple AI agents working in parallel |
-| **Orchestration** | You manage the process with commands | Claude becomes the orchestrator automatically via `CLAUDE.md` |
-| **Integration** | Load persona files into your AI session | `bmad-swarm init` once, then just talk to Claude -- no prefixes, no commands |
+| **Orchestration** | You manage the process with commands | Claude becomes the orchestrator automatically via system prompt injection (`bmad-swarm start`) |
+| **Integration** | Load persona files into your AI session | `bmad-swarm init` once, then `bmad-swarm start` to launch -- no prefixes, no commands |
 | **Brainstorming** | Structured techniques with named personas | Same techniques, invisible to the user, adaptive to your style |
 | **Documentation** | Rich artifacts as a byproduct of the process | Same, plus decision traceability (D-IDs) across all artifacts |
 
@@ -440,6 +456,9 @@ Check `overrides/agents/` for ejected files. Run `bmad-swarm uneject agent <name
 
 **Quality gates blocking progress**
 Check `artifacts/reviews/` for feedback. To relax gates: `methodology.quality.require_review: false` in `swarm.yaml`.
+
+**The orchestrator ignores instructions or uses wrong agent types**
+Make sure you launched with `bmad-swarm start` (not bare `claude`). The system prompt with orchestrator identity is only active when launched via `bmad-swarm start`.
 
 ## License
 

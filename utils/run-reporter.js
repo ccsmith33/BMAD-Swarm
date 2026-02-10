@@ -46,7 +46,7 @@ export function generateRunReport(config, projectPaths, options = {}) {
       sections.push('### Phase History');
       sections.push('');
       for (const entry of phaseInfo.phase_history) {
-        sections.push(`- ${entry.from} → ${entry.to} (${entry.timestamp || 'no timestamp'})`);
+        sections.push(`- ${entry.phase} (entered: ${entry.entered_at || 'unknown'}, exited: ${entry.exited_at || 'ongoing'})`);
       }
     }
   } else {

@@ -8,6 +8,8 @@ import { generateAgents } from '../generators/agent-generator.js';
 import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
+import { generateRules } from '../generators/rules-generator.js';
+import { generateSystemPrompt } from '../generators/system-prompt-generator.js';
 import { loadSwarmConfig } from '../utils/config.js';
 import { runScan } from './scan.js';
 
@@ -112,23 +114,31 @@ async function runInit(options) {
   const hookPaths = generateHooks(config, paths);
   console.log(`  \u2713 Generated .claude/hooks/ (${hookPaths.length} hooks)`);
 
-  // 6. Generate CLAUDE.md
+  // 6. Generate .claude/rules/
+  const rulesResult = generateRules(config, paths);
+  console.log(`  \u2713 Generated .claude/rules/ (${rulesResult.generated.length} rules)`);
+
+  // 6.5. Generate .claude/system-prompt.txt
+  generateSystemPrompt(config, paths);
+  console.log('  \u2713 Generated .claude/system-prompt.txt');
+
+  // 7. Generate CLAUDE.md
   generateClaudeMd(config, paths);
   console.log('  \u2713 Generated CLAUDE.md');
 
-  // 7. Create artifacts directory structure
+  // 8. Create artifacts directory structure
   const artifactSubdirs = ['exploration', 'planning', 'design', 'design/decisions', 'implementation', 'implementation/stories', 'reviews', 'context'];
   for (const subdir of artifactSubdirs) {
     ensureDir(join(paths.artifactsDir, subdir));
   }
   console.log('  \u2713 Created artifacts/ directory');
 
-  // 8. Initialize project.yaml
+  // 9. Initialize project.yaml
   const projectYaml = buildProjectYaml(answers);
   writeFileSafe(paths.projectYaml, yaml.dump(projectYaml, { lineWidth: 120, noRefs: true }));
   console.log('  \u2713 Initialized project.yaml');
 
-  // 9. Create overrides directory
+  // 10. Create overrides directory
   ensureDir(paths.overridesAgentsDir);
 
   // Display cost estimate
@@ -137,7 +147,7 @@ async function runInit(options) {
   console.log(`\nEstimated cost for a full lifecycle run: ${estimate.estimatedCostMin}-${estimate.estimatedCostMax}`);
   console.log('  (Based on configured agents and phases. Actual costs vary.)');
 
-  console.log('\nReady! Start Claude Code and tell the orchestrator what to build.');
+  console.log('\nReady! Run `bmad-swarm start` to launch Claude with orchestrator instructions.');
 }
 
 /**

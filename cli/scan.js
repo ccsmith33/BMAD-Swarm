@@ -2,7 +2,7 @@ import { resolve, join, basename } from 'node:path';
 import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 import { getProjectPaths } from '../utils/paths.js';
-import { writeFileSafe, ensureDir } from '../utils/fs-helpers.js';
+import { writeFileSafe } from '../utils/fs-helpers.js';
 
 /**
  * Register the scan command with the CLI program.

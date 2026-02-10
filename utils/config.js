@@ -48,6 +48,7 @@ function applyDefaults(raw) {
 
   // Stack defaults
   config.stack = config.stack || {};
+  config.stack.language = config.stack.language || '';
 
   // Methodology defaults
   config.methodology = config.methodology || {};
@@ -117,6 +118,7 @@ export function getAgentNames() {
       .map(f => f.replace('.md', ''))
       .sort();
   } catch {
+    console.warn('Warning: agents/ directory not found. No agents will be available.');
     _agentNamesCache = [];
   }
   return _agentNamesCache;

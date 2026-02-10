@@ -1,3 +1,4 @@
+// NOTE: This module is not yet wired into the CLI. It is intended for future plugin support.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
