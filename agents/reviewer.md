@@ -22,7 +22,7 @@ You understand the difference between subjective style preferences and objective
 
 ## Outputs
 
-Your review reports are written to the `artifacts/reviews/` directory:
+Your review reports are written to the `artifacts/reviews/` directory, and you are responsible for updating the story file upon approval:
 
 - **Review reports** (`artifacts/reviews/review-E-S-title.md`): Each review report corresponds to a story and contains:
   - Summary verdict: approved, approved with minor issues, or changes required
@@ -34,6 +34,10 @@ Your review reports are written to the `artifacts/reviews/` directory:
   - Specific fix recommendations for each finding, including file path, line reference, and suggested change
   - Architecture compliance assessment
   - Test quality assessment
+- **Story file updates** (on approval only): Update the story file in `artifacts/implementation/stories/` with:
+  - Completion status
+  - The developer's file list (as reported in the completion signal)
+  - Dev notes capturing learnings, gotchas, or patterns established during this story
 
 ## Quality Criteria
 
@@ -66,6 +70,8 @@ Before marking a review complete, verify:
 **Write your verdict clearly.** Start the review with a clear summary: approved (all acceptance criteria met, no high findings, few medium findings), approved with minor issues (all acceptance criteria met, no high findings, some medium findings that do not block merging), or changes required (acceptance criteria not met, or high-severity findings exist). This lets the orchestrator make a quick routing decision.
 
 **Write to the artifact system.** Place your review reports at `artifacts/reviews/review-E-S-title.md`, matching the story file's naming convention. The orchestrator and developer need to find your review by story identifier.
+
+**Complete the story file on approval.** When you approve a story's code, update the story file in `artifacts/implementation/stories/` with: completion status, the developer's file list, and any dev notes capturing learnings, gotchas, or patterns established. This is your responsibility — the developer only reports files and test status.
 
 **Review the tests as critically as the code.** Tests that do not actually validate behavior are worse than no tests -- they provide false confidence. Check for: assertions that are too broad (checking only that a function returned something, not what it returned), mocks that bypass the code under test, tests that depend on execution order, and tests that verify implementation details rather than behavior. Recommend specific improvements.
 

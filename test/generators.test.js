@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { getProjectPaths } from '../utils/paths.js';
 import { loadSwarmConfig } from '../utils/config.js';
-import { generateAgents, ejectAgent, unejectAgent, applyModelFrontmatter } from '../generators/agent-generator.js';
+import { generateAgents, ejectAgent, unejectAgent, applyModelFrontmatter, applyFrontmatterField } from '../generators/agent-generator.js';
 import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateSystemPrompt } from '../generators/system-prompt-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
@@ -212,6 +212,57 @@ stack:
       const noFm = '# Agent\nContent here\n';
       const result3 = applyModelFrontmatter(noFm, 'sonnet');
       assert.ok(result3.startsWith('---\nmodel: sonnet\n---\n'), 'Should prepend new frontmatter');
+    });
+
+    it('applyFrontmatterField handles all three cases for any key', () => {
+      // Case 1: content has frontmatter with the key — replace value
+      const withKey = '---\nisolation: none\n---\n# Agent\n';
+      const r1 = applyFrontmatterField(withKey, 'isolation', 'worktree');
+      assert.equal((r1.match(/^isolation:/gm) || []).length, 1, 'Should have exactly one isolation: key');
+      assert.ok(r1.includes('isolation: worktree'), 'Should have updated value');
+      assert.ok(!r1.includes('isolation: none'), 'Should not have old value');
+
+      // Case 2: content has frontmatter without the key — append key
+      const withoutKey = '---\nmodel: sonnet\n---\n# Agent\n';
+      const r2 = applyFrontmatterField(withoutKey, 'isolation', 'worktree');
+      assert.ok(r2.includes('isolation: worktree'), 'Should include new key');
+      assert.ok(r2.includes('model: sonnet'), 'Should preserve existing key');
+
+      // Case 3: content has no frontmatter — create new block
+      const noFm2 = '# Agent\nContent\n';
+      const r3 = applyFrontmatterField(noFm2, 'isolation', 'worktree');
+      assert.ok(r3.startsWith('---\nisolation: worktree\n---\n'), 'Should prepend new frontmatter');
+    });
+
+    it('applyModelFrontmatter is a wrapper around applyFrontmatterField', () => {
+      const content = '# Agent\n';
+      const fromWrapper = applyModelFrontmatter(content, 'sonnet');
+      const fromGeneric = applyFrontmatterField(content, 'model', 'sonnet');
+      assert.equal(fromWrapper, fromGeneric, 'Both should produce identical output');
+    });
+
+    it('adds isolation frontmatter when isolation is specified in config', () => {
+      const projectDir = join(tmpDir, 'agent-test-isolation-fm');
+      mkdirSync(projectDir, { recursive: true });
+
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, `
+project:
+  name: isolation-test
+  type: web-app
+stack:
+  language: JavaScript
+agents:
+  developer:
+    isolation: worktree
+`);
+
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      generateAgents(config, paths);
+
+      const devContent = readFileSync(join(paths.agentsDir, 'developer.md'), 'utf8');
+      assert.ok(devContent.includes('isolation: worktree'), 'Should contain isolation field in frontmatter');
     });
 
     it('model frontmatter works with hash-based modification detection', () => {

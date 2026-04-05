@@ -2,6 +2,7 @@ import { getAgentNames } from './config.js';
 
 const VALID_PROJECT_TYPES = ['web-app', 'api', 'cli', 'library', 'mobile', 'monorepo', 'other'];
 const VALID_AUTONOMY_LEVELS = ['auto', 'guided', 'collaborative'];
+const VALID_ISOLATION_VALUES = ['worktree', 'none'];
 
 /**
  * Validate a swarm config object. Returns array of error strings.
@@ -50,9 +51,12 @@ export function validateConfig(config) {
 
   // Agent validation
   if (config.agents) {
-    for (const name of Object.keys(config.agents)) {
+    for (const [name, agentConfig] of Object.entries(config.agents)) {
       if (!getAgentNames().includes(name)) {
         errors.push(`agents.${name} is not a recognized agent. Valid agents: ${getAgentNames().join(', ')}`);
+      }
+      if (agentConfig?.isolation !== undefined && !VALID_ISOLATION_VALUES.includes(agentConfig.isolation)) {
+        errors.push(`agents.${name}.isolation "${agentConfig.isolation}" is invalid. Valid options: ${VALID_ISOLATION_VALUES.join(', ')}`);
       }
     }
   }

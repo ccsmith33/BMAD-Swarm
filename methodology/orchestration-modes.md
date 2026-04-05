@@ -92,9 +92,25 @@ The orchestrator selects one of three modes based on what the human is asking fo
 
 ---
 
+## Solo Mode
+
+**When**: Complexity 5-6, or human explicitly requests it.
+
+Single developer agent handles the entire task. No task graph, no artifact system, no story files, no review gates. The orchestrator's involvement is: assess → spawn one agent → relay result.
+
+**Context briefing for solo agent**: The user's request in plain language + paths to relevant files. No story files, no architecture docs, no decision log. The agent reads the code, makes the fix, runs tests, reports back.
+
+**When to upgrade from solo**: If the solo developer reports a blocker that suggests the task is more complex than assessed (e.g., cross-cutting changes needed, architecture questions), the orchestrator escalates to a larger team. This is a one-way door — you can upgrade from solo to team, but never downgrade mid-task.
+
+---
+
 ## Decision Criteria
 
 The orchestrator evaluates these factors to choose a mode:
+
+**Override check (always first)**:
+- Did the human explicitly request a team size? → Use what they asked for. Period.
+- If no explicit request → proceed to complexity-based selection.
 
 ### 1. Clarity of Requirements
 

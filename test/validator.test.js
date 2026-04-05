@@ -82,6 +82,32 @@ describe('Config Validator', () => {
     assert.ok(errors.some(e => e.includes('agents.unknown-agent') && e.includes('not a recognized agent')));
   });
 
+  it('accepts valid isolation values on agent config', () => {
+    for (const isolation of ['worktree', 'none']) {
+      const errors = validateConfig({
+        project: { name: 'test' },
+        agents: { developer: { isolation } },
+      });
+      assert.ok(!errors.some(e => e.includes('isolation')), `"${isolation}" should be a valid isolation value`);
+    }
+  });
+
+  it('catches invalid isolation value on agent config', () => {
+    const errors = validateConfig({
+      project: { name: 'test' },
+      agents: { developer: { isolation: 'docker' } },
+    });
+    assert.ok(errors.some(e => e.includes('agents.developer.isolation') && e.includes('docker')));
+  });
+
+  it('isolation is optional — no error when omitted', () => {
+    const errors = validateConfig({
+      project: { name: 'test' },
+      agents: { developer: { model: 'sonnet' } },
+    });
+    assert.ok(!errors.some(e => e.includes('isolation')), 'isolation should be optional');
+  });
+
   it('accepts all valid project types', () => {
     const types = ['web-app', 'api', 'cli', 'library', 'mobile', 'monorepo', 'other'];
     for (const type of types) {

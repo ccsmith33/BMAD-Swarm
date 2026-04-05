@@ -94,33 +94,50 @@ function applyAgentOverrides(content, agentConfig, agentName, config) {
     content = applyModelFrontmatter(content, agentConfig.model);
   }
 
+  // Add isolation as YAML frontmatter if specified
+  if (agentConfig.isolation) {
+    content = applyFrontmatterField(content, 'isolation', agentConfig.isolation);
+  }
+
   return content;
 }
 
 /**
- * Apply a model field to content as YAML frontmatter.
- * If content already has frontmatter with a model: key, replaces it.
- * If content has frontmatter without model:, adds the key.
- * If content has no frontmatter, prepends a new frontmatter block.
+ * Apply a YAML frontmatter key/value to content.
+ * If content already has frontmatter with the key: replaces the value.
+ * If content has frontmatter without the key: appends the key.
+ * If content has no frontmatter: prepends a new frontmatter block.
  * @param {string} content - Agent file content
- * @param {string} model - Model value (e.g., 'sonnet', 'opus', 'haiku')
- * @returns {string} Content with model frontmatter applied
+ * @param {string} key - YAML key to set
+ * @param {string} value - Value to assign
+ * @returns {string} Content with frontmatter field applied
  */
-export function applyModelFrontmatter(content, model) {
+export function applyFrontmatterField(content, key, value) {
   if (content.startsWith('---\n')) {
     const endIdx = content.indexOf('\n---\n', 4);
     if (endIdx !== -1) {
       const existingFm = content.slice(4, endIdx);
       const rest = content.slice(endIdx + 5);
-      // Replace existing model: key or append new one
-      if (/^model:\s*.*/m.test(existingFm)) {
-        const updatedFm = existingFm.replace(/^model:\s*.*$/m, `model: ${model}`);
+      const keyRegex = new RegExp(`^${key}:\\s*.*`, 'm');
+      if (keyRegex.test(existingFm)) {
+        const updatedFm = existingFm.replace(new RegExp(`^${key}:\\s*.*$`, 'm'), `${key}: ${value}`);
         return `---\n${updatedFm}\n---\n${rest}`;
       }
-      return `---\n${existingFm}\nmodel: ${model}\n---\n${rest}`;
+      return `---\n${existingFm}\n${key}: ${value}\n---\n${rest}`;
     }
   }
-  return `---\nmodel: ${model}\n---\n${content}`;
+  return `---\n${key}: ${value}\n---\n${content}`;
+}
+
+/**
+ * Apply a model field to content as YAML frontmatter.
+ * Thin wrapper around applyFrontmatterField for the 'model' key.
+ * @param {string} content - Agent file content
+ * @param {string} model - Model value (e.g., 'sonnet', 'opus', 'haiku')
+ * @returns {string} Content with model frontmatter applied
+ */
+export function applyModelFrontmatter(content, model) {
+  return applyFrontmatterField(content, 'model', model);
 }
 
 /**

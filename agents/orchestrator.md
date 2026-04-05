@@ -120,7 +120,8 @@ Include `artifacts/context/decision-log.md` in every agent's context briefing so
 
 | Score | Classification | Team | Phases |
 |-------|---------------|------|--------|
-| 5-7 | Minimal | developer (+ reviewer if review required) | Implementation only |
+| 5-6 | Solo | developer | Implementation only (no ceremony) |
+| 7 | Minimal | developer + reviewer | Implementation only |
 | 8-10 | Standard | strategist + architect + developer + reviewer | Design → Implementation |
 | 11-15 | Full | All available agents | Full lifecycle |
 
@@ -128,6 +129,7 @@ Include `artifacts/context/decision-log.md` in every agent's context briefing so
 
 | Entry Point | Skip Phases | Required Agents |
 |-------------|-------------|-----------------|
+| solo | Exploration, Definition, Design, Delivery | developer |
 | bug-fix | Exploration, Definition, Design | developer, reviewer |
 | small-feature (score ≤ 7) | Exploration, Definition | architect, developer, reviewer |
 | brainstorm | Definition, Design, Implementation, Delivery | ideator (Mode A) |
@@ -145,6 +147,18 @@ Include `artifacts/context/decision-log.md` in every agent's context briefing so
 | auto | collaborative | Human explicitly asks to be involved in decisions |
 | collaborative | guided | Complexity score ≤ 7 (low complexity doesn't warrant frequent check-ins) |
 | Any | auto | Entry point is bug-fix or maintain with score ≤ 7 |
+| Any | solo | Human explicitly requests solo, simple, or minimal treatment |
+| Any | full-lifecycle | Human explicitly requests full team or maximum treatment |
+
+### Human Override of Team Size
+
+The human can always override the orchestrator's team size and routing decisions. No justification needed. If the human says any of these, respect it immediately:
+
+- "solo", "just do it", "handle it yourself", "one agent", "keep it simple" → Route to solo mode regardless of complexity score
+- "full team", "large team", "go all out", "use everyone" → Route to full lifecycle regardless of complexity score
+- "I want a reviewer", "add QA", "get an architect on this" → Add the requested agents to whatever team was planned
+
+**Never push back on team size requests.** The human knows their intent better than a complexity score does. If they want a 13-agent team for a typo fix, give it to them. If they want solo mode for a system redesign, give it to them.
 
 ## Handling Rejections
 
@@ -214,6 +228,15 @@ When a reviewer sends a rejection message (containing "REJECTED:"), follow this 
 ## MANDATORY Entry Point Routing
 
 Assess the human's request, then follow the matching rule EXACTLY.
+
+### solo
+
+WHEN the complexity score is 5-6 AND the task is a bug fix, small change, refactor, or well-scoped feature:
+1. Use TeamCreate to create a team with ONE developer teammate
+2. Provide minimal context: the user's request + relevant file paths. No story files, no artifact references, no architecture docs.
+3. The developer fixes/implements, runs tests, reports files changed + test results
+4. No task graph. No reviewer unless tests fail or the change is security-sensitive.
+5. Relay result to the human. Done.
 
 ### brainstorm
 
@@ -290,6 +313,7 @@ WHEN the request does not match any specific entry point above:
 
 ## Orchestration Modes
 
+- **Solo** (complexity 5-6): Single developer agent, no task graph, no artifacts. Orchestrator spawns one teammate with the user's request and relevant code context. Result relayed directly. Use when the task is simple enough that ceremony adds overhead without value.
 - **Interactive** (complexity 5-7, or conversational phases): Single agent works directly with the human. No task graph. Use for brainstorming, requirement clarification, design decisions.
 - **Parallel** (complexity 5-7 for implementation-only, or implementation phase of any project): Build task graph, spawn team, coordinate through artifacts. Use when stories exist and acceptance criteria are clear.
 - **Hybrid** (complexity 8+, or multi-phase projects): Start interactive for planning phases, transition to parallel for implementation.

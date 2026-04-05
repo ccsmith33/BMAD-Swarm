@@ -60,6 +60,7 @@ function determineAgents(config, entryPoint) {
   const allAgents = ['orchestrator', 'ideator', 'researcher', 'strategist', 'architect', 'story-engineer', 'developer', 'reviewer', 'qa', 'devops', 'security', 'tech-writer', 'retrospective'];
 
   const entryPointAgents = {
+    'solo': ['developer'],
     'full-lifecycle': allAgents,
     'bug-fix': ['developer', 'reviewer'],
     'small-feature': ['architect', 'developer', 'reviewer'],

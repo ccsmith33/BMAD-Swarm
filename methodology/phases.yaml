@@ -458,6 +458,15 @@ entry_points:
       - "fix deprecations"
       - "improve test coverage"
 
+  solo:
+    start_phase: implementation
+    phases: [implementation]
+    agents: [developer]
+    triggers:
+      - "just do it"
+      - "solo"
+      - "keep it simple"
+
 # Complexity determines team size, process depth, and check-in frequency
 complexity:
   factors:
