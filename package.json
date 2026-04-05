@@ -1,6 +1,6 @@
 {
   "name": "bmad-swarm",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Autonomous development swarm powered by Claude Code Agent Teams",
   "type": "module",
   "bin": {
