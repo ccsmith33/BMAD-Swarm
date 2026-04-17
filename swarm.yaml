@@ -26,6 +26,8 @@ methodology:
     require_human_approval:
       - prd
       - architecture
+defaults:
+  model: opus
 output:
   artifacts_dir: ./artifacts
   code_dir: .
