@@ -4,7 +4,7 @@ Autonomous development teams powered by [Claude Code](https://docs.anthropic.com
 
 BMAD Swarm combines BMAD's structured brainstorming and documentation with Claude Agent Teams' parallel execution. Run `bmad-swarm init` once to configure your project, then `bmad-swarm start` to launch. There are no special commands to learn, no agent names to remember, no workflow to manage -- the methodology activates automatically.
 
-Unlike the original BMAD Method (which requires manually switching agent personas and running workflow commands), BMAD Swarm integrates directly into Claude Code. `bmad-swarm start` launches Claude with the orchestrator identity injected at the system prompt level -- so every message you send is automatically routed through the orchestrator methodology. It reads your request, assesses complexity, assembles the right team, and manages the full lifecycle. You just talk.
+Unlike the original BMAD Method (which requires manually switching agent personas and running workflow commands), BMAD Swarm integrates directly into Claude Code. `bmad-swarm start` launches Claude with the orchestrator identity loaded via the `/identity-orchestrator` slash command -- so every message you send is automatically routed through the orchestrator methodology. It reads your request, assesses complexity, assembles the right team, and manages the full lifecycle. You just talk.
 
 **Anyone can use it.** Non-technical users describe ideas in plain language and make design choices while the AI handles all code decisions. Technical users go as deep as they want -- debate architecture, review patterns, pick frameworks. The system reads your conversation style and adapts.
 
@@ -36,7 +36,7 @@ bmad-swarm start
 - `.claude/agents/` -- agent definitions for each role
 - `.claude/hooks/` -- quality gate hooks
 - `.claude/settings.json` -- Claude Code permissions
-- `.claude/system-prompt.txt` -- orchestrator identity injected into Claude's system prompt
+- `.claude/commands/` -- slash commands (9 identity-* plus 8 workflow commands like `/bug`, `/feature`, `/research`)
 - `.claude/rules/` -- methodology rules (coding standards, quality standards, orchestrator methodology)
 - `CLAUDE.md` -- project context (type, stack, phases, artifacts)
 - `artifacts/` -- directory structure for all methodology artifacts
@@ -46,7 +46,7 @@ bmad-swarm start
 
 BMAD Swarm works by generating configuration files that Claude Code reads automatically. The agent definitions in `.claude/agents/`, hooks in `.claude/hooks/`, and rules in `.claude/rules/` are all standard Claude Code features -- bmad-swarm just generates them with the right content.
 
-The key is the **three-tier instruction system**. `bmad-swarm start` launches Claude Code with `--append-system-prompt`, injecting the orchestrator identity directly into Claude's system prompt -- the highest priority instruction level. This is reinforced by `.claude/rules/` files that define agent routing and quality standards. `CLAUDE.md` provides project context (stack, phases, artifact locations). This layered approach ensures Claude follows the orchestrator methodology reliably, even in long sessions.
+The key is the **slash-command identity system**. On a fresh session the orchestrator invokes `/identity-orchestrator` as its first action; the command body is the full orchestrator role and arrives as user-turn content, which the model weights more heavily than system-ambient instructions. A `UserPromptSubmit` hook emits a short (<40 token) reminder on the first turn of a session pointing at `/identity-orchestrator` and the 8 workflow commands. After context compaction a `SessionStart` hook re-points the orchestrator at the same slash command. This is reinforced by `.claude/rules/` files that define agent routing and quality standards, and `CLAUDE.md` provides project context (stack, phases, artifact locations).
 
 After initialization, launch with `bmad-swarm start` and just talk. No special commands, no agent names to remember.
 
@@ -158,7 +158,7 @@ bmad-swarm init [options]
 
 ### `bmad-swarm start`
 
-Launch Claude Code with the orchestrator system prompt. This injects the orchestrator identity at the system prompt level (highest priority).
+Launch Claude Code in the project. Orchestrator identity loads via the `/identity-orchestrator` slash command on the first user turn (a `UserPromptSubmit` hook prompts the orchestrator to invoke it).
 
 ```bash
 bmad-swarm start [options]
@@ -167,12 +167,12 @@ bmad-swarm start [options]
 | Flag | Description |
 |------|-------------|
 | `--print` | Print the claude command instead of running it |
-| `--dangerous` | Launch in dangerously-skip-permissions mode (skips all permission prompts) |
-| `--allow-tools` | Allow all tools (disables the default `--disallowedTools` restriction that excludes Edit, Write, MultiEdit, NotebookEdit, NotebookRead, WebSearch, WebFetch) |
+
+Tool permissions are now scoped via `.claude/settings.json` (`allow` + `deny` lists + `defaultMode: acceptEdits`) rather than CLI flags. See ADR-001 for the permission model.
 
 ### `bmad-swarm update`
 
-Regenerate all managed files from `swarm.yaml` including agents, CLAUDE.md, system prompt, hooks, rules, and settings. Safe to run repeatedly -- never touches user-owned files (`swarm.yaml`, `overrides/`, `artifacts/`, `src/`).
+Regenerate all managed files from `swarm.yaml` including agents, CLAUDE.md, slash commands, hooks, rules, and settings. Safe to run repeatedly -- never touches user-owned files (`swarm.yaml`, `overrides/`, `artifacts/`, `src/`).
 
 ```bash
 bmad-swarm update [options]
@@ -389,8 +389,8 @@ bmad-swarm/
     adaptive-interaction.md    How agents read and adapt to the human's style
     brainstorming-techniques.md  Curated technique library for the ideator
     elicitation-methods.md     Methods for deepening weak artifact sections
-  templates/                   Template files for code generation (includes system-prompt.txt.template)
-  generators/                  File generation logic (includes system-prompt-generator.js)
+  templates/                   Template files for code generation (settings.json, CLAUDE.md, rules)
+  generators/                  File generation logic (agents, hooks, commands, settings, rules, claude-md)
   utils/                       Shared utilities
   test/                        Test suite (node:test)
 ```
@@ -401,7 +401,7 @@ bmad-swarm/
 
 **Methodology** (`methodology/`): Phase definitions, quality gates, artifact schemas, brainstorming techniques, and decision frameworks. This is the "brain" of the system -- how the orchestrator decides what to do.
 
-**Generators** (`generators/`): JavaScript modules that produce the files `bmad-swarm init` creates. If you want to change what gets generated (e.g., add a new template, change the system prompt or CLAUDE.md format), modify these.
+**Generators** (`generators/`): JavaScript modules that produce the files `bmad-swarm init` creates. If you want to change what gets generated (e.g., add a new workflow slash command, adjust the hook pipeline, or change the CLAUDE.md format), modify these.
 
 **CLI** (`cli/`): Command implementations. Each file corresponds to a CLI command (`init.js`, `update.js`, `eject.js`, etc.).
 
@@ -437,7 +437,7 @@ BMAD Swarm is built on the [BMAD Method](https://github.com/bmad-code-org/BMAD-M
 | | Original BMAD | BMAD Swarm |
 |---|---|---|
 | **Execution** | One AI, sequential, you switch personas manually | Multiple AI agents working in parallel |
-| **Orchestration** | You manage the process with commands | Claude becomes the orchestrator automatically via system prompt injection (`bmad-swarm start`) |
+| **Orchestration** | You manage the process with commands | Claude becomes the orchestrator automatically via the `/identity-orchestrator` slash command after `bmad-swarm start` |
 | **Integration** | Load persona files into your AI session | `bmad-swarm init` once, then `bmad-swarm start` to launch -- no prefixes, no commands |
 | **Brainstorming** | Structured techniques with named personas | Same techniques, invisible to the user, adaptive to your style |
 | **Documentation** | Rich artifacts as a byproduct of the process | Same, plus decision traceability (D-IDs) across all artifacts |
@@ -465,7 +465,7 @@ Check `overrides/agents/` for ejected files. Run `bmad-swarm uneject agent <name
 Check `artifacts/reviews/` for feedback. To relax gates: `methodology.quality.require_review: false` in `swarm.yaml`.
 
 **The orchestrator ignores instructions or uses wrong agent types**
-Make sure you launched with `bmad-swarm start` (not bare `claude`). The system prompt with orchestrator identity is only active when launched via `bmad-swarm start`.
+Make sure you launched with `bmad-swarm start` (not bare `claude`) and that the orchestrator invoked `/identity-orchestrator` as its first action. On a fresh session the `UserPromptSubmit` hook reminder points at this command; if it is missing, run `bmad-swarm update --force` to regenerate `.claude/commands/` and `.claude/hooks/`.
 
 ## License
 
