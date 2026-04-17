@@ -84,6 +84,30 @@ describe('Settings Generator', () => {
     assert.equal(content.env.AGENT_ROLE, 'orchestrator', 'AGENT_ROLE env must be set to orchestrator');
   });
 
+  it('permissions.defaultMode is acceptEdits (ADR-001)', () => {
+    const { config, paths } = makeProject('settings-default-mode');
+    generateSettings(config, paths);
+    const content = JSON.parse(readFileSync(paths.settingsJson, 'utf8'));
+    assert.equal(content.permissions.defaultMode, 'acceptEdits', 'defaultMode must be acceptEdits to reduce permission prompts per ADR-001');
+  });
+
+  it('permissions.deny blocks destructive patterns (ADR-001)', () => {
+    const { config, paths } = makeProject('settings-deny-list');
+    generateSettings(config, paths);
+    const content = JSON.parse(readFileSync(paths.settingsJson, 'utf8'));
+    assert.ok(Array.isArray(content.permissions.deny), 'Should have deny array');
+    const mustDeny = [
+      'Bash(rm -rf /*)',
+      'Bash(sudo*)',
+      'Bash(git push --force*)',
+      'Bash(git reset --hard*)',
+      'Bash(chmod 777*)',
+    ];
+    for (const pattern of mustDeny) {
+      assert.ok(content.permissions.deny.includes(pattern), 'deny list must include ' + pattern);
+    }
+  });
+
   it('creates file at correct path inside .claude/', () => {
     const { config, paths } = makeProject('settings-test-3');
     const result = generateSettings(config, paths);

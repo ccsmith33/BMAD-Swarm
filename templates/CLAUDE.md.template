@@ -14,6 +14,10 @@ On a fresh session, invoke `/identity-orchestrator` as your first action to load
 - Default model is opus for every teammate unless overridden in `swarm.yaml`.
 - Human approval is required for: {{methodology.quality.require_human_approval_list}}.
 
+## Permission model
+
+Permissions default to `acceptEdits` mode — in-scope tools run without prompting (intentional, for autonomous execution). Destructive patterns (`rm -rf /`, `git push --force`, `sudo`, curl-piped-to-shell, etc.) are explicitly denied in `.claude/settings.json`. The orchestrator-write-gate hook still enforces the delegate-everything rule regardless of permission mode.
+
 ## Artifact locations
 
 ```

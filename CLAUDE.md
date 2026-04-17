@@ -1,4 +1,4 @@
-<!-- bmad-generated:905b792e -->
+<!-- bmad-generated:ffb89c2b -->
 # bmad-swarm
 
 Project type: web-app · Language: JavaScript
@@ -14,6 +14,10 @@ On a fresh session, invoke `/identity-orchestrator` as your first action to load
 - Every TeamCreate call must be preceded by a `bmad-assembly` block in your message.
 - Default model is opus for every teammate unless overridden in `swarm.yaml`.
 - Human approval is required for: prd, architecture.
+
+## Permission model
+
+Permissions default to `acceptEdits` mode — in-scope tools run without prompting (intentional, for autonomous execution). Destructive patterns (`rm -rf /`, `git push --force`, `sudo`, curl-piped-to-shell, etc.) are explicitly denied in `.claude/settings.json`. The orchestrator-write-gate hook still enforces the delegate-everything rule regardless of permission mode.
 
 ## Artifact locations
 
