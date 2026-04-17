@@ -222,8 +222,9 @@ function generateOrchestratorWriteGateHook(config) {
 // Fires only when AGENT_ROLE=orchestrator (set via settings.json env).
 // Teammates (fresh Claude Code sessions) do not inherit this env and the
 // gate is inert for them. The orchestrator is restricted to writes under
-// artifacts/context/, artifacts/design/decisions/, project.yaml, and the
-// session-active marker.
+// any path under artifacts/ (reviews, context, design, planning,
+// implementation, exploration), plus project.yaml, swarm.yaml,
+// .gitignore, and the session-active marker.
 
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -235,9 +236,10 @@ process.stdin.on('end', () => {
   const toolInput = event.tool_input || {};
   const filePath = toolInput.file_path || toolInput.path || '';
   const allowed = [
-    /artifacts[\\\\/]context[\\\\/]/,
-    /artifacts[\\\\/]design[\\\\/]decisions[\\\\/]/,
+    /artifacts[\\\\/]/,
     /project\\.yaml$/,
+    /swarm\\.yaml$/,
+    /\\.gitignore$/,
     /\\.claude[\\\\/]hooks[\\\\/]\\.session-active$/,
   ];
   const isAllowed = allowed.some(r => r.test(filePath));
@@ -246,7 +248,7 @@ process.stdin.on('end', () => {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: 'Blocked: orchestrator role cannot edit ' + filePath + '. Delegate code/artifact changes to a teammate via TeamCreate. Allowed orchestrator writes: artifacts/context/, artifacts/design/decisions/, project.yaml.',
+      permissionDecisionReason: 'Blocked: orchestrator role cannot edit ' + filePath + '. Delegate code/artifact changes to a teammate via TeamCreate. Allowed orchestrator writes: artifacts/**, project.yaml, swarm.yaml, .gitignore.',
     },
   }));
   process.exit(0);

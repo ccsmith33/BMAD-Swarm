@@ -694,7 +694,63 @@ methodology:
       const content = readFileSync(hookPath, 'utf8');
       assert.ok(content.includes("AGENT_ROLE"), 'Should gate on AGENT_ROLE env');
       assert.ok(content.includes("'orchestrator'"), 'Should check for orchestrator role');
-      assert.ok(content.includes('artifacts') && content.includes('context'), 'Should allow artifacts/context/');
+      assert.ok(content.includes('artifacts') && content.includes('project.yaml'), 'Should allow artifacts/** and project.yaml');
+    });
+
+    it('orchestrator-write-gate allows all artifacts/ subpaths and denies source/test paths (hotfix Group 8d)', () => {
+      const projectDir = join(tmpDir, 'hooks-test-write-gate-scope');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: test\n');
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      generateHooks(config, paths);
+
+      const hookPath = join(paths.hooksDir, 'orchestrator-write-gate.cjs');
+      const content = readFileSync(hookPath, 'utf8');
+
+      // Extract the allowed array and functionally exercise it
+      const m = content.match(/const allowed = \[([\s\S]*?)\];/);
+      assert.ok(m, 'Should contain allowed array');
+      const allowed = eval('[' + m[1] + ']');
+
+      // ALLOW: every artifacts subpath (reviews, context, design, planning, implementation, exploration)
+      const allowPaths = [
+        'artifacts/reviews/foo.md',
+        'artifacts/context/decision-log.md',
+        'artifacts/design/architecture.md',
+        'artifacts/design/decisions/adr-002.md',
+        'artifacts/planning/prd.md',
+        'artifacts/implementation/stories/1-1.md',
+        'artifacts/exploration/research.md',
+        'C:/Users/foo/artifacts/reviews/bar.md',
+        'C:\\Users\\foo\\artifacts\\reviews\\bar.md',
+        'project.yaml',
+        'swarm.yaml',
+        '.gitignore',
+      ];
+      for (const p of allowPaths) {
+        assert.ok(allowed.some(r => r.test(p)), 'Should ALLOW write to: ' + p);
+      }
+
+      // DENY: source, tests, generators, hooks, templates, agents, methodology, cli, bin, package.json
+      const denyPaths = [
+        'src/foo.js',
+        'utils/config.js',
+        'test/foo.test.js',
+        'generators/hooks-generator.js',
+        '.claude/hooks/orchestrator-write-gate.cjs',
+        'templates/settings.json.template',
+        'agents/orchestrator.md',
+        'methodology/phases.yaml',
+        'cli/init.js',
+        'bin/bmad-swarm.js',
+        'package.json',
+        'projectXyaml',
+      ];
+      for (const p of denyPaths) {
+        assert.ok(!allowed.some(r => r.test(p)), 'Should DENY write to: ' + p);
+      }
     });
   });
 
