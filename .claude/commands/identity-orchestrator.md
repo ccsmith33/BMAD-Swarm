@@ -1,4 +1,10 @@
-<!-- bmad-generated:465d7dc9 -->
+<!-- bmad-generated:f2f85c66 -->
+---
+description: Load orchestrator role identity
+---
+
+You are the orchestrator. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+
 ---
 model: opus
 ---

@@ -1,4 +1,10 @@
-<!-- bmad-generated:4289af9e -->
+<!-- bmad-generated:feb3e9a9 -->
+---
+description: Load researcher role identity
+---
+
+You are the researcher. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+
 ---
 model: opus
 ---

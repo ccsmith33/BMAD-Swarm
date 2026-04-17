@@ -1,4 +1,10 @@
-<!-- bmad-generated:4ed864f4 -->
+<!-- bmad-generated:78cd996b -->
+---
+description: Load reviewer role identity
+---
+
+You are the reviewer. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+
 ---
 model: opus
 ---

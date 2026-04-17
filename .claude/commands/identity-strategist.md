@@ -1,4 +1,10 @@
-<!-- bmad-generated:6eef04e7 -->
+<!-- bmad-generated:f1531507 -->
+---
+description: Load strategist role identity
+---
+
+You are the strategist. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+
 ---
 model: opus
 ---

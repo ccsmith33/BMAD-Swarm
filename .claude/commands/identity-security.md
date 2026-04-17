@@ -1,4 +1,10 @@
-<!-- bmad-generated:ed7c02d5 -->
+<!-- bmad-generated:24a39b70 -->
+---
+description: Load security role identity
+---
+
+You are the security. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+
 ---
 model: opus
 ---

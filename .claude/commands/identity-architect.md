@@ -1,4 +1,10 @@
-<!-- bmad-generated:8d4545e8 -->
+<!-- bmad-generated:1e161106 -->
+---
+description: Load architect role identity
+---
+
+You are the architect. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+
 ---
 model: opus
 ---

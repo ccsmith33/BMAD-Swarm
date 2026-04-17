@@ -9,3 +9,4 @@ artifacts/
 swarm.yaml
 project.yaml
 CLAUDE.md
+overrides/

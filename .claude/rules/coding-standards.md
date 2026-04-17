@@ -1,7 +1,9 @@
-<!-- bmad-generated:fd7947ec -->
+<!-- bmad-generated:31658b3c -->
 ---
 paths:
   - "./**/*"
+  - "artifacts/implementation/**/*"
+  - "artifacts/design/**/*"
 ---
 
 # Coding Standards

@@ -1,18 +1,33 @@
 {
-  "_bmadGenerated": "26caefda",
+  "_bmadGenerated": "4e81b71d",
   "permissions": {
     "allow": [
-      "Bash(*)",
-      "Edit",
-      "Write",
+      "Bash(npm:*)",
+      "Bash(node:*)",
+      "Bash(npx:*)",
+      "Bash(git:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(pwd)",
       "Read",
+      "Write",
+      "Edit",
       "MultiEdit",
-      "Task",
-      "WebSearch",
+      "Glob",
+      "Grep",
       "WebFetch",
-      "TodoRead",
-      "TodoWrite"
+      "WebSearch",
+      "TeamCreate",
+      "TaskCreate",
+      "TaskGet",
+      "TaskList",
+      "TaskUpdate",
+      "SendMessage"
     ]
+  },
+  "env": {
+    "AGENT_ROLE": "orchestrator"
   },
   "hooks": {
     "UserPromptSubmit": [
@@ -25,32 +40,33 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node .claude/hooks/task-tool-warning.cjs"
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
         "matcher": "compact",
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/identity-reinject.cjs"
+            "command": "node .claude/hooks/post-compact-reinject.cjs"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "TeamCreate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/teamcreate-gate.cjs"
           }
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/identity-reinject.cjs"
+            "command": "node .claude/hooks/orchestrator-write-gate.cjs"
           }
         ]
       }
@@ -61,16 +77,6 @@
           {
             "type": "command",
             "command": "node .claude/hooks/TaskCompleted.cjs"
-          }
-        ]
-      }
-    ],
-    "TeammateIdle": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node .claude/hooks/TeammateIdle.cjs"
           }
         ]
       }
