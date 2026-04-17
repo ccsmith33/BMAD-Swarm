@@ -21,3 +21,7 @@ Change `code_dir` in `swarm.yaml` from `./src` (non-existent) to the actual sour
 
 ## D-IDs Referenced
 - A-5 from project review (code_dir set to ./src but no src/ exists)
+
+## Closed (2026-04-16)
+
+This story's subject (code_dir hook enforcement) became vestigial when `orchestrator-post-tool.cjs` was deleted in f72cd65. No replacement needed — Option C structural enforcement via `orchestrator-write-gate.cjs` supersedes it.

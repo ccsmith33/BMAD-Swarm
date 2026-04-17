@@ -29,3 +29,7 @@ Eliminate ~2,065 tokens of wasted context per non-orchestrator agent by moving o
 ## D-IDs Referenced
 - Strategy 1 from token-optimization.md (scope orchestrator rules to orchestrator only)
 - Note: Claude Code bug #16299 makes path-scoping unreliable, so moving content to agent file is the correct approach
+
+## Closed (2026-04-16)
+
+AC8 (update `identity-reinject` hook regex) is superseded by Option C: `identity-reinject.cjs` was deleted and replaced with `post-compact-reinject.cjs`, which injects only a slash-command pointer.

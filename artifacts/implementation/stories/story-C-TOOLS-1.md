@@ -29,3 +29,7 @@ By default, the orchestrator session launched by `bmad-swarm start` should exclu
 ## D-IDs Referenced
 - Priority 2 from system-prompt-replacement.md (use --disallowedTools for the orchestrator)
 - Section 6 "Hybrid Option: Surgical Tool Restriction" from system-prompt-replacement.md
+
+## Closed (2026-04-16)
+
+The `--disallowedTools` mechanism is superseded by `settings.json` permission scoping in Option C. `Task` is removed from the allow-list; that is stronger than a CLI flag.
