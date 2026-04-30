@@ -103,7 +103,31 @@ function applyDefaults(raw) {
   config.defaults = config.defaults || {};
   if (!config.defaults.model) config.defaults.model = 'opus';
 
+  // Team block defaults (wide-team specialization — D-005, ADR-004)
+  config.team = config.team || {};
+  config.team.mode = config.team.mode || 'dynamic';
+  config.team.specializations = config.team.specializations || [];
+  config.team.fallback = config.team.fallback || {};
+  if (config.team.fallback.enabled === undefined) config.team.fallback.enabled = true;
+  config.team.fallback.role = config.team.fallback.role || 'developer';
+  config.team.fallback.model = config.team.fallback.model || config.defaults.model;
+  for (const spec of config.team.specializations) {
+    spec.model = spec.model || config.defaults.model;
+    if (spec.description === undefined) spec.description = '';
+  }
+
   return config;
+}
+
+/**
+ * Return the normalized `team` view of a parsed config.
+ * Used by the orchestrator-write-gate hook (Story WT-5) to look up routing
+ * info without re-implementing defaults logic.
+ * @param {object} config - Config after defaults applied
+ * @returns {{mode: string, specializations: object[], fallback: {enabled: boolean, role: string, model: string}}}
+ */
+export function getTeamConfig(config) {
+  return config.team;
 }
 
 let _agentNamesCache = null;

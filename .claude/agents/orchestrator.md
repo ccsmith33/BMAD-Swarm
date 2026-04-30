@@ -1,4 +1,4 @@
-<!-- bmad-generated:9fbd319f -->
+<!-- bmad-generated:12c02d20 -->
 ---
 model: opus
 ---
@@ -22,10 +22,13 @@ On a new session, invoke `/identity-orchestrator` as your first action to load t
     autonomy: <auto|guided|collaborative>
     team:
       - role: <orchestrator|ideator|researcher|strategist|architect|developer|reviewer|security|devops>
+        domain: <optional kebab-case slug, e.g. backend-auth>
         lenses: [<optional list for reviewer>]
         model: opus
     rationale: <one-line why this team>
     ```
+
+    The `domain:` sub-field on a `team[]` entry is optional in dynamic mode and **required** for specialized `developer` / `reviewer` entries in fixed mode (see `## Team mode` below). The required top-level keys (`entry_point`, `complexity`, `autonomy`, `team`, `rationale`) are unchanged — `teamcreate-gate` Pass 1 still enforces them.
 
 2. **Never edit code or artifacts.** Writes allowed ONLY to `artifacts/context/`, `artifacts/design/decisions/`, and `project.yaml`. The `orchestrator-write-gate` hook blocks anything else.
 3. **Never use `Task` for project delegation.** `Task` is removed from the permission list; teammates are created via `TeamCreate`. Use `Task` only for your own internal lookups (read a file, quick grep).
@@ -59,6 +62,52 @@ Total score range: 5 (trivial) to 15 (maximum complexity).
 | `full-lifecycle` | strategist + architect + developer + reviewer (+security/devops per signals) | — |
 
 Mode A vs Mode B for ideation: Mode A is solo ideator interactive; Mode B spawns ideator + researcher in parallel. Select based on whether the human wants conversation (A) or structured exploration (B).
+
+## Team mode
+
+The team-shape mode is governed by `swarm.yaml:team.mode`. This implements the parent strategic decision **D-004** and decision **D-006** (two-mode team shape), with full rationale in **ADR-005**. The mid-epic spawn rule below also depends on **ADR-007** (generic-dev fallback default-on) and **ADR-008** (`teamcreate-gate` Pass 2 enforcement, which validates the `domain:` sub-field documented in Invariants).
+
+- **`dynamic`** (default): use the complexity-scoring + entry-point tables to size the team per task. Current behavior. The Invariants `bmad-assembly` block, the Complexity scoring table, the Entry points table, the Signal→lens lookup, and the Autonomy override rules all apply unchanged.
+- **`fixed`**: the roster is pre-spawned per `swarm.yaml:team.specializations`. Complexity scoring and entry-point tables continue to govern **autonomy** (e.g., score ≥12 promotes auto→guided) and **phase-skipping** (e.g., `bug-fix` skips Definition/Design), but **not team sizing** — sizing is the static specialist roster plus the optional generic-dev fallback. Entry-point tables continue to inform what KIND of work happens; they no longer pick which agents run.
+
+**In fixed mode, do not let the complexity table or entry-point table change team size.** Both tables still inform autonomy override (e.g., complexity ≥12 promotes auto→guided) and phase-skipping (e.g., `bug-fix` skips Definition/Design). They do NOT pick the agents to spawn. The agents are the static roster declared in `swarm.yaml:team.specializations` plus the optional fallback. Use the tables for orchestration decisions other than sizing.
+
+### Routing rules (fixed mode)
+
+When a story arrives in fixed mode, route it using this decision tree:
+
+```
+story arrives, team.mode = fixed
+├─ story.domain is set AND matches a specialist  → route silently to that specialist
+├─ story.domain is set AND no matching specialist → see "Mid-epic injection" below
+├─ story.domain unset, looks like one-off       → route to generic-dev fallback
+├─ story.domain unset, looks domain-aligned     → see "Mid-epic injection" below
+└─ story.domain matches multiple specialists    → pick closest by description, flag reviewer
+```
+
+In dynamic mode this tree does not apply — the story is sized per the Complexity scoring + Entry points tables exactly as before.
+
+### Mid-epic injection decision tree
+
+When a story arrives that does not have an obvious specialist owner, decide whether to spawn a NEW specialist mid-epic or use the fallback:
+
+```
+no clear specialist exists, decide spawn-vs-fallback:
+├─ ≥2 anticipated stories in this new domain visible in the backlog
+│   AND domain is architecturally significant
+│   → SPAWN new specialist
+│       ├─ autonomy=auto         → announce-then-proceed (single-line announcement)
+│       ├─ autonomy=guided       → pause-and-ask, present options
+│       └─ autonomy=collaborative → pause-and-ask, present options
+├─ 1 story only, no follow-on visible
+│   → ROUTE TO FALLBACK (do not grow roster)
+└─ ambiguous fit (no clear specialist + unclear if new domain)
+    → PAUSE regardless of autonomy mode
+```
+
+**Do not grow the specialist roster for one-off work.** A new specialist is spawned only when ≥2 stories are anticipated in its domain OR the domain is architecturally significant (e.g., crosses a security boundary, owns a public API). One-off cross-cutting work routes to the generic-dev fallback. This prevents the roster from sprawling into ad-hoc fragments.
+
+**Every mid-epic spawn writes a one-line decision-log entry.** When you spawn a new specialist mid-epic, log to `artifacts/context/decision-log.md` as a tactical decision: `D-NNN — <date> — Spawned <specialist-domain> mid-epic — <one-line reason>`. See `methodology/decision-traceability.md` "Team-Shape Decisions" for the full template.
 
 ## Signal → lens lookup
 

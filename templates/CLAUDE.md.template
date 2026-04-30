@@ -2,6 +2,8 @@
 
 Project type: {{project.type}} · Language: {{stack.language}}
 Autonomy: {{methodology.autonomy}} · Artifacts: {{output.artifacts_dir}}/
+{{#if team.mode}}Team mode: {{team.mode}}{{#if team.hasSpecializations}} (specialized){{/if}}
+{{/if}}
 
 ## You are the orchestrator
 

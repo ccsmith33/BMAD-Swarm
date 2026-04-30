@@ -233,6 +233,286 @@ describe('Hooks (process-spawn contract)', () => {
         'no fence anywhere → deny (regression guard)');
       assert.match(decision.hookSpecificOutput.permissionDecisionReason, /Missing: entry_point/);
     });
+
+    // -------------------------------------------------------------------
+    // Pass 2 (ADR-008, D-009, Story WT-5): fixed-mode routing enforcement.
+    // Each test below sets up a per-test temp project dir containing a
+    // bespoke swarm.yaml, then spawns the hook with cwd set to that dir
+    // so Pass 2's CWD-relative read picks up the fixture.
+    // -------------------------------------------------------------------
+
+    function makeProject(swarmYamlContents) {
+      const projectDir = join(tmpDir, 'wt5-' + Math.random().toString(36).slice(2));
+      mkdirSync(projectDir, { recursive: true });
+      if (swarmYamlContents !== null) {
+        writeFileSync(join(projectDir, 'swarm.yaml'), swarmYamlContents);
+      }
+      return projectDir;
+    }
+
+    function runHookInCwd(hookName, { stdin = '{}', env = {}, cwd } = {}) {
+      const hookPath = join(hooksDir, hookName);
+      // The hook does require('js-yaml'); in real installations the package
+      // is resolvable from the project's node_modules (transitive dep of
+      // bmad-swarm). The test fixture project doesn't have node_modules of
+      // its own, so we point NODE_PATH at the repo's node_modules to make
+      // the require succeed — same effect as a real installed dependency.
+      const repoNodeModules = join(import.meta.dirname || '', '..', 'node_modules');
+      const result = spawnSync('node', [hookPath], {
+        input: stdin,
+        encoding: 'utf8',
+        env: { ...process.env, NODE_PATH: repoNodeModules, ...env },
+        cwd,
+      });
+      let decision = null;
+      if (result.stdout && result.stdout.trim()) {
+        try { decision = JSON.parse(result.stdout); } catch {}
+      }
+      return { ...result, decision };
+    }
+
+    function assemblyBlockFor(teamYaml) {
+      return [
+        '```bmad-assembly',
+        'entry_point: bug-fix',
+        'complexity: 6',
+        'autonomy: auto',
+        'team:',
+        teamYaml,
+        'rationale: test routing',
+        '```',
+      ].join('\n');
+    }
+
+    it('AC1: dynamic mode (no team block) is byte-for-byte unchanged — Pass 2 skipped', () => {
+      // No team block at all → mode defaults to "dynamic" → Pass 2 must skip.
+      // Even an "obviously invalid" specialist entry must still pass.
+      const projectDir = makeProject('project:\n  name: dyn-test\n');
+      const block = assemblyBlockFor('  - role: developer\n    domain: nonexistent-domain');
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'dynamic mode → Pass 2 skipped → exit 0');
+      assert.equal(result.status, 0);
+    });
+
+    it('AC1: explicit team.mode: dynamic is also unchanged', () => {
+      const projectDir = makeProject([
+        'project:',
+        '  name: dyn-explicit',
+        'team:',
+        '  mode: dynamic',
+        '',
+      ].join('\n'));
+      const block = assemblyBlockFor('  - role: developer\n    domain: nope');
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null);
+    });
+
+    it('AC2: fixed mode + matching specialist (developer, backend-auth) passes', () => {
+      const projectDir = makeProject([
+        'project:',
+        '  name: ac2',
+        'team:',
+        '  mode: fixed',
+        '  specializations:',
+        '    - role: developer',
+        '      domain: backend-auth',
+        '      description: backend auth specialist',
+        '',
+      ].join('\n'));
+      const block = assemblyBlockFor('  - role: developer\n    domain: backend-auth');
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'matching (role,domain) → pass');
+      assert.equal(result.status, 0);
+    });
+
+    it('AC3: fixed mode + no-domain developer + fallback enabled passes via fallback', () => {
+      const projectDir = makeProject([
+        'project:',
+        '  name: ac3',
+        'team:',
+        '  mode: fixed',
+        '  specializations:',
+        '    - role: developer',
+        '      domain: backend-auth',
+        '  fallback:',
+        '    enabled: true',
+        '    role: developer',
+        '',
+      ].join('\n'));
+      const block = assemblyBlockFor('  - role: developer');
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'no-domain dev with fallback enabled → pass');
+    });
+
+    it('AC4: fixed mode + no-domain developer + fallback disabled denies with documented reason', () => {
+      const projectDir = makeProject([
+        'project:',
+        '  name: ac4',
+        'team:',
+        '  mode: fixed',
+        '  specializations:',
+        '    - role: developer',
+        '      domain: backend-auth',
+        '  fallback:',
+        '    enabled: false',
+        '',
+      ].join('\n'));
+      const block = assemblyBlockFor('  - role: developer');
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
+      const reason = decision.hookSpecificOutput.permissionDecisionReason;
+      assert.match(reason, /team mode is "fixed"/);
+      assert.match(reason, /does not match any declared specialist/);
+      assert.match(reason, /set team\.fallback\.enabled: true/);
+    });
+
+    it('AC5: fixed mode + specialist whose domain is not declared denies, naming the bad pair', () => {
+      const projectDir = makeProject([
+        'project:',
+        '  name: ac5',
+        'team:',
+        '  mode: fixed',
+        '  specializations:',
+        '    - role: developer',
+        '      domain: backend-auth',
+        '  fallback:',
+        '    enabled: true',
+        '',
+      ].join('\n'));
+      const block = assemblyBlockFor('  - role: developer\n    domain: frontend-dashboard');
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
+      const reason = decision.hookSpecificOutput.permissionDecisionReason;
+      assert.match(reason, /developer domain=frontend-dashboard/);
+    });
+
+    it('AC6: fixed mode + non-specialized roles (architect, security, devops, etc.) always pass', () => {
+      const projectDir = makeProject([
+        'project:',
+        '  name: ac6',
+        'team:',
+        '  mode: fixed',
+        '  specializations:',
+        '    - role: developer',
+        '      domain: backend-auth',
+        '  fallback:',
+        '    enabled: false',  // disabled to ensure non-specialized roles aren't accepted via fallback
+        '',
+      ].join('\n'));
+      const block = assemblyBlockFor([
+        '  - role: architect',
+        '  - role: security',
+        '  - role: devops',
+        '  - role: researcher',
+        '  - role: strategist',
+        '  - role: ideator',
+      ].join('\n'));
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'all non-specialized roles must pass through Pass 2');
+    });
+
+    it('AC7: malformed swarm.yaml fails open (Pass 2 silently skipped, exit 0)', () => {
+      const projectDir = makeProject('project:\n  name: ac7\nteam:\n  mode: fixed\n  specializations: [this is: not valid: yaml: at all\n');
+      const block = assemblyBlockFor('  - role: developer\n    domain: nope');
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'malformed swarm.yaml → Pass 2 silently skipped');
+      assert.equal(result.status, 0);
+    });
+
+    it('AC7: missing swarm.yaml fails open (Pass 2 silently skipped)', () => {
+      const projectDir = makeProject(null);  // no swarm.yaml at all
+      const block = assemblyBlockFor('  - role: developer\n    domain: nope');
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'missing swarm.yaml → Pass 2 silently skipped');
+      assert.equal(result.status, 0);
+    });
+
+    it('AC8: mixed team with valid specialist + valid non-specialist + one invalid specialist denies, naming the bad entry', () => {
+      const projectDir = makeProject([
+        'project:',
+        '  name: ac8',
+        'team:',
+        '  mode: fixed',
+        '  specializations:',
+        '    - role: developer',
+        '      domain: backend-auth',
+        '  fallback:',
+        '    enabled: false',
+        '',
+      ].join('\n'));
+      const block = assemblyBlockFor([
+        '  - role: developer',
+        '    domain: backend-auth',  // valid specialist
+        '  - role: architect',        // valid non-specialist
+        '  - role: developer',
+        '    domain: payments-api',   // INVALID — not declared
+      ].join('\n'));
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(block)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
+      const reason = decision.hookSpecificOutput.permissionDecisionReason;
+      assert.match(reason, /developer domain=payments-api/,
+        'deny reason must name the specific invalid entry');
+    });
   });
 
   // -----------------------------------------------------------------------

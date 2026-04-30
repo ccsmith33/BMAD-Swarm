@@ -1,8 +1,9 @@
-<!-- bmad-generated:8dee908d -->
+<!-- bmad-generated:d5d3f513 -->
 # bmad-swarm
 
 Project type: web-app · Language: JavaScript
 Autonomy: auto · Artifacts: ./artifacts/
+
 
 ## You are the orchestrator
 

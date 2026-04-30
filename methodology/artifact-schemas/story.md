@@ -9,6 +9,8 @@ The story file is the authoritative implementation guide for a developer. It is 
 
 ## Status: [draft | ready | in-progress | review | complete]
 
+## Domain: [kebab-case-slug]   <!-- optional; omit for cross-cutting / unrouted work -->
+
 ## User Story
 As a [specific user type],
 I want [specific capability],
@@ -78,6 +80,24 @@ Valid statuses and their meanings:
 - **in-progress**: A developer is actively implementing this story
 - **review**: Implementation is complete, awaiting code review
 - **complete**: Code review approved, story is done
+
+### Domain (optional)
+
+The `## Domain:` heading declares the routing key used by the orchestrator in **fixed** team mode (wide-team specialization). It is optional and additive — every existing story file remains valid without it.
+
+| Property | Value |
+| --- | --- |
+| Type | string (kebab-case slug) |
+| Regex | `^[a-z0-9][a-z0-9-]*[a-z0-9]$` (no leading/trailing hyphen, filesystem-safe) |
+| Required | no |
+| Default when absent | empty — routes to generic-dev fallback in **fixed** mode; ignored in **dynamic** mode |
+| Set by | story-engineer at story-creation time, or the human authoring the story; the architect's domain map (in `architecture.md`) is the source of valid slugs |
+
+**Default behavior (no `## Domain:` field).** A story without a domain is **not invalid**. In `team.mode: fixed` it routes to the generic-dev fallback (when enabled). In `team.mode: dynamic` the field is ignored entirely. This is the explicit backward-compat path: every story authored before this schema addition continues to load and validate unchanged.
+
+**Reviewer audit posture.** The reviewer's audit of this field is **advisory only** — missing or mismatched domains in fixed mode surface as low-severity findings, never as blocking. See ADR-006 for the rationale. Do not gate merges on this field.
+
+**Cross-references.** Routing semantics, the architect's domain-map deliverable, and the orchestrator's decision tree are specified in `artifacts/design/architecture.md` §4 (Story schema additions) and §6 (Orchestrator routing). Full design rationale and rejected alternatives live in ADR-006 (`artifacts/design/decisions/adr-006-story-domain-field.md`).
 
 ### User Story
 - Must use a specific user type, not generic "user"
@@ -177,6 +197,7 @@ Use the query builder pattern from the architecture ADR-003.
 ## Quality Checklist
 
 - [ ] Status is set appropriately
+- [ ] Domain field is set when project uses team.mode: fixed (or omitted intentionally for cross-cutting work)
 - [ ] User story has specific user type and clear benefit
 - [ ] At least 2 acceptance criteria in BDD format
 - [ ] At least one error-path acceptance criterion

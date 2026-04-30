@@ -150,6 +150,47 @@ When a decision is reversed or replaced:
 
 Never delete or modify the original rationale of a superseded decision. The history is valuable context.
 
+## Team-Shape Decisions
+
+Decisions that change the *shape of the team* — spawning a new specialist mid-epic, or toggling `swarm.yaml:team.mode` between `dynamic` and `fixed` — are tracked under the same D-ID system described above. They are surfaced separately here only because their entry shapes are conventionalized.
+
+This convention derives from `architecture.md` §11 and ADR-005 (two-mode team shape). The parent strategic decision is **D-004** (adopt wide-team specialization architecture).
+
+### Mid-epic specialist spawn (tactical, one-line)
+
+When the orchestrator spawns a new domain-specialist mid-epic (per the §6.3 mid-epic injection decision tree in `architecture.md`), it writes a tactical entry to `artifacts/context/decision-log.md` using this template:
+
+```markdown
+## D-NNN — Spawned <role>-<domain> mid-epic
+- Date: YYYY-MM-DD
+- Source: orchestrator (auto) | orchestrator (after human approval)
+- Reason: <one sentence — what triggered the spawn>
+```
+
+For spawns that occurred under `autonomy ≠ auto` and were paused-and-asked, the `Source` field carries the human ack — e.g., `human via orchestrator (guided)`.
+
+### `team.mode` toggle (strategic, full record)
+
+Switching a project from `dynamic` to `fixed` (or vice versa) is a strategic decision: it changes the team-shape model and cross-cuts orchestrator behavior. It uses the full strategic record:
+
+```markdown
+## D-NNN — Switched team.mode to fixed
+- Date: YYYY-MM-DD
+- Classification: Strategic
+- Source: human
+- Rationale: <one paragraph>
+- Affects: ARCH:domain-map, swarm.yaml, Stories:*-*
+- Status: accepted
+- ADR: artifacts/design/decisions/adr-NNN-...
+- Referenced by: <files>
+```
+
+### Reviewer audit posture
+
+The reviewer's existing decision-log audit (see `agents/reviewer.md`) extends naturally to team-shape entries — no separate audit configuration is required for v1. Mid-epic spawn entries are tactical decisions and are checked the same way any other tactical entry is checked: D-ID present, status valid, summary self-explanatory. `team.mode` toggle entries are strategic decisions and are checked against the full-record fields above.
+
+A future iteration may add a cadence-based advisory check (e.g., flag if more than 5 mid-epic spawns occur within a single epic, suggesting the initial domain map under-decomposed the work). This is **not** part of v1 scope and is noted here only to record the option.
+
 ## Quality Criteria
 
 - Every strategic decision has a D-ID and full record

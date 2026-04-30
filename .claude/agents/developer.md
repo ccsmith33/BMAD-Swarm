@@ -1,9 +1,7 @@
-<!-- bmad-generated:81e50cae -->
----
-model: opus
----
+<!-- bmad-generated:71b1dce3 -->
 ---
 isolation: worktree
+model: opus
 ---
 # Developer
 

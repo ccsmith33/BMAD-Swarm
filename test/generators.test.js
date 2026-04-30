@@ -874,5 +874,123 @@ methodology:
       const forced = generateCommands(config, paths, { force: true });
       assert.ok(forced.generated.includes('bug.md'), 'Force should regenerate bug.md');
     });
+
+    // RT-3 / D-014, ADR-010 — /retrofit-team slash command
+    it('retrofit-team workflow command is generated with the correct frontmatter description', () => {
+      const projectDir = join(tmpDir, 'cmd-test-retrofit-team-emit');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: cmd-test\nstack:\n  language: JS\n');
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      generateAgents(config, paths);
+      const result = generateCommands(config, paths);
+
+      const commandsDir = join(paths.claudeDir, 'commands');
+      const path = join(commandsDir, 'retrofit-team.md');
+      assert.ok(existsSync(path), 'retrofit-team.md should be generated');
+      assert.ok(result.generated.includes('retrofit-team.md'),
+        'retrofit-team.md should appear in the generated list');
+
+      const content = readFileSync(path, 'utf8');
+      // The generator prepends a `<!-- bmad-generated:HASH -->` line; the
+      // standard `---\ndescription: ...\n---` frontmatter follows immediately.
+      assert.ok(/^<!-- bmad-generated:[a-f0-9]+ -->\n---\ndescription: /.test(content),
+        'retrofit-team.md should have the hash header followed by the standard frontmatter');
+      assert.ok(/description: Propose a Domain Map for an existing architecture/.test(content),
+        'retrofit-team frontmatter description should mention the Domain Map proposal');
+      assert.ok(/orchestrator-overlay/.test(content),
+        'retrofit-team description should advertise the overlay pattern');
+    });
+
+    it('retrofit-team body honors all the ADR-010 / architecture-retrofit §3.2 invariants', () => {
+      const projectDir = join(tmpDir, 'cmd-test-retrofit-team-body');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: cmd-test\nstack:\n  language: JS\n');
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      generateAgents(config, paths);
+      generateCommands(config, paths);
+
+      const content = readFileSync(join(paths.claudeDir, 'commands', 'retrofit-team.md'), 'utf8');
+
+      // AC3 — refuses when wide-team is already configured.
+      assert.ok(/team\.mode === "fixed"/.test(content) && /team\.specializations/.test(content),
+        'Step 1 must refuse when team.mode is fixed AND specializations is non-empty');
+
+      // AC4 — refuses when architecture.md is missing.
+      assert.ok(/artifacts\/design\/architecture\.md/.test(content) && /\/feature|\/plan/.test(content),
+        'Step 2 must refuse with a pointer to /feature or /plan when architecture.md is missing');
+
+      // AC5 — handles existing Domain Map; replace requires literal "replace".
+      assert.ok(/## Domain Map|### Domain Map/.test(content),
+        'Step 3 must detect an existing Domain Map heading');
+      assert.ok(/literal word .?replace.?|type the literal word/i.test(content),
+        'Step 3 must require the literal word "replace" for destructive overwrite');
+
+      // AC6 — loads architect Domain Map heuristics.
+      assert.ok(content.includes('agents/architect.md'),
+        'Step 4 must load agents/architect.md heuristics into the overlay');
+      assert.ok(/four heuristics|≥2-story rule/.test(content),
+        'Step 4 must reference the four-heuristics rule from the architect doc');
+
+      // AC7 — explicit human approval pause.
+      assert.ok(/Approve the Domain Map for insertion/i.test(content),
+        'Step 7 must pause for explicit human approval before any edit');
+      assert.ok(/CLAUDE\.md/.test(content) && /human.?approval/i.test(content),
+        'Step 7 must cite the CLAUDE.md architecture human-approval invariant');
+
+      // AC8 — single-task bmad-assembly block + spawn brief constraints.
+      assert.ok(/```bmad-assembly[\s\S]+role: architect[\s\S]+```/.test(content),
+        'Step 8 must emit a bmad-assembly block spawning ONE architect teammate');
+      assert.ok(content.includes('do not author a fresh Domain Map') ||
+                content.includes('Do not author a fresh Domain Map'),
+        'Spawn brief must contain literal phrase "do not author a fresh Domain Map"');
+      assert.ok(content.includes('do not write an ADR') ||
+                content.includes('Do not write an ADR'),
+        'Spawn brief must contain literal phrase "do not write an ADR"');
+
+      // AC9 — log a tactical D-ID after the architect reports done.
+      assert.ok(/D-NNN — Retrofit Domain Map added to architecture\.md via \/retrofit-team/.test(content),
+        'Step 9 must log the tactical D-NNN entry via the documented title');
+      assert.ok(/decision-log\.md/.test(content),
+        'Step 9 must instruct logging to artifacts/context/decision-log.md');
+
+      // AC10 — next-step guidance.
+      assert.ok(/bmad-swarm scaffold-team/.test(content),
+        'Step 10 must point the user at bmad-swarm scaffold-team as the follow-up CLI command');
+
+      // ADR-010 cross-reference + non-loosening of orchestrator-write-gate.
+      assert.ok(/ADR-010/.test(content),
+        'Body must cross-reference ADR-010 (overlay-vs-spawn rationale)');
+      assert.ok(/architecture-retrofit\.md/.test(content),
+        'Body must cross-reference artifacts/design/architecture-retrofit.md');
+    });
+
+    it('retrofit-team addition does not break existing slash commands', () => {
+      const projectDir = join(tmpDir, 'cmd-test-retrofit-team-noop');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: cmd-test\nstack:\n  language: JS\n');
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      generateAgents(config, paths);
+      const result = generateCommands(config, paths);
+
+      const commandsDir = join(paths.claudeDir, 'commands');
+      const existingWorkflows = ['bug', 'feature', 'research', 'audit',
+        'brainstorm', 'explore-idea', 'migrate', 'review', 'plan'];
+      for (const wf of existingWorkflows) {
+        assert.ok(existsSync(join(commandsDir, `${wf}.md`)),
+          `Existing workflow ${wf}.md should still be generated after retrofit-team addition`);
+        assert.ok(result.generated.includes(`${wf}.md`),
+          `Existing workflow ${wf}.md should appear in result.generated`);
+      }
+      // First-pass run on a fresh project: no command can have been "manually
+      // modified" yet, so result.modified is empty.
+      assert.deepEqual(result.modified, [],
+        'First-pass generation should not flag any commands as manually modified');
+    });
   });
 });

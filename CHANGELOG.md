@@ -2,6 +2,29 @@
 
 All notable changes to bmad-swarm.
 
+## [Unreleased]
+
+Wide-team retrofit tooling. Two opt-in tools remove the manual edits required to adopt wide-team specialization (D-004) in an existing project. Neither runs automatically — both are deliberate user actions, preserving the no-silent-migration principle from `architecture.md` §8.4.
+
+### New
+
+- **New CLI command: `bmad-swarm scaffold-team`.** Reads the `## Domain Map` section from `artifacts/design/architecture.md` and emits the corresponding `swarm.yaml:team` block. Default behavior is read-only (prints YAML to stdout). Pass `--write` to inject the block into `swarm.yaml`; `--write` rolls a `swarm.yaml.bak`, writes atomically, and round-trips the result through `loadSwarmConfig` for validation before declaring success. Refuses with a unified diff if a `team:` block already exists. Implements parent decision **D-014** (adopt retrofit tooling) and tactical decisions D-016 (write-safety strategy) and D-017 (Domain Map parser contract). Touches: `cli/scaffold-team.js` (new), `bin/bmad-swarm.js` (registration), `utils/domain-map.js` (new shared parser). See `artifacts/design/architecture-retrofit.md` §4 and ADR-011 / ADR-012.
+- **New slash command: `/retrofit-team`.** Orchestrator-overlay command that proposes a Domain Map for an existing project's architecture, iterates with the user, pauses for explicit human approval (architecture is approval-gated per CLAUDE.md), and on approval spawns one architect teammate to perform a single Edit call inserting the approved Domain Map into `architecture.md`. The architect spawn is a write-delegate, not a designer — its brief explicitly forbids authoring or writing an ADR. Hybrid pattern (overlay + spawn) chosen over pure-overlay or pure-spawn per **D-015**; see ADR-010 for the six alternatives considered. Implements parent decision **D-014**. Touches: `generators/commands-generator.js` (new `buildRetrofitTeamBody`). See `artifacts/design/architecture-retrofit.md` §3.
+
+### Docs
+
+- README §"Wide-team specialization" gains a new subsection "Retrofit tooling for existing projects" with paragraphs for both tools, a worked-example chain transcript, and the no-silent-migration callout.
+- `agents/architect.md` "Domain Map (when using fixed-mode wide team)" section gains a "Retrofit entry path" note describing the spawn brief the architect receives when invoked by `/retrofit-team`.
+
+### References
+
+- Architecture: `artifacts/design/architecture-retrofit.md`
+- ADR-010: `artifacts/design/decisions/adr-010-retrofit-team-overlay-vs-spawn.md`
+- ADR-011: `artifacts/design/decisions/adr-011-scaffold-team-write-safety.md`
+- ADR-012: `artifacts/design/decisions/adr-012-domain-map-parser-contract.md`
+- D-IDs: D-014 through D-021 in `artifacts/context/decision-log.md`
+
+
 ## [2.0.2] — 2026-04-18
 
 HARN-1 fix + brainstorm workflow redesign + follow-ups.

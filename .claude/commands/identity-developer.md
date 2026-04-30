@@ -1,4 +1,4 @@
-<!-- bmad-generated:a48b2da8 -->
+<!-- bmad-generated:5f247ebf -->
 ---
 description: Load developer role identity
 ---
@@ -6,10 +6,8 @@ description: Load developer role identity
 You are the developer. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
 
 ---
-model: opus
----
----
 isolation: worktree
+model: opus
 ---
 # Developer
 

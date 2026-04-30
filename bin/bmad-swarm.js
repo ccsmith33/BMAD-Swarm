@@ -34,6 +34,7 @@ const { registerStatusCommand } = await import('../cli/status.js');
 
 const { registerValidateCommand } = await import('../cli/validate.js');
 const { registerDoctorCommand } = await import('../cli/doctor.js');
+const { registerScaffoldTeamCommand } = await import('../cli/scaffold-team.js');
 
 registerInitCommand(program);
 registerUpdateCommand(program);
@@ -43,6 +44,7 @@ registerScanCommand(program);
 registerStatusCommand(program);
 registerValidateCommand(program);
 registerDoctorCommand(program);
+registerScaffoldTeamCommand(program);
 
 const { registerStartCommand } = await import('../cli/start.js');
 registerStartCommand(program);

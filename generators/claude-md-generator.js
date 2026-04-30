@@ -86,6 +86,14 @@ function buildTemplateData(config) {
     hasFramework: !!config.stack.framework,
     hasDatabase: !!config.stack.database,
     hasTesting: !!config.stack.testing,
+    team: {
+      // D-013: Render the "Team mode" line in CLAUDE.md only when the user has
+      // explicitly opted in to fixed mode. applyDefaults() sets team.mode to
+      // "dynamic" for every project, so a raw passthrough would render the
+      // line for every project — which the WT-7 story anti-patterns forbid.
+      mode: config.team?.mode === 'fixed' ? config.team.mode : undefined,
+      hasSpecializations: (config.team?.specializations || []).length > 0,
+    },
   };
 }
 

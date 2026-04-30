@@ -6,7 +6,8 @@
       "Read(//tmp/**)",
       "Bash(rm /tmp/bmad-gate-probe.txt)",
       "Bash(printf a\\\\\\\\\\\\\\\\b\\\\n *)",
-      "Bash(AGENT_ROLE=orchestrator node .claude/hooks/orchestrator-write-gate.cjs)"
+      "Bash(AGENT_ROLE=orchestrator node .claude/hooks/orchestrator-write-gate.cjs)",
+      "Bash(bmad-swarm --version)"
     ]
   }
 }

@@ -243,6 +243,102 @@ Resolution order: ejected file > package template + swarm.yaml overrides.
 
 This is for customizing agent behavior within a single project (e.g., adding domain-specific rules to the architect). To change bmad-swarm itself, see [Development](#development) below.
 
+## Wide-team specialization
+
+Wide-team specialization lets you pre-spawn multiple domain-specialized teammates (e.g., one developer dedicated to `backend-auth`, another to `backend-upload`, another to `frontend-dashboard`) instead of recycling one generic developer across many domains. Each specialist holds bounded context for the entire session and only handles stories within its domain — addressing long-context drift without abandoning the long-running multi-story workflow. See `artifacts/design/architecture.md` for the full design and ADR-004 / ADR-006 in `artifacts/design/decisions/` for the schema and story-field details.
+
+**Dynamic mode (default) is unchanged. Wide-team is opt-in.**
+
+**Existing projects without this configuration are unaffected. No automatic migration runs on `bmad-swarm update`.**
+
+### Retrofit procedure (existing projects)
+
+To opt in to wide-team specialization for an existing project:
+
+1. Ensure `artifacts/design/architecture.md` includes a Domain Map section. Run `/feature` or `/plan` and ask the architect to add it if missing.
+2. Edit `swarm.yaml` to add a `team` block (`mode: fixed`, list specializations matching the domain map).
+3. Optionally update existing story files to include a `## Domain:` field, matching one of the declared specialists.
+4. On the next session, the orchestrator will use fixed-mode routing.
+
+### Worked example: `team` block in `swarm.yaml`
+
+```yaml
+team:
+  mode: fixed                    # dynamic (default) | fixed — opt in to wide-team
+  specializations:               # only meaningful when mode: fixed
+    - role: developer
+      domain: backend-auth       # required when role is specialized; kebab-case slug
+      description: >             # optional, free-text — passed into the spawn brief
+        OAuth2/PKCE flow, session storage, password reset endpoints.
+    - role: developer
+      domain: backend-upload
+      description: File ingestion pipeline, S3 adapters, virus-scan integration.
+    - role: developer
+      domain: frontend-dashboard
+      description: React dashboard pages, charts, real-time websocket UI.
+    - role: reviewer
+      domain: backend-auth
+      description: >
+        Reviewer dedicated to auth/security stories. (Optional — reviewer
+        continuity is the consistency anchor by default.)
+  fallback:
+    enabled: true                # default: true — generic dev for unrouted stories
+    role: developer
+```
+
+Stories without a `## Domain:` field route to the generic-dev fallback. Stories whose domain doesn't match any declared specialist trigger the orchestrator's mid-epic injection decision tree (spawn a new specialist if ≥2 stories are anticipated in that domain, otherwise route to fallback). See the orchestrator role doc for routing rules.
+
+### Retrofit tooling for existing projects
+
+Two opt-in tools remove the manual edits when adopting wide-team in a project that already has an architecture: `/retrofit-team` (slash command) proposes the Domain Map and inserts it into `architecture.md`; `bmad-swarm scaffold-team` (CLI) reads that Domain Map and emits the matching `team:` block for `swarm.yaml`. Both are deliberate user actions — neither runs automatically. See `artifacts/design/architecture-retrofit.md` for the full design and ADR-010 / ADR-011 / ADR-012 for the design decisions (overlay-vs-spawn, write safety, parser contract).
+
+**`/retrofit-team` (slash command).** Invoked inside a Claude Code session. The orchestrator loads the architect's Domain Map heuristics into its own session, reads the existing `artifacts/design/architecture.md`, and proposes a Domain Map iteratively with you. After explicit human approval (architecture is approval-gated per the project's CLAUDE.md invariant), it spawns one architect teammate whose only job is to insert the approved Domain Map verbatim into `architecture.md` — the architect spawn is a write-delegate, not a designer. Refuses cleanly if the project is already wide-team configured, if `architecture.md` is missing, or if a `## Domain Map` section already exists.
+
+**`bmad-swarm scaffold-team` (CLI).** Reads the `## Domain Map` from `architecture.md` and emits the corresponding `team:` block. Default behavior is read-only — prints YAML to stdout so you can paste-and-edit. Pass `--write` to inject the block into `swarm.yaml`; `--write` first copies the existing file to `swarm.yaml.bak` (rolled, single backup), writes atomically, and round-trips the result through `loadSwarmConfig` to validate before declaring success. Refuses with an exit code and a unified diff if `swarm.yaml` already has a `team:` block — git history is the long-term archive.
+
+**Worked example chain.**
+
+```
+$ # 1. In a Claude Code session:
+> /retrofit-team
+[orchestrator-overlay reads architecture.md; proposes Domain Map]
+[user iterates with the orchestrator on the partition]
+[user approves; orchestrator spawns architect; architect inserts the section]
+> [exits overlay]
+
+$ # 2. Preview the corresponding team: block:
+$ bmad-swarm scaffold-team
+team:
+  mode: fixed
+  specializations:
+    - role: developer
+      domain: backend-auth
+      description: OAuth2/PKCE, sessions, password flows
+    - role: developer
+      domain: backend-upload
+      description: File ingestion, S3, virus scan
+    - role: developer
+      domain: frontend-dashboard
+      description: React dashboard pages
+  fallback:
+    enabled: true
+    role: developer
+
+$ # 3. Inject (after reviewing the preview):
+$ bmad-swarm scaffold-team --write
+Wrote 3 specializations to swarm.yaml
+Backup: swarm.yaml.bak
+Next: review the diff (git diff swarm.yaml), then run `bmad-swarm validate` and `bmad-swarm update`.
+
+$ # 4. Confirm and regenerate:
+$ bmad-swarm validate
+$ bmad-swarm update
+```
+
+Each step is reversible: `architecture.md` edits live in git; `swarm.yaml.bak` lets you undo `--write` once; nothing under `.claude/` is touched until `bmad-swarm update` runs.
+
+**No silent migration.** Neither `bmad-swarm init` nor `bmad-swarm update` invokes either retrofit tool. The user types the slash command, approves the proposed Domain Map, and runs the CLI explicitly — every edit is a deliberate action.
+
 ## Artifact System
 
 Agents coordinate through structured files on disk, not message passing. Each agent reads only the artifacts relevant to its task.
