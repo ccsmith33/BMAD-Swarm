@@ -252,7 +252,7 @@ describe('Config Validator', () => {
           specializations: [{ role: 'developer', domain: 'backend-auth', model: 'gpt-4' }],
         },
       });
-      assert.ok(errors.some(e => e.includes('model "gpt-4"') && e.includes('haiku, sonnet, opus, inherit')));
+      assert.ok(errors.some(e => e.includes('model "gpt-4"') && e.includes('haiku, sonnet, opus, fable, inherit')));
     });
 
     it('rejects invalid fallback.model', () => {
@@ -261,6 +261,43 @@ describe('Config Validator', () => {
         team: { mode: 'dynamic', specializations: [], fallback: { enabled: true, model: 'gpt-4' } },
       });
       assert.ok(errors.some(e => e.includes('team.fallback.model') && e.includes('gpt-4')));
+    });
+
+    it('accepts fable as a per-specialization model', () => {
+      const errors = validateConfig({
+        project: { name: 'test' },
+        team: {
+          mode: 'fixed',
+          specializations: [{ role: 'developer', domain: 'backend-auth', model: 'fable' }],
+        },
+      });
+      assert.equal(errors.length, 0);
+    });
+
+    it('accepts fable as fallback.model', () => {
+      const errors = validateConfig({
+        project: { name: 'test' },
+        team: { mode: 'dynamic', specializations: [], fallback: { enabled: true, model: 'fable' } },
+      });
+      assert.equal(errors.length, 0);
+    });
+  });
+
+  describe('fable model acceptance (D-023)', () => {
+    it('accepts fable in defaults.model', () => {
+      const errors = validateConfig({
+        project: { name: 'test' },
+        defaults: { model: 'fable' },
+      });
+      assert.equal(errors.length, 0);
+    });
+
+    it('accepts fable in agents.*.model', () => {
+      const errors = validateConfig({
+        project: { name: 'test' },
+        agents: { architect: { model: 'fable' } },
+      });
+      assert.equal(errors.length, 0);
     });
   });
 });

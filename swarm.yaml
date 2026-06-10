@@ -27,7 +27,10 @@ methodology:
       - prd
       - architecture
 defaults:
-  model: opus
+  # D-027 (supersedes D-023's tiered overrides for this repo): everything on
+  # fable while Claude Fable 5 is available — human directive 2026-06-09; this
+  # account is on a subscription plan, so the 2× API cost does not apply.
+  model: fable
 output:
   artifacts_dir: ./artifacts
   code_dir: .

@@ -1,6 +1,6 @@
-<!-- bmad-generated:57b09d6a -->
+<!-- bmad-generated:a2bf1ce2 -->
 ---
-model: opus
+model: fable
 ---
 # DevOps
 

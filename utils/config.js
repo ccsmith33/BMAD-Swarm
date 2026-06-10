@@ -2,7 +2,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
-import { validateConfig } from './validator.js';
+import { validateConfig, DEFAULT_MODEL } from './validator.js';
 
 /**
  * Load and parse a YAML file. Returns null if file doesn't exist.
@@ -101,7 +101,7 @@ function applyDefaults(raw) {
 
   // Default model: opus for every teammate unless overridden per-agent
   config.defaults = config.defaults || {};
-  if (!config.defaults.model) config.defaults.model = 'opus';
+  if (!config.defaults.model) config.defaults.model = DEFAULT_MODEL;
 
   // Team block defaults (wide-team specialization — D-005, ADR-004)
   config.team = config.team || {};

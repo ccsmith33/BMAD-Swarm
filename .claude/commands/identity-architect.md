@@ -1,4 +1,4 @@
-<!-- bmad-generated:f96a6112 -->
+<!-- bmad-generated:1c603a99 -->
 ---
 description: Load architect role identity
 ---
@@ -6,7 +6,7 @@ description: Load architect role identity
 You are the architect. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
 
 ---
-model: opus
+model: fable
 ---
 # Architect
 

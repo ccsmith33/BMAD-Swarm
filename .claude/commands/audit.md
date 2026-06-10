@@ -1,4 +1,4 @@
-<!-- bmad-generated:412b3765 -->
+<!-- bmad-generated:b3c9d1bd -->
 ---
 description: Audit with researcher + reviewer + security
 ---
@@ -11,12 +11,12 @@ complexity: 9
 autonomy: auto
 team:
   - role: researcher
-    model: opus
+    model: fable
   - role: reviewer
     lenses: [code-quality, security, test-coverage]
-    model: opus
+    model: fable
   - role: security
-    model: opus
+    model: fable
 rationale: Multi-lens audit — researcher collects evidence, reviewer + security produce findings.
 ```
 

@@ -1,6 +1,6 @@
-<!-- bmad-generated:ab302fcf -->
+<!-- bmad-generated:dde5b60c -->
 ---
-model: opus
+model: fable
 ---
 # Ideator
 

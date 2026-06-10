@@ -1,4 +1,4 @@
-<!-- bmad-generated:982185d0 -->
+<!-- bmad-generated:40f1f117 -->
 ---
 description: Migration with architect + developer + reviewer
 ---
@@ -11,11 +11,11 @@ complexity: 9
 autonomy: guided
 team:
   - role: architect
-    model: opus
+    model: fable
   - role: developer
-    model: opus
+    model: fable
   - role: reviewer
     lenses: [code-quality, test-coverage]
-    model: opus
+    model: fable
 rationale: Migration — architect plans, developer executes, reviewer validates coverage.
 ```

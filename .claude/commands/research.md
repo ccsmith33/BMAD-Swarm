@@ -1,4 +1,4 @@
-<!-- bmad-generated:b21e6378 -->
+<!-- bmad-generated:b6d4b2b6 -->
 ---
 description: Research-only task with researcher
 ---
@@ -11,7 +11,7 @@ complexity: 6
 autonomy: auto
 team:
   - role: researcher
-    model: opus
+    model: fable
 rationale: Research-only exploration, no build.
 ```
 

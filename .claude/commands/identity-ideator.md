@@ -1,4 +1,4 @@
-<!-- bmad-generated:e27a0942 -->
+<!-- bmad-generated:d4f6b367 -->
 ---
 description: Load ideator role identity
 ---
@@ -6,7 +6,7 @@ description: Load ideator role identity
 You are the ideator. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
 
 ---
-model: opus
+model: fable
 ---
 # Ideator
 

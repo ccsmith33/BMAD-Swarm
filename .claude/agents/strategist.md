@@ -1,6 +1,6 @@
-<!-- bmad-generated:8eec471b -->
+<!-- bmad-generated:b24087f8 -->
 ---
-model: opus
+model: fable
 ---
 # Product Strategist
 

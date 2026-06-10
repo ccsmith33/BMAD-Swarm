@@ -1,4 +1,4 @@
-<!-- bmad-generated:17565989 -->
+<!-- bmad-generated:09fc7ed5 -->
 ---
 description: Load devops role identity
 ---
@@ -6,7 +6,7 @@ description: Load devops role identity
 You are the devops. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
 
 ---
-model: opus
+model: fable
 ---
 # DevOps
 

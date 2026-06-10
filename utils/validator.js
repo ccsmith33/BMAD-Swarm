@@ -5,7 +5,11 @@ const VALID_AUTONOMY_LEVELS = ['auto', 'guided', 'collaborative'];
 const VALID_ISOLATION_VALUES = ['worktree', 'none'];
 const VALID_TEAM_MODES = ['dynamic', 'fixed'];
 const VALID_SPECIALIST_ROLES = ['developer', 'reviewer'];
-const VALID_MODELS = ['haiku', 'sonnet', 'opus', 'inherit'];
+const VALID_MODELS = ['haiku', 'sonnet', 'opus', 'fable', 'inherit'];
+// Single source of truth for the framework default model (D-023). Consumed by
+// utils/config.js (applyDefaults), cli/init.js (init template), and
+// generators/commands-generator.js (workflow command bodies).
+export const DEFAULT_MODEL = 'opus';
 // Single source of truth for domain slug shape. Also consumed by
 // utils/domain-map.js (RT-1) so the parser and the validator agree.
 export const DOMAIN_SLUG_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;

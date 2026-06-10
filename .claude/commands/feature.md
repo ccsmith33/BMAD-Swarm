@@ -1,4 +1,4 @@
-<!-- bmad-generated:28fe85ee -->
+<!-- bmad-generated:03f64a7c -->
 ---
 description: Start a feature with architect + developer + reviewer
 ---
@@ -11,11 +11,11 @@ complexity: 7
 autonomy: auto
 team:
   - role: architect
-    model: opus
+    model: fable
   - role: developer
-    model: opus
+    model: fable
   - role: reviewer
     lenses: [code-quality]
-    model: opus
+    model: fable
 rationale: Small feature — architect designs, developer implements, reviewer verifies.
 ```

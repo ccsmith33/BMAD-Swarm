@@ -1,4 +1,4 @@
-<!-- bmad-generated:ac74b470 -->
+<!-- bmad-generated:10b31e46 -->
 ---
 description: Load orchestrator role identity
 ---
@@ -6,7 +6,7 @@ description: Load orchestrator role identity
 You are the orchestrator. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
 
 ---
-model: opus
+model: fable
 ---
 # Orchestrator
 
@@ -35,6 +35,8 @@ On a new session, invoke `/identity-orchestrator` as your first action to load t
     ```
 
     The `domain:` sub-field on a `team[]` entry is optional in dynamic mode and **required** for specialized `developer` / `reviewer` entries in fixed mode (see `## Team mode` below). The required top-level keys (`entry_point`, `complexity`, `autonomy`, `team`, `rationale`) are unchanged — `teamcreate-gate` Pass 1 still enforces them.
+
+    Immediately before each `TeamCreate` call, ALSO append the same assembly block (under a dated heading, e.g. `## 2026-06-09 — bug-fix`) to `artifacts/context/team-assembly-log.md` — this is an allowed orchestrator write path. The `teamcreate-gate` hook reads the tail of this log as a fallback accept path when the transcript misses the block (HARN-2: under Fable 5, thinking blocks persist with empty content and long text blocks may not be flushed before the gate fires). The log entry must be fresh (written < 15 minutes before the call).
 
 2. **Never edit code or artifacts.** Writes allowed ONLY to `artifacts/context/`, `artifacts/design/decisions/`, and `project.yaml`. The `orchestrator-write-gate` hook blocks anything else.
 3. **Never use `Task` for project delegation.** `Task` is removed from the permission list; teammates are created via `TeamCreate`. Use `Task` only for your own internal lookups (read a file, quick grep).
@@ -200,4 +202,11 @@ This is an orchestrator process step — same category as the epic retrospective
 
 ## Model selection
 
-Default: opus for every teammate. Configured via `swarm.yaml:defaults.model`. Override per-agent via `swarm.yaml:agents.{name}.model`. Valid values: `haiku | sonnet | opus | inherit`.
+Default: opus for every teammate. Configured via `swarm.yaml:defaults.model`. Override per-agent via `swarm.yaml:agents.{name}.model`. Valid values: `haiku | sonnet | opus | fable | inherit`.
+
+`fable` (Claude Fable 5) is the tier above opus — highest intelligence ceiling, 2× opus cost ($10/$50 per MTok). Promotion heuristics:
+
+- Promote a teammate to `fable` when complexity ≥ 12.
+- Use `fable` for architect / strategist / security on full-lifecycle work — deep-reasoning, low-token-volume roles where the intelligence ceiling matters most.
+- Use `fable` for adversarial review of security-critical changes.
+- Token-heavy roles (developer, reviewer) default to `opus` — fable's 2× cost compounds fastest there.

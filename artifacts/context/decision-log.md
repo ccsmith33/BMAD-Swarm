@@ -254,3 +254,27 @@ Sequential D-IDs for all decisions that affect product direction, architecture, 
 - **Rationale:** (1) Sibling placement keeps WT-7's manual-procedure prose intact and lets the reader compare manual-vs-tooling paths at the same heading level; nesting under "Retrofit procedure" would imply tooling supersedes the manual path, which is false (manual editing still works and is sometimes preferred). (2) Two-bullet CHANGELOG matches the two-story implementation split (RT-2 + RT-3) — granular enough that a future reader scanning for `scaffold-team` finds it; the Docs subsection is conventional CHANGELOG style and matches 2.0.2's structure. (3) "Two opt-in tools" wording reuses the architecture doc's own framing — the architecture is the source of truth for how the feature is named and described; copying that framing keeps doc surfaces consistent. Per Story RT-4 "Decision-log discipline" anticipating tactical D-IDs starting from D-022 for this exact kind of judgment call.
 - **Referenced by:** `README.md` §"Retrofit tooling for existing projects", `CHANGELOG.md` `[Unreleased]`, `agents/architect.md` §"Retrofit entry path"
 - **Status:** verified (2026-04-29, reviewer — Story RT-4 reviewer-approved; all three bundled doc-shape choices landed faithfully: (1) sibling `###` subsection at `README.md:291` parallel to WT-7's "Retrofit procedure" and "Worked example" — confirmed by structural read; (2) two `### New` bullets per tool plus `### Docs` subsection at `CHANGELOG.md:9-17`; (3) "Two opt-in tools remove the manual edits…" wording at `README.md:293`. Bundle approved over split per the shared upstream `architecture-retrofit.md` §1.1 "two-tool" framing — splitting would have produced three D-IDs with identical rationale, fragmentation rather than granularity. L-1 advisory noted on entry-clarity ordering — non-blocking, see review report)
+
+## D-023 — Add `fable` (Claude Fable 5) model tier support; keep `opus` framework default; targeted fable overrides in this repo
+
+- **Date:** 2026-06-09
+- **Classification:** Strategic (model-tier policy affects all generated projects and cost profile)
+- **Source:** human request ("take advantage of fable 5 while it's out") + orchestrator
+- **Decision:** (1) Add `fable` to `VALID_MODELS` in `utils/validator.js` — it maps to Claude Fable 5 (`claude-fable-5`), the new tier above opus: 1M context, $10/$50 per MTok (2× opus), same API surface as Opus 4.8. Claude Code's agent-spawn model enum already accepts `fable`. (2) The framework-wide default stays `opus` — fable is 2× opus cost and most teammate roles (developer, reviewer) are token-heavy; making fable the silent default would double cost for all downstream users. (3) This repo opts in via per-agent overrides in `swarm.yaml` (`agents.architect.model: fable`, `agents.strategist.model: fable`, `agents.security.model: fable`) — deep-reasoning, low-token-volume roles where the intelligence ceiling matters most. (4) Orchestrator identity gains explicit model-selection heuristics (when to promote a teammate to fable). (5) Agent identity templates gain Fable-5-class prompt tuning per Anthropic's migration guidance (delegation triggers, micro-decision autonomy, report-everything review posture).
+- **Rationale:** Backward compatible (existing projects unchanged), opt-in cost escalation, and centralizing the duplicated default-model literal (`cli/init.js:279`, `utils/config.js:104`) removes a known DRY hazard while we touch the surface.
+- **Referenced by:** (pending implementation) `utils/validator.js`, `utils/config.js`, `utils/cost-estimator.js`, `generators/commands-generator.js`, `agents/orchestrator.md`, `swarm.yaml`, `README.md`, `CHANGELOG.md`
+- **Status:** accepted (auto mode; human-initiated)
+
+## D-024 — `DEFAULT_MODEL` constant lives in `utils/validator.js`
+
+- 2026-06-09 — Tactical (developer, D-023 implementation) — Exported alongside `DOMAIN_SLUG_RE`, matching the repo's single-source-of-truth export convention (D-019); imported by `utils/config.js`, `cli/init.js`, `utils/cost-estimator.js`, `generators/commands-generator.js`.
+
+## D-025 — Cost estimator prices per-agent resolved model; only fable pricing added
+
+- 2026-06-09 — Tactical (developer, D-023 implementation) — `utils/cost-estimator.js` resolves each agent's model (`agents.{name}.model` → `defaults.model` → `DEFAULT_MODEL`) and prices per agent. Fable is $10/$50 per MTok per spec; all non-fable tiers keep the file's pre-existing flat opus baseline ($15/$75) — correcting that baseline or adding haiku/sonnet tiers was out of scope.
+
+## D-026 — `teamcreate-gate` Pass 3 reads the whole assembly log, slices the last 4096 chars, and accepts the LAST fenced block in that tail
+
+- 2026-06-09 — Tactical (developer, HARN-2 fix) — Whole-read+slice is simpler than fd/offset reads inside the generated CJS template and the log is small in practice; the log is append-only so the last block is the one written for the imminent TeamCreate. Any error in Pass 3 falls through to the transcript-based deny (the pass only widens acceptance). Hook tests now default to an isolated cwd so the real repo's `team-assembly-log.md` cannot leak into cwd-relative reads.
+
+## D-027 — 2026-06-09 — This repo sets `defaults.model: fable` (all roles) — human directive: on Max subscription, quota not dollars; go all-in on Fable 5 while available. Supersedes D-023's tiered per-agent overrides for this repo only (framework default remains opus). F-006 fix declined for now (stays logged); no release cut.

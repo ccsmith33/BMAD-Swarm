@@ -1,4 +1,4 @@
-<!-- bmad-generated:19016b5b -->
+<!-- bmad-generated:73064c15 -->
 ---
 description: Load security role identity
 ---
@@ -6,7 +6,7 @@ description: Load security role identity
 You are the security. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
 
 ---
-model: opus
+model: fable
 ---
 # Security
 

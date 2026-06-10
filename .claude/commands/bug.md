@@ -1,4 +1,4 @@
-<!-- bmad-generated:807ff476 -->
+<!-- bmad-generated:708ff01b -->
 ---
 description: Start a bug fix with developer + reviewer
 ---
@@ -11,10 +11,10 @@ complexity: 6
 autonomy: auto
 team:
   - role: developer
-    model: opus
+    model: fable
   - role: reviewer
     lenses: [code-quality]
-    model: opus
+    model: fable
 rationale: Bug fix — developer implements, reviewer verifies.
 ```
 

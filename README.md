@@ -407,7 +407,7 @@ methodology:
 agents:
   orchestrator:
     # enabled: true             # Disable an agent entirely (boolean)
-    # model: sonnet             # Preferred model hint (string: haiku, sonnet, opus, inherit)
+    # model: sonnet             # Preferred model hint (string: haiku, sonnet, opus, fable, inherit)
     # extra_context: ""         # Appended to the agent's prompt (string)
     # extra_rules: []           # Additional behavioral rules (string[])
   # researcher: { ... }
@@ -426,6 +426,10 @@ output:
 ```
 
 </details>
+
+### Model tiers
+
+Valid model values (for `defaults.model`, `agents.{name}.model`, `team.specializations[].model`, and `team.fallback.model`): `haiku`, `sonnet`, `opus`, `fable`, `inherit`. The framework default is `opus`. `fable` maps to Claude Fable 5 — the tier above opus with the highest intelligence ceiling and a 1M context window, at **2× opus cost** ($10/MTok input, $50/MTok output vs opus's $5/$25). Reserve it for deep-reasoning, low-token-volume roles (architect, strategist, security) or complexity ≥ 12 work; token-heavy roles (developer, reviewer) are usually better served by the opus default.
 
 ## Examples
 

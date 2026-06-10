@@ -789,6 +789,38 @@ methodology:
       }
     });
 
+    it('workflow command assembly blocks emit defaults.model (fable) instead of hardcoded opus', () => {
+      const projectDir = join(tmpDir, 'cmd-test-model-param');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: cmd-test\nstack:\n  language: JS\ndefaults:\n  model: fable\n');
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      generateAgents(config, paths);
+      generateCommands(config, paths);
+
+      const commandsDir = join(paths.claudeDir, 'commands');
+      for (const wf of ['bug', 'feature', 'research', 'audit', 'explore-idea', 'migrate', 'review', 'retrofit-team']) {
+        const content = readFileSync(join(commandsDir, `${wf}.md`), 'utf8');
+        assert.ok(content.includes('model: fable'), `${wf}.md should emit defaults.model (fable)`);
+        assert.ok(!content.includes('model: opus'), `${wf}.md should not hardcode model: opus`);
+      }
+    });
+
+    it('workflow command assembly blocks fall back to opus when defaults.model is absent', () => {
+      const projectDir = join(tmpDir, 'cmd-test-model-fallback');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: cmd-test\nstack:\n  language: JS\n');
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      generateAgents(config, paths);
+      generateCommands(config, paths);
+
+      const content = readFileSync(join(paths.claudeDir, 'commands', 'bug.md'), 'utf8');
+      assert.ok(content.includes('model: opus'), 'bug.md should fall back to opus');
+    });
+
     it('brainstorm command uses overlay pattern (no assembly block, reads ideator.md)', () => {
       const projectDir = join(tmpDir, 'cmd-test-brainstorm-overlay');
       mkdirSync(projectDir, { recursive: true });

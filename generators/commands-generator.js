@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeGeneratedFile, isFileManuallyModified, ensureDir } from '../utils/fs-helpers.js';
 import { getAgentNames } from '../utils/config.js';
+import { DEFAULT_MODEL } from '../utils/validator.js';
 
 /**
  * Generate .claude/commands/ files.
@@ -41,18 +42,21 @@ export function generateCommands(config, projectPaths, options = {}) {
     generated.push(`identity-${name}.md`);
   }
 
-  // 2. Workflow commands — hardcoded list
+  // 2. Workflow commands — hardcoded list. Assembly blocks emit the
+  // project's defaults.model at generation time (D-023), falling back to
+  // the framework default.
+  const model = config.defaults?.model || DEFAULT_MODEL;
   const WORKFLOWS = [
-    { name: 'bug', description: 'Start a bug fix with developer + reviewer', body: buildBugBody() },
-    { name: 'feature', description: 'Start a feature with architect + developer + reviewer', body: buildFeatureBody() },
-    { name: 'research', description: 'Research-only task with researcher', body: buildResearchBody() },
-    { name: 'audit', description: 'Audit with researcher + reviewer + security', body: buildAuditBody() },
+    { name: 'bug', description: 'Start a bug fix with developer + reviewer', body: buildBugBody(model) },
+    { name: 'feature', description: 'Start a feature with architect + developer + reviewer', body: buildFeatureBody(model) },
+    { name: 'research', description: 'Research-only task with researcher', body: buildResearchBody(model) },
+    { name: 'audit', description: 'Audit with researcher + reviewer + security', body: buildAuditBody(model) },
     { name: 'brainstorm', description: 'Brainstorm with ideator overlay (Mode A — orchestrator process step)', body: buildBrainstormBody() },
-    { name: 'explore-idea', description: 'Explore an idea (Mode B — ideator overlay + researcher parallel spawn)', body: buildExploreIdeaBody() },
-    { name: 'migrate', description: 'Migration with architect + developer + reviewer', body: buildMigrateBody() },
-    { name: 'review', description: 'Review an artifact with lens selection', body: buildReviewBody() },
+    { name: 'explore-idea', description: 'Explore an idea (Mode B — ideator overlay + researcher parallel spawn)', body: buildExploreIdeaBody(model) },
+    { name: 'migrate', description: 'Migration with architect + developer + reviewer', body: buildMigrateBody(model) },
+    { name: 'review', description: 'Review an artifact with lens selection', body: buildReviewBody(model) },
     { name: 'plan', description: 'Plan mode: produce assembly block only, do not spawn', body: buildPlanBody() },
-    { name: 'retrofit-team', description: 'Propose a Domain Map for an existing architecture (orchestrator-overlay; spawns one architect for the file edit)', body: buildRetrofitTeamBody() },
+    { name: 'retrofit-team', description: 'Propose a Domain Map for an existing architecture (orchestrator-overlay; spawns one architect for the file edit)', body: buildRetrofitTeamBody(model) },
   ];
 
   for (const wf of WORKFLOWS) {
@@ -68,7 +72,7 @@ export function generateCommands(config, projectPaths, options = {}) {
   return { generated, modified };
 }
 
-function buildBugBody() {
+function buildBugBody(model) {
   return `Acknowledge the user's bug report. Then emit this assembly block and call TeamCreate:
 
 \`\`\`bmad-assembly
@@ -77,17 +81,17 @@ complexity: 6
 autonomy: auto
 team:
   - role: developer
-    model: opus
+    model: ${model}
   - role: reviewer
     lenses: [code-quality]
-    model: opus
+    model: ${model}
 rationale: Bug fix — developer implements, reviewer verifies.
 \`\`\`
 
 Spawn both teammates with a curated brief including the bug description and affected files. Relay developer completion + reviewer approval back to the user.`;
 }
 
-function buildFeatureBody() {
+function buildFeatureBody(model) {
   return `Score complexity (5-15). If 5-7 use small-feature; if ≥8 use full-lifecycle. Emit the assembly block and call TeamCreate. Default team for small-feature:
 
 \`\`\`bmad-assembly
@@ -96,17 +100,17 @@ complexity: 7
 autonomy: auto
 team:
   - role: architect
-    model: opus
+    model: ${model}
   - role: developer
-    model: opus
+    model: ${model}
   - role: reviewer
     lenses: [code-quality]
-    model: opus
+    model: ${model}
 rationale: Small feature — architect designs, developer implements, reviewer verifies.
 \`\`\``;
 }
 
-function buildResearchBody() {
+function buildResearchBody(model) {
   return `Emit:
 
 \`\`\`bmad-assembly
@@ -115,14 +119,14 @@ complexity: 6
 autonomy: auto
 team:
   - role: researcher
-    model: opus
+    model: ${model}
 rationale: Research-only exploration, no build.
 \`\`\`
 
 Spawn researcher with the user's question. Relay findings.`;
 }
 
-function buildAuditBody() {
+function buildAuditBody(model) {
   return `Emit:
 
 \`\`\`bmad-assembly
@@ -131,19 +135,19 @@ complexity: 9
 autonomy: auto
 team:
   - role: researcher
-    model: opus
+    model: ${model}
   - role: reviewer
     lenses: [code-quality, security, test-coverage]
-    model: opus
+    model: ${model}
   - role: security
-    model: opus
+    model: ${model}
 rationale: Multi-lens audit — researcher collects evidence, reviewer + security produce findings.
 \`\`\`
 
 After all three agents report, update \`artifacts/context/findings-register.md\`: add a new entry for each novel finding, or append a \`YYYY-MM-DD — by <agent> — reconfirm — <why>\` line to the \`decision_trail\` of any finding already in the register (same claim + location = same ID, do not invent new IDs for carried-forward issues).`;
 }
 
-function buildExploreIdeaBody() {
+function buildExploreIdeaBody(model) {
   return `Enter explore-idea mode (Mode B — ideator overlay in your session + researcher spawned in parallel).
 
 Step 1 (in your session): Read \`agents/ideator.md\` in full. Overlay the ideator persona onto your own session for the conversation with the user. Apply the Four Lenses, brainstorming techniques, elicitation methods invisibly. Check the exit condition at every turn.
@@ -156,7 +160,7 @@ complexity: 7
 autonomy: auto
 team:
   - role: researcher
-    model: opus
+    model: ${model}
 rationale: Mode B — ideator overlay on orchestrator + parallel researcher for evidence gathering.
 \`\`\`
 
@@ -182,7 +186,7 @@ function buildBrainstormBody() {
 7. If the conversation reveals the idea needs substantial external research before it can be shaped further, suggest the user run \`/explore-idea\` (Mode B — ideator overlay + researcher in parallel). Do NOT silently spawn a researcher yourself mid-brainstorm.`;
 }
 
-function buildMigrateBody() {
+function buildMigrateBody(model) {
   return `Emit:
 
 \`\`\`bmad-assembly
@@ -191,17 +195,17 @@ complexity: 9
 autonomy: guided
 team:
   - role: architect
-    model: opus
+    model: ${model}
   - role: developer
-    model: opus
+    model: ${model}
   - role: reviewer
     lenses: [code-quality, test-coverage]
-    model: opus
+    model: ${model}
 rationale: Migration — architect plans, developer executes, reviewer validates coverage.
 \`\`\``;
 }
 
-function buildReviewBody() {
+function buildReviewBody(model) {
   return `Inspect the artifact the user referenced. Select lenses from the signal table in /identity-orchestrator (api, data, ui, perf, auth, test, docs). Emit the assembly block with those lenses:
 
 \`\`\`bmad-assembly
@@ -211,7 +215,7 @@ autonomy: auto
 team:
   - role: reviewer
     lenses: [<selected>]
-    model: opus
+    model: ${model}
 rationale: Lens-based review of <artifact>.
 \`\`\``;
 }
@@ -220,7 +224,7 @@ function buildPlanBody() {
   return `Plan mode: assess the request, emit a bmad-assembly block, then STOP and wait for the user to approve. Do NOT call TeamCreate yet. After user says "go" or equivalent, execute the block.`;
 }
 
-function buildRetrofitTeamBody() {
+function buildRetrofitTeamBody(model) {
   return `Enter retrofit-team mode (orchestrator-overlay pattern, hybrid: overlay for design + architect spawn for the file edit). Per ADR-010, this command proposes a Domain Map for an existing project's architecture, walks the user through iteration, gates the edit on explicit human approval (per the CLAUDE.md \`architecture\` human-approval invariant), and then spawns ONE architect teammate to perform the single Edit call that inserts the approved Domain Map into \`artifacts/design/architecture.md\`.
 
 Walk these steps in order. Refuse cleanly at any gate that fails — do not improvise around a refused state.
@@ -268,7 +272,7 @@ complexity: 5
 autonomy: auto
 team:
   - role: architect
-    model: opus
+    model: ${model}
 rationale: Insert approved Domain Map verbatim into architecture.md (one Edit, no design work; spawn brief constrains scope).
 \`\`\`
 

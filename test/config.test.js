@@ -4,6 +4,7 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadSwarmConfig, getAgentNames, getTeamConfig } from '../utils/config.js';
+import { DEFAULT_MODEL } from '../utils/validator.js';
 
 describe('Config System', () => {
   const tmpDir = join(tmpdir(), 'bmad-test-config-' + Date.now());
@@ -291,6 +292,29 @@ team:
       assert.equal(team.mode, 'dynamic');
       assert.deepEqual(team.specializations, []);
       assert.equal(team.fallback.enabled, true);
+    });
+  });
+
+  describe('DEFAULT_MODEL (D-023 centralization)', () => {
+    it('exports opus as the single default-model constant', () => {
+      assert.equal(DEFAULT_MODEL, 'opus');
+    });
+
+    it('applyDefaults fills defaults.model from DEFAULT_MODEL', () => {
+      const configPath = join(tmpDir, 'default-model.yaml');
+      writeFileSync(configPath, 'project:\n  name: test\n');
+
+      const config = loadSwarmConfig(configPath);
+      assert.equal(config.defaults.model, DEFAULT_MODEL);
+    });
+
+    it('accepts fable as defaults.model end-to-end through loadSwarmConfig', () => {
+      const configPath = join(tmpDir, 'fable-default.yaml');
+      writeFileSync(configPath, 'project:\n  name: test\ndefaults:\n  model: fable\n');
+
+      const config = loadSwarmConfig(configPath);
+      assert.equal(config.defaults.model, 'fable');
+      assert.equal(config.team.fallback.model, 'fable');
     });
   });
 

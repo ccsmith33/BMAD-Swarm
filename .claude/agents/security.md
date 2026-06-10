@@ -1,6 +1,6 @@
-<!-- bmad-generated:304c90c3 -->
+<!-- bmad-generated:6c188544 -->
 ---
-model: opus
+model: fable
 ---
 # Security
 

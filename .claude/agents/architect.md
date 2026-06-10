@@ -1,6 +1,6 @@
-<!-- bmad-generated:f2b924b4 -->
+<!-- bmad-generated:246e5938 -->
 ---
-model: opus
+model: fable
 ---
 # Architect
 

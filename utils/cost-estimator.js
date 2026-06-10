@@ -1,3 +1,5 @@
+import { DEFAULT_MODEL } from './validator.js';
+
 // Token estimates per agent role based on typical usage patterns
 const TOKENS_PER_AGENT = {
   orchestrator: { min: 15000, max: 40000 },
@@ -11,9 +13,13 @@ const TOKENS_PER_AGENT = {
   security: { min: 15000, max: 45000 },
 };
 
-// Claude Opus pricing (per 1M tokens)
-const PRICE_PER_1M_INPUT = 15.00;
-const PRICE_PER_1M_OUTPUT = 75.00;
+// Pricing per 1M tokens, keyed by model tier. opus is the long-standing
+// baseline; fable (Claude Fable 5, the tier above opus — D-023) is $10/$50.
+// Tiers without an entry fall back to the opus baseline.
+const MODEL_PRICING = {
+  opus: { input: 15.00, output: 75.00 },
+  fable: { input: 10.00, output: 50.00 },
+};
 const INPUT_OUTPUT_RATIO = 0.6; // ~60% input, 40% output
 
 /**
@@ -28,20 +34,24 @@ export function estimateCost(config, entryPoint = 'full-lifecycle') {
 
   let tokensMin = 0;
   let tokensMax = 0;
+  let costMin = 0;
+  let costMax = 0;
 
   for (const agent of agents) {
     const estimate = TOKENS_PER_AGENT[agent] || { min: 10000, max: 30000 };
-    tokensMin += estimate.min;
-    tokensMax += estimate.max;
+    let agentTokensMin = estimate.min;
+    let agentTokensMax = estimate.max;
     // Extra developers multiply developer tokens
     if (agent === 'developer' && parallelDevs > 1) {
-      tokensMin += estimate.min * (parallelDevs - 1);
-      tokensMax += estimate.max * (parallelDevs - 1);
+      agentTokensMin += estimate.min * (parallelDevs - 1);
+      agentTokensMax += estimate.max * (parallelDevs - 1);
     }
+    tokensMin += agentTokensMin;
+    tokensMax += agentTokensMax;
+    const model = resolveModel(config, agent);
+    costMin += calculateCost(agentTokensMin, model);
+    costMax += calculateCost(agentTokensMax, model);
   }
-
-  const costMin = calculateCost(tokensMin);
-  const costMax = calculateCost(tokensMax);
 
   return {
     agents,
@@ -77,8 +87,13 @@ function determineAgents(config, entryPoint) {
   });
 }
 
-function calculateCost(totalTokens) {
+function resolveModel(config, agent) {
+  return config.agents?.[agent]?.model || config.defaults?.model || DEFAULT_MODEL;
+}
+
+function calculateCost(totalTokens, model) {
+  const pricing = MODEL_PRICING[model] || MODEL_PRICING[DEFAULT_MODEL];
   const inputTokens = totalTokens * INPUT_OUTPUT_RATIO;
   const outputTokens = totalTokens * (1 - INPUT_OUTPUT_RATIO);
-  return (inputTokens / 1_000_000) * PRICE_PER_1M_INPUT + (outputTokens / 1_000_000) * PRICE_PER_1M_OUTPUT;
+  return (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output;
 }

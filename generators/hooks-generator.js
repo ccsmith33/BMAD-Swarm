@@ -152,6 +152,20 @@ function generateTeamCreateGateHook(config) {
 // scans the raw transcript text for the fence. Both passes enforce the same
 // 5-key requirement; only denies if NEITHER finds a valid block.
 //
+// Pass 3 (HARN-2): team-assembly-log fallback. Under Fable 5, thinking
+// blocks persist to the transcript with EMPTY content (display: omitted)
+// and long assistant text blocks are not flushed to the transcript before
+// PreToolUse fires — so both transcript passes can miss a block the
+// orchestrator genuinely produced and TeamCreate would be permanently
+// blocked. The orchestrator also appends each assembly block to
+// artifacts/context/team-assembly-log.md immediately before TeamCreate
+// (agents/orchestrator.md Invariant 1). Before denying, Pass 3 reads that
+// log (cwd-relative); if its tail (last ~4KB) contains a fenced
+// bmad-assembly block with all 5 required keys AND the file mtime is fresh
+// (< 15 minutes), the block is accepted — and still goes through Pass 2
+// routing. Errors in this pass fall through to the transcript-based deny;
+// it only ever widens acceptance.
+//
 // Pass 2 (ADR-008, D-009): fixed-mode routing enforcement. After Pass 1
 // accepts the bmad-assembly envelope shape, Pass 2 reads swarm.yaml from
 // CWD. When team.mode === 'fixed', it validates each team[].entry against
@@ -263,6 +277,31 @@ process.stdin.on('end', () => {
         acceptedBlock = rawMatch[1];
       }
     }
+  }
+
+  // Pass 3 (HARN-2): team-assembly-log fallback — see header comment. Only
+  // consulted when both transcript passes came up empty; any error here
+  // falls through to the transcript-based deny.
+  if (acceptedBlock === null) {
+    try {
+      const logPath = path.join(process.cwd(), 'artifacts', 'context', 'team-assembly-log.md');
+      const FRESH_MS = 15 * 60 * 1000;
+      const TAIL_BYTES = 4096;
+      const st = fs.statSync(logPath);
+      if (Date.now() - st.mtimeMs < FRESH_MS) {
+        const logRaw = fs.readFileSync(logPath, 'utf8');
+        const tail = logRaw.length > TAIL_BYTES ? logRaw.slice(logRaw.length - TAIL_BYTES) : logRaw;
+        // The log is append-only, so the LAST fenced block in the tail is
+        // the one the orchestrator just wrote for this TeamCreate call.
+        const fenceAll = new RegExp(FENCE_RE.source, 'g');
+        let m;
+        let lastBlock = null;
+        while ((m = fenceAll.exec(tail)) !== null) { lastBlock = m[1]; }
+        if (lastBlock !== null && missingKeys(lastBlock).length === 0) {
+          acceptedBlock = lastBlock;
+        }
+      }
+    } catch {}
   }
 
   if (acceptedBlock === null) {

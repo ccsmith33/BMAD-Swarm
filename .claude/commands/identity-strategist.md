@@ -1,4 +1,4 @@
-<!-- bmad-generated:12546729 -->
+<!-- bmad-generated:d251d814 -->
 ---
 description: Load strategist role identity
 ---
@@ -6,7 +6,7 @@ description: Load strategist role identity
 You are the strategist. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
 
 ---
-model: opus
+model: fable
 ---
 # Product Strategist
 

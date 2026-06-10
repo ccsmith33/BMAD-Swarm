@@ -1,6 +1,6 @@
-<!-- bmad-generated:d541d279 -->
+<!-- bmad-generated:2a9034b2 -->
 ---
-model: opus
+model: fable
 ---
 # Researcher
 

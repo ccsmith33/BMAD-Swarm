@@ -1,4 +1,4 @@
-<!-- bmad-generated:34781f6a -->
+<!-- bmad-generated:25475d2b -->
 ---
 description: Review an artifact with lens selection
 ---
@@ -12,6 +12,6 @@ autonomy: auto
 team:
   - role: reviewer
     lenses: [<selected>]
-    model: opus
+    model: fable
 rationale: Lens-based review of <artifact>.
 ```

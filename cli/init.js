@@ -12,6 +12,7 @@ import { generateSettings } from '../generators/settings-generator.js';
 import { generateRules } from '../generators/rules-generator.js';
 import { generateCommands } from '../generators/commands-generator.js';
 import { loadSwarmConfig } from '../utils/config.js';
+import { DEFAULT_MODEL } from '../utils/validator.js';
 import { runScan } from './scan.js';
 import { generateGitHubWorkflow } from '../generators/github-actions-generator.js';
 
@@ -276,7 +277,7 @@ function buildSwarmYaml(answers) {
       },
     },
     defaults: {
-      model: 'opus',
+      model: DEFAULT_MODEL,
     },
     output: {
       artifacts_dir: './artifacts',

@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { generateHooks } from '../generators/hooks-generator.js';
@@ -34,12 +34,16 @@ describe('Hooks (process-spawn contract)', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function runHook(hookName, { stdin = '{}', env = {} } = {}) {
+  // cwd defaults to the bare tmpDir so cwd-relative reads (swarm.yaml,
+  // artifacts/context/team-assembly-log.md) never leak in from the real
+  // repo checkout the tests happen to run in.
+  function runHook(hookName, { stdin = '{}', env = {}, cwd = tmpDir } = {}) {
     const hookPath = join(hooksDir, hookName);
     const result = spawnSync('node', [hookPath], {
       input: stdin,
       encoding: 'utf8',
       env: { ...process.env, ...env },
+      cwd,
     });
     let decision = null;
     if (result.stdout && result.stdout.trim()) {
@@ -512,6 +516,150 @@ describe('Hooks (process-spawn contract)', () => {
       const reason = decision.hookSpecificOutput.permissionDecisionReason;
       assert.match(reason, /developer domain=payments-api/,
         'deny reason must name the specific invalid entry');
+    });
+
+    // -------------------------------------------------------------------
+    // Pass 3 (HARN-2): team-assembly-log fallback. Under Fable 5, thinking
+    // blocks persist to the transcript with EMPTY content and long assistant
+    // text blocks are not flushed before PreToolUse fires — both transcript
+    // passes miss the block. Pass 3 accepts when the tail of
+    // artifacts/context/team-assembly-log.md (cwd-relative) holds a complete
+    // block AND the file mtime is fresh (< 15 minutes).
+    // -------------------------------------------------------------------
+
+    function writeAssemblyLog(projectDir, contents, { ageMinutes = 0 } = {}) {
+      const contextDir = join(projectDir, 'artifacts', 'context');
+      mkdirSync(contextDir, { recursive: true });
+      const logPath = join(contextDir, 'team-assembly-log.md');
+      writeFileSync(logPath, contents);
+      if (ageMinutes > 0) {
+        const old = new Date(Date.now() - ageMinutes * 60 * 1000);
+        utimesSync(logPath, old, old);
+      }
+      return logPath;
+    }
+
+    // Fable 5 transcript shape: thinking block persisted with empty content,
+    // no text block flushed yet.
+    function fableTranscript() {
+      return writeTranscript([
+        assistantEntry('msg_1', [{ type: 'thinking', thinking: '' }]),
+      ]);
+    }
+
+    it('HARN-2 AC1: accepts via fresh team-assembly-log when transcript passes find nothing', () => {
+      const projectDir = makeProject('project:\n  name: harn2-ac1\n');
+      writeAssemblyLog(projectDir, '## 2026-06-09 — bug fix\n\n' + validAssemblyBlock + '\n');
+      const event = { transcript_path: fableTranscript() };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'fresh log with valid block → accept');
+      assert.equal(result.status, 0);
+    });
+
+    it('HARN-2 AC2: denies when the assembly log is stale (mtime ≥ 15 minutes)', () => {
+      const projectDir = makeProject('project:\n  name: harn2-ac2\n');
+      writeAssemblyLog(projectDir, validAssemblyBlock + '\n', { ageMinutes: 16 });
+      const event = { transcript_path: fableTranscript() };
+      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
+        'stale log must not satisfy the gate');
+    });
+
+    it('HARN-2 AC3: denies when the fresh log block is missing required keys', () => {
+      const projectDir = makeProject('project:\n  name: harn2-ac3\n');
+      const partialBlock = [
+        '```bmad-assembly',
+        'entry_point: bug-fix',
+        'complexity: 6',
+        'team:',
+        '  - role: developer',
+        '```',
+      ].join('\n');
+      writeAssemblyLog(projectDir, partialBlock + '\n');
+      const event = { transcript_path: fableTranscript() };
+      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
+    });
+
+    it('HARN-2 AC4: Pass 2 routing still runs on the log-accepted block', () => {
+      const projectDir = makeProject([
+        'project:',
+        '  name: harn2-ac4',
+        'team:',
+        '  mode: fixed',
+        '  specializations:',
+        '    - role: developer',
+        '      domain: backend-auth',
+        '  fallback:',
+        '    enabled: false',
+        '',
+      ].join('\n'));
+      const block = assemblyBlockFor('  - role: developer\n    domain: payments-api');
+      writeAssemblyLog(projectDir, block + '\n');
+      const event = { transcript_path: fableTranscript() };
+      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
+        'log-accepted block must still go through Pass 2 routing');
+      assert.match(decision.hookSpecificOutput.permissionDecisionReason,
+        /developer domain=payments-api/);
+    });
+
+    it('HARN-2 AC5: uses the LAST block in the log tail (append-only log)', () => {
+      const projectDir = makeProject('project:\n  name: harn2-ac5\n');
+      const staleIncomplete = [
+        '```bmad-assembly',
+        'entry_point: bug-fix',
+        '```',
+      ].join('\n');
+      writeAssemblyLog(projectDir, staleIncomplete + '\n\n' + validAssemblyBlock + '\n');
+      const event = { transcript_path: fableTranscript() };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null,
+        'last (most recent) block in the tail decides, not the first');
+    });
+
+    it('HARN-2 AC6: only the last ~4KB tail is scanned — block buried earlier is invisible', () => {
+      const projectDir = makeProject('project:\n  name: harn2-ac6\n');
+      const padding = ('x'.repeat(80) + '\n').repeat(64); // > 4KB after the block
+      writeAssemblyLog(projectDir, validAssemblyBlock + '\n\n' + padding);
+      const event = { transcript_path: fableTranscript() };
+      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
+        'block outside the 4KB tail window must not be found');
+    });
+
+    it('HARN-2 AC7: missing log file falls through to transcript-based deny', () => {
+      const projectDir = makeProject('project:\n  name: harn2-ac7\n');
+      const event = { transcript_path: fableTranscript() };
+      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
+      assert.match(decision.hookSpecificOutput.permissionDecisionReason, /Missing: entry_point/);
+    });
+
+    it('HARN-2 AC8: transcript acceptance is unaffected when the log is absent (regression guard)', () => {
+      const projectDir = makeProject('project:\n  name: harn2-ac8\n');
+      const transcriptPath = writeTranscript([
+        assistantEntry('msg_1', [textBlock(validAssemblyBlock)]),
+      ]);
+      const event = { transcript_path: transcriptPath };
+      const result = runHookInCwd('teamcreate-gate.cjs', {
+        stdin: JSON.stringify(event), cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'Pass 1 acceptance must be untouched');
     });
   });
 
