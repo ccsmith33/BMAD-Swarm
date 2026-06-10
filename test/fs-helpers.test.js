@@ -8,6 +8,7 @@ import {
   writeGeneratedFile,
   writeGeneratedJsFile,
   isFileManuallyModified,
+  stripGeneratedMarker,
 } from '../utils/fs-helpers.js';
 
 describe('FS Helpers', () => {
@@ -70,6 +71,36 @@ describe('FS Helpers', () => {
 
       const content = readFileSync(filePath, 'utf8');
       assert.ok(content.includes('content'));
+    });
+
+    // ADR-014: frontmatter must be the first bytes of the file so Claude Code
+    // can register the agent definition. The marker moves below the closing
+    // frontmatter fence.
+    it('places the marker AFTER the closing frontmatter fence when content has frontmatter', () => {
+      const filePath = join(tmpDir, 'gen-fm-1.md');
+      const body = '---\nname: developer\nmodel: opus\n---\n# Developer\nBody\n';
+      writeGeneratedFile(filePath, body);
+
+      const content = readFileSync(filePath, 'utf8');
+      assert.ok(content.startsWith('---\nname: developer\n'),
+        'Frontmatter must be the first bytes of the file');
+      const lines = content.split('\n');
+      assert.match(lines[4], /^<!-- bmad-generated:[a-f0-9]{8} -->$/,
+        'Marker must sit immediately after the closing frontmatter fence');
+      assert.equal(lines[5], '# Developer', 'Body follows the marker');
+    });
+
+    it('frontmatter-format hash matches the content with the marker line removed', () => {
+      const filePath = join(tmpDir, 'gen-fm-2.md');
+      const body = '---\nname: reviewer\n---\n# Reviewer\n';
+      writeGeneratedFile(filePath, body);
+
+      const content = readFileSync(filePath, 'utf8');
+      const m = content.match(/<!-- bmad-generated:([a-f0-9]+) -->\n/);
+      assert.ok(m, 'Should contain the marker');
+      const original = content.replace(m[0], '');
+      assert.equal(m[1], contentHash(original), 'Hash covers the marker-stripped content');
+      assert.equal(original, body, 'Marker-stripped content round-trips to the input');
     });
   });
 
@@ -147,6 +178,49 @@ describe('FS Helpers', () => {
       assert.equal(isFileManuallyModified(filePath), true);
     });
 
+    // ADR-014 round-trip: new-format files (frontmatter first, marker after
+    // the fence) must be recognized as generated in both directions.
+    it('returns false for unmodified frontmatter-format file (new format round-trip)', () => {
+      const filePath = join(tmpDir, 'fm-unmod.md');
+      writeGeneratedFile(filePath, '---\nname: developer\nmodel: opus\n---\n# Developer\n');
+      assert.equal(isFileManuallyModified(filePath), false);
+    });
+
+    it('returns true for modified frontmatter-format file', () => {
+      const filePath = join(tmpDir, 'fm-mod.md');
+      writeGeneratedFile(filePath, '---\nname: developer\n---\n# Developer\n');
+      const content = readFileSync(filePath, 'utf8');
+      writeFileSync(filePath, content + '\n# user addition\n');
+      assert.equal(isFileManuallyModified(filePath), true);
+    });
+
+    // Backward compatibility with the pre-v3 format (marker on line 1, above
+    // any frontmatter) so `bmad-swarm update` on existing projects detects
+    // old generated files as generated, not user-modified.
+    it('returns false for unmodified OLD-format file (marker line 1 above frontmatter)', () => {
+      const filePath = join(tmpDir, 'old-fmt-unmod.md');
+      const original = '---\nisolation: worktree\nmodel: opus\n---\n# Developer\nOld format\n';
+      writeFileSync(filePath, `<!-- bmad-generated:${contentHash(original)} -->\n${original}`);
+      assert.equal(isFileManuallyModified(filePath), false,
+        'Old-format generated file must be recognized as unmodified');
+    });
+
+    it('returns true for modified OLD-format file', () => {
+      const filePath = join(tmpDir, 'old-fmt-mod.md');
+      const original = '---\nmodel: opus\n---\n# Developer\n';
+      writeFileSync(filePath, `<!-- bmad-generated:${contentHash(original)} -->\n${original}# tampered\n`);
+      assert.equal(isFileManuallyModified(filePath), true,
+        'Old-format file with edits must be detected as modified');
+    });
+
+    it('ignores a marker that only appears beyond the first 10 lines', () => {
+      const filePath = join(tmpDir, 'deep-marker.md');
+      const filler = Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n');
+      writeFileSync(filePath, `${filler}\n<!-- bmad-generated:deadbeef -->\nbody\n`);
+      assert.equal(isFileManuallyModified(filePath), false,
+        'Marker outside the first 10 lines = not a generated-file header');
+    });
+
     it('returns false for file without hash header (backward compat)', () => {
       const filePath = join(tmpDir, 'no-header.md');
       writeFileSync(filePath, '# No hash header\nJust plain content\n');
@@ -220,6 +294,17 @@ describe('FS Helpers', () => {
         'CRLF-converted shebang file must not appear manually modified');
     });
 
+    it('returns false for CRLF-converted frontmatter-format file (Windows autocrlf)', () => {
+      const filePath = join(tmpDir, 'crlf-fm.md');
+      writeGeneratedFile(filePath, '---\nname: developer\n---\n# Developer\n');
+
+      const lfContent = readFileSync(filePath, 'utf8');
+      writeFileSync(filePath, lfContent.replace(/\n/g, '\r\n'));
+
+      assert.equal(isFileManuallyModified(filePath), false,
+        'CRLF-converted frontmatter-format file must not appear manually modified');
+    });
+
     it('returns true for genuinely modified CRLF file', () => {
       // After CRLF conversion, real modifications are still caught
       const filePath = join(tmpDir, 'crlf-tampered.md');
@@ -231,6 +316,29 @@ describe('FS Helpers', () => {
 
       assert.equal(isFileManuallyModified(filePath), true,
         'Genuine modifications are still detected after CRLF conversion');
+    });
+  });
+
+  describe('stripGeneratedMarker', () => {
+    it('strips an old-format line-1 marker', () => {
+      const content = '<!-- bmad-generated:abcd1234 -->\n# Title\nBody\n';
+      assert.equal(stripGeneratedMarker(content), '# Title\nBody\n');
+    });
+
+    it('strips a new-format marker after frontmatter', () => {
+      const content = '---\nname: developer\n---\n<!-- bmad-generated:abcd1234 -->\n# Title\n';
+      assert.equal(stripGeneratedMarker(content), '---\nname: developer\n---\n# Title\n');
+    });
+
+    it('returns content unchanged when no marker is present', () => {
+      const content = '# Plain\nNo marker here\n';
+      assert.equal(stripGeneratedMarker(content), content);
+    });
+
+    it('does not strip markers beyond the first 10 lines', () => {
+      const filler = Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n');
+      const content = `${filler}\n<!-- bmad-generated:abcd1234 -->\nbody\n`;
+      assert.equal(stripGeneratedMarker(content), content);
     });
   });
 });

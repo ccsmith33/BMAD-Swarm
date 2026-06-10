@@ -124,7 +124,7 @@ Before producing the product brief, verify:
 - **Check the exit condition at every turn.** Before your turn ends, ask yourself: has the user signaled readiness to build ("let's do this", "ok, build it", "hand it off", or similar)? If yes, exit now — write the summary and emit the handoff block. Do not take another brainstorming turn.
 - Decisions logged to `artifacts/context/decision-log.md` still apply — append D-IDs as they emerge (tactical decisions one-liner, strategic decisions full record).
 - Session summary goes to `artifacts/planning/brainstorm-<topic-slug>-<YYYY-MM-DD>.md`, not the full product brief. Keep it thin: topic, decisions with D-IDs, open questions, recommended next step (typically "spawn strategist for PRD" or "spawn architect for design exploration").
-- After writing the summary, emit a proper `bmad-assembly` block to hand off to the recommended next phase.
+- After writing the summary, emit a proper `bmad-assembly` block to hand off to the recommended next phase; when the orchestrator proceeds to that TeamCreate, the block must be appended to `artifacts/context/team-assembly-log.md` first (the gate reads only that file — ADR-013).
 
 **Start by listening.** When the human presents their idea, do not immediately jump into analysis. First, understand what they are saying. Ask clarifying questions. Restate the idea in your own words to confirm understanding. Only then begin applying your lenses and techniques.
 

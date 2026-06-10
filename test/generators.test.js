@@ -10,6 +10,7 @@ import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateCommands } from '../generators/commands-generator.js';
 import { isFileManuallyModified } from '../utils/fs-helpers.js';
+import { load as yamlLoad } from 'js-yaml';
 
 describe('Generators', () => {
   const tmpDir = join(tmpdir(), 'bmad-test-gen-' + Date.now());
@@ -287,14 +288,83 @@ agents:
 
       const devPath = join(paths.agentsDir, 'developer.md');
       const content = readFileSync(devPath, 'utf8');
-      // Hash should be the first line
-      assert.ok(content.startsWith('<!-- bmad-generated:'), 'Hash should come first');
-      // Frontmatter should come after the hash
-      const afterHash = content.split('\n').slice(1).join('\n');
-      assert.ok(afterHash.startsWith('---\n'), 'Frontmatter should start after hash line');
+      // ADR-014: frontmatter is the first bytes; the hash marker follows the
+      // closing fence so Claude Code can register the agent definition.
+      assert.ok(content.startsWith('---\n'), 'Frontmatter should be the first bytes');
+      const fmEnd = content.indexOf('\n---\n', 4) + 5;
+      assert.ok(content.slice(fmEnd).startsWith('<!-- bmad-generated:'),
+        'Hash marker should sit immediately after the closing frontmatter fence');
 
       // Running again should not flag as manually modified
       assert.ok(!isFileManuallyModified(devPath), 'Should not be detected as manually modified');
+    });
+
+    // ADR-014 — generated agents are valid Claude Code custom agent definitions.
+    it('generated agents are valid native agent definitions (frontmatter first, name + description, js-yaml parseable)', () => {
+      const projectDir = join(tmpDir, 'agent-test-native-def');
+      mkdirSync(projectDir, { recursive: true });
+
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, `
+project:
+  name: native-def-test
+  type: web-app
+stack:
+  language: JavaScript
+`);
+
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      const result = generateAgents(config, paths);
+
+      for (const agentName of result.generated) {
+        const content = readFileSync(join(paths.agentsDir, `${agentName}.md`), 'utf8');
+        assert.ok(content.startsWith('---\n'),
+          `${agentName}.md must start with frontmatter (first bytes)`);
+        const endIdx = content.indexOf('\n---\n', 4);
+        assert.ok(endIdx !== -1, `${agentName}.md must have a closed frontmatter block`);
+
+        const fm = yamlLoad(content.slice(4, endIdx));
+        assert.equal(fm.name, agentName, `${agentName}.md frontmatter must carry name: ${agentName}`);
+        assert.ok(typeof fm.description === 'string' && fm.description.length > 0,
+          `${agentName}.md frontmatter must carry a description`);
+        assert.match(fm.description, /Not for ad-hoc delegation/,
+          `${agentName}.md description must carry the defensive anti-auto-delegation phrasing`);
+        assert.ok(fm.model, `${agentName}.md frontmatter must carry the resolved model`);
+      }
+
+      // isolation: from the developer template must survive the rewrite
+      const devFm = readFileSync(join(paths.agentsDir, 'developer.md'), 'utf8');
+      assert.ok(devFm.slice(0, devFm.indexOf('\n---\n', 4)).includes('isolation: worktree'),
+        'developer.md must keep its template isolation field in frontmatter');
+    });
+
+    // D-028 item 0 — single wake-channel task protocol injected into teammates.
+    it('injects the Team task protocol into every generated teammate (not the orchestrator)', () => {
+      const projectDir = join(tmpDir, 'agent-test-task-protocol');
+      mkdirSync(projectDir, { recursive: true });
+
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: protocol-test\nstack:\n  language: JS\n');
+
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      const result = generateAgents(config, paths);
+
+      for (const agentName of result.generated) {
+        const content = readFileSync(join(paths.agentsDir, `${agentName}.md`), 'utf8');
+        if (agentName === 'orchestrator') {
+          assert.ok(!content.includes('## Team task protocol'),
+            'orchestrator must NOT carry the teammate task protocol (it assigns tasks)');
+        } else {
+          assert.ok(content.includes('## Team task protocol'),
+            `${agentName}.md must carry the Team task protocol section`);
+          assert.ok(content.includes('Never self-claim tasks from TaskList'),
+            `${agentName}.md must override the platform self-claim default`);
+          assert.ok(content.includes('Peer-to-peer messages to other teammates for technical questions are encouraged'),
+            `${agentName}.md must preserve the peer-to-peer messaging endorsement`);
+        }
+      }
     });
 
     it('orchestrator agent contains assembly schema and slash-command pointer', () => {
@@ -675,7 +745,10 @@ methodology:
       const content = readFileSync(hookPath, 'utf8');
       assert.ok(content.includes("permissionDecision: 'deny'") || content.includes('permissionDecision: \'deny\''), 'Should deny when assembly block missing');
       assert.ok(content.includes('bmad-assembly'), 'Should look for bmad-assembly block');
-      assert.ok(content.includes('transcript_path'), 'Should read transcript from event');
+      // ADR-013: the handshake file is the sole channel; the transcript is
+      // never read.
+      assert.ok(content.includes('team-assembly-log.md'), 'Should read the assembly-log handshake');
+      assert.ok(!content.includes('transcript_path'), 'Must not read the transcript (ADR-013)');
     });
 
     it('generates orchestrator-write-gate hook', () => {
@@ -789,6 +862,36 @@ methodology:
       }
     });
 
+    // F-012: workflow command bodies must instruct the ADR-013 contract —
+    // append the assembly block to the handshake log before TeamCreate —
+    // not the retired "emit in your message and call TeamCreate" one.
+    it('workflow commands instruct the assembly-log append, not the retired message-channel contract (F-012)', () => {
+      const projectDir = join(tmpDir, 'cmd-test-f012');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: cmd-test\nstack:\n  language: JS\n');
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      generateAgents(config, paths);
+      generateCommands(config, paths);
+
+      const commandsDir = join(paths.claudeDir, 'commands');
+      // Every command that drives a TeamCreate must name the handshake file.
+      const spawning = ['bug', 'feature', 'research', 'audit', 'explore-idea', 'migrate', 'review', 'plan', 'retrofit-team'];
+      for (const wf of spawning) {
+        const content = readFileSync(join(commandsDir, `${wf}.md`), 'utf8');
+        assert.ok(content.includes('artifacts/context/team-assembly-log.md'),
+          `${wf}.md must instruct the append to the team-assembly log (ADR-013)`);
+        assert.ok(!/[Ee]mit (this|the) assembly block and call TeamCreate/.test(content),
+          `${wf}.md must not carry the retired message-channel instruction`);
+      }
+      // /brainstorm never calls TeamCreate itself, but its exit handoff must
+      // point at the log for the follow-on TeamCreate.
+      const brainstorm = readFileSync(join(commandsDir, 'brainstorm.md'), 'utf8');
+      assert.ok(brainstorm.includes('artifacts/context/team-assembly-log.md'),
+        'brainstorm.md exit handoff must reference the team-assembly log');
+    });
+
     it('workflow command assembly blocks emit defaults.model (fable) instead of hardcoded opus', () => {
       const projectDir = join(tmpDir, 'cmd-test-model-param');
       mkdirSync(projectDir, { recursive: true });
@@ -878,9 +981,10 @@ methodology:
       generateCommands(config, paths);
 
       const body = readFileSync(join(paths.claudeDir, 'commands', 'identity-orchestrator.md'), 'utf8');
-      // No inner hash-header leak from the agent file
-      assert.ok(!body.includes('<!-- bmad-generated:') || body.indexOf('<!-- bmad-generated:') === 0,
-        'Agent hash header should be stripped from command body');
+      // Exactly one marker: the command file's own. The embedded agent
+      // content must have had its marker stripped (no inner leak).
+      const markerCount = (body.match(/<!-- bmad-generated:/g) || []).length;
+      assert.equal(markerCount, 1, 'Agent hash marker should be stripped from command body');
       // Should include the orchestrator's invariants
       assert.ok(body.includes('/identity-orchestrator') || body.includes('bmad-assembly'),
         'Command body should include orchestrator identity content');
@@ -925,10 +1029,10 @@ methodology:
         'retrofit-team.md should appear in the generated list');
 
       const content = readFileSync(path, 'utf8');
-      // The generator prepends a `<!-- bmad-generated:HASH -->` line; the
-      // standard `---\ndescription: ...\n---` frontmatter follows immediately.
-      assert.ok(/^<!-- bmad-generated:[a-f0-9]+ -->\n---\ndescription: /.test(content),
-        'retrofit-team.md should have the hash header followed by the standard frontmatter');
+      // ADR-014: frontmatter first so the slash-command description parses;
+      // the `<!-- bmad-generated:HASH -->` marker follows the closing fence.
+      assert.ok(/^---\ndescription: [\s\S]*?\n---\n<!-- bmad-generated:[a-f0-9]+ -->\n/.test(content),
+        'retrofit-team.md should have frontmatter first with the hash marker after the closing fence');
       assert.ok(/description: Propose a Domain Map for an existing architecture/.test(content),
         'retrofit-team frontmatter description should mention the Domain Map proposal');
       assert.ok(/orchestrator-overlay/.test(content),

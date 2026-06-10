@@ -58,11 +58,60 @@ export function generateAgents(config, projectPaths, options = {}) {
     // Layer 2: Apply swarm.yaml overrides (always run so defaults.model applies even without per-agent config)
     content = applyAgentOverrides(content, agentConfig || {}, agentName, config);
 
+    // Teammates get the single wake-channel task protocol (D-028 item 0).
+    // The orchestrator is excluded: it ASSIGNS tasks, it never claims them.
+    if (agentName !== 'orchestrator') {
+      content += TEAM_TASK_PROTOCOL;
+    }
+
+    // Registration identity (ADR-014): name + description make the file a
+    // valid Claude Code custom agent definition, spawnable via
+    // subagent_type. Applied last so they are the leading frontmatter keys.
+    content = applyIdentityFrontmatter(content, agentName);
+
     writeGeneratedFile(outputPath, content);
     generated.push(agentName);
   }
 
   return { generated, skipped, modified };
+}
+
+// Injected into every generated teammate (not the orchestrator). Overrides
+// the platform default that tells teammates to self-claim unblocked tasks
+// from TaskList — orchestrator-assigned ownership is the single wake channel
+// (D-028 item 0; kills the "task already done" double-trigger).
+const TEAM_TASK_PROTOCOL = `
+
+## Team task protocol
+
+Orchestrator-assigned ownership is the single wake channel for tasks (this overrides any platform guidance about claiming available tasks):
+
+- Never self-claim tasks from TaskList. Work only tasks the orchestrator assigned to you.
+- After completing a task, send your completion message and go idle — do not claim further work.
+- Peer-to-peer messages to other teammates for technical questions are encouraged; task ownership changes are not.
+`;
+
+/**
+ * Apply registration-identity frontmatter (ADR-014): `name` and
+ * `description` are required for Claude Code to register the file as a
+ * custom agent definition (spawnable via subagent_type). The description is
+ * deliberately defensive so Claude does not auto-delegate to these agents
+ * outside the orchestrated team flow. Keys are prepended so they lead the
+ * frontmatter block; templates never define them, so no duplication arises.
+ * @param {string} content - Agent file content (frontmatter optional)
+ * @param {string} agentName - Agent role name (kebab/lowercase)
+ * @returns {string} Content with name/description leading the frontmatter
+ */
+export function applyIdentityFrontmatter(content, agentName) {
+  const role = agentName.charAt(0).toUpperCase() + agentName.slice(1);
+  const fields = `name: ${agentName}\ndescription: "${role} teammate for bmad-swarm orchestrated work — spawned by the orchestrator via the team flow. Not for ad-hoc delegation."`;
+  if (content.startsWith('---\n')) {
+    const endIdx = content.indexOf('\n---\n', 4);
+    if (endIdx !== -1) {
+      return `---\n${fields}\n${content.slice(4)}`;
+    }
+  }
+  return `---\n${fields}\n---\n${content}`;
 }
 
 /**

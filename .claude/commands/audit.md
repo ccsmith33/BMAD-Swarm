@@ -1,9 +1,9 @@
-<!-- bmad-generated:b3c9d1bd -->
 ---
 description: Audit with researcher + reviewer + security
 ---
+<!-- bmad-generated:2ef45b58 -->
 
-Emit:
+Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then call TeamCreate:
 
 ```bmad-assembly
 entry_point: audit

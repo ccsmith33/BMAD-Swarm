@@ -1,9 +1,9 @@
-<!-- bmad-generated:40f1f117 -->
 ---
 description: Migration with architect + developer + reviewer
 ---
+<!-- bmad-generated:beda16ae -->
 
-Emit:
+Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then call TeamCreate:
 
 ```bmad-assembly
 entry_point: migrate

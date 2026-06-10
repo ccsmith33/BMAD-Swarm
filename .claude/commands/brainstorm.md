@@ -1,7 +1,7 @@
-<!-- bmad-generated:aaa9bf2d -->
 ---
 description: Brainstorm with ideator overlay (Mode A — orchestrator process step)
 ---
+<!-- bmad-generated:3b800890 -->
 
 Enter brainstorm mode (orchestrator-overlay pattern). Do NOT emit a bmad-assembly block. Do NOT call TeamCreate. Brainstorming is a conversational orchestrator process step — teammates cannot converse with the human directly, so the ideator persona overlays onto your own session instead.
 
@@ -12,5 +12,5 @@ Enter brainstorm mode (orchestrator-overlay pattern). Do NOT emit a bmad-assembl
 5. **Check the exit condition at every turn.** Before your turn ends, ask: has the user signaled readiness to build ("let's do this", "ok, build it", "hand it off")? If yes, exit now — do not take another brainstorming turn.
 6. On exit:
    - Write `artifacts/planning/brainstorm-<topic-slug>-<YYYY-MM-DD>.md` containing: topic, key decisions with D-IDs, open questions, recommended next step.
-   - Emit a `bmad-assembly` block for the recommended next phase (typically strategist for product brief + architect if architecture questions surfaced).
+   - Emit a `bmad-assembly` block for the recommended next phase (typically strategist for product brief + architect if architecture questions surfaced); when you proceed to that TeamCreate, append it to `artifacts/context/team-assembly-log.md` first — the gate reads only that file.
 7. If the conversation reveals the idea needs substantial external research before it can be shaped further, suggest the user run `/explore-idea` (Mode B — ideator overlay + researcher in parallel). Do NOT silently spawn a researcher yourself mid-brainstorm.

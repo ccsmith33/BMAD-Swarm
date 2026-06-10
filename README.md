@@ -33,10 +33,10 @@ bmad-swarm start
 
 `bmad-swarm init` generates:
 - `swarm.yaml` -- project configuration (you own and edit this)
-- `.claude/agents/` -- agent definitions for each role
+- `.claude/agents/` -- native Claude Code agent definitions for each role (teammates are spawned directly via `subagent_type`)
 - `.claude/hooks/` -- quality gate hooks
 - `.claude/settings.json` -- Claude Code permissions
-- `.claude/commands/` -- slash commands (9 identity-* plus 8 workflow commands like `/bug`, `/feature`, `/research`)
+- `.claude/commands/` -- slash commands (`/identity-orchestrator` plus 8 workflow commands like `/bug`, `/feature`, `/research`; the other identity-* commands are inspection aids -- teammates load identity natively from `.claude/agents/`)
 - `.claude/rules/` -- methodology rules (coding standards, quality standards, orchestrator methodology)
 - `CLAUDE.md` -- project context (type, stack, phases, artifacts)
 - `artifacts/` -- directory structure for all methodology artifacts
@@ -46,7 +46,7 @@ bmad-swarm start
 
 BMAD Swarm works by generating configuration files that Claude Code reads automatically. The agent definitions in `.claude/agents/`, hooks in `.claude/hooks/`, and rules in `.claude/rules/` are all standard Claude Code features -- bmad-swarm just generates them with the right content.
 
-The key is the **slash-command identity system**. On a fresh session the orchestrator invokes `/identity-orchestrator` as its first action; the command body is the full orchestrator role and arrives as user-turn content, which the model weights more heavily than system-ambient instructions. A `UserPromptSubmit` hook emits a short (<40 token) reminder on the first turn of a session pointing at `/identity-orchestrator` and the 8 workflow commands. After context compaction a `SessionStart` hook re-points the orchestrator at the same slash command. This is reinforced by `.claude/rules/` files that define agent routing and quality standards, and `CLAUDE.md` provides project context (stack, phases, artifact locations).
+The key is the **slash-command identity system**. On a fresh session the orchestrator invokes `/identity-orchestrator` as its first action; the command body is the full orchestrator role and arrives as user-turn content, which the model weights more heavily than system-ambient instructions. A `UserPromptSubmit` hook emits a short (<40 token) reminder on the first turn of a session pointing at `/identity-orchestrator` and the 8 workflow commands. After context compaction a `SessionStart` hook re-points the orchestrator at the same slash command. This is reinforced by `.claude/rules/` files that define agent routing and quality standards, and `CLAUDE.md` provides project context (stack, phases, artifact locations). Teammates do not use slash-command identity: the generated `.claude/agents/*.md` files are native Claude Code agent definitions, so teammates are spawned directly via `subagent_type` with their full role attached (ADR-014).
 
 After initialization, launch with `bmad-swarm start` and just talk. No special commands, no agent names to remember.
 

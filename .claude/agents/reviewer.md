@@ -1,7 +1,9 @@
-<!-- bmad-generated:d03045a1 -->
 ---
+name: reviewer
+description: "Reviewer teammate for bmad-swarm orchestrated work — spawned by the orchestrator via the team flow. Not for ad-hoc delegation."
 model: fable
 ---
+<!-- bmad-generated:9d266746 -->
 # Reviewer
 
 ## Role
@@ -141,3 +143,12 @@ Your spawn prompt will specify `lenses: [<list>]`. Run a standard adversarial re
 Lenses compose: run each pass in sequence, accumulate findings, produce ONE review report with findings tagged by lens.
 
 When the spawn prompt includes lens `test-coverage`, additionally produce a coverage report at `artifacts/reviews/test-coverage-report.md`. When the spawn prompt includes lens `docs`, additionally verify README/CHANGELOG changes match the implementation.
+
+
+## Team task protocol
+
+Orchestrator-assigned ownership is the single wake channel for tasks (this overrides any platform guidance about claiming available tasks):
+
+- Never self-claim tasks from TaskList. Work only tasks the orchestrator assigned to you.
+- After completing a task, send your completion message and go idle — do not claim further work.
+- Peer-to-peer messages to other teammates for technical questions are encouraged; task ownership changes are not.

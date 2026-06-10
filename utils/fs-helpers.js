@@ -32,8 +32,13 @@ export function readFileSafe(filePath) {
 
 // --- Generated file hash protection ---
 
-const HASH_PATTERN = /^<!-- bmad-generated:([a-f0-9]+) -->\n/;
+const MARKER_LINE_RE = /^<!-- bmad-generated:([a-f0-9]+) -->$/;
 const JS_HASH_PATTERN = /^\/\/ bmad-generated:([a-f0-9]+)\n/;
+// The HTML marker may sit on line 1 (pre-v3 format) or just below a YAML
+// frontmatter block (v3 format, ADR-014 — frontmatter must be the first
+// bytes for Claude Code agent/command registration). Search this many
+// leading lines for it; anything deeper is body content, not a header.
+const MARKER_SEARCH_LINES = 10;
 
 /**
  * Compute a short SHA-256 hash of content (8 hex chars).
@@ -49,16 +54,63 @@ export function contentHash(content) {
 }
 
 /**
- * Write a generated file with a content hash header.
+ * Write a generated file with a content hash marker.
  * The hash allows detecting manual modifications on subsequent updates.
+ * When the content starts with a YAML frontmatter block, the marker is
+ * inserted immediately AFTER the closing fence so the frontmatter stays the
+ * first bytes of the file (required for Claude Code agent/command
+ * registration, ADR-014). Otherwise the marker is prepended as before.
  * @param {string} filePath - File path to write
- * @param {string} content - Content to write (hash is prepended automatically)
+ * @param {string} content - Content to write (hash marker is inserted automatically)
  */
 export function writeGeneratedFile(filePath, content) {
-  const hash = contentHash(content);
-  const output = `<!-- bmad-generated:${hash} -->\n${content}`;
+  const marker = `<!-- bmad-generated:${contentHash(content)} -->\n`;
+  let output;
+  if (content.startsWith('---\n')) {
+    const endIdx = content.indexOf('\n---\n', 4);
+    if (endIdx !== -1) {
+      const fmEnd = endIdx + '\n---\n'.length;
+      output = content.slice(0, fmEnd) + marker + content.slice(fmEnd);
+    }
+  }
+  if (output === undefined) {
+    output = marker + content;
+  }
   ensureDir(dirname(filePath));
   writeFileSync(filePath, output, 'utf8');
+}
+
+/**
+ * Find the bmad-generated HTML marker within the first MARKER_SEARCH_LINES
+ * lines of (CRLF-normalized) content. Supports both the pre-v3 line-1
+ * placement and the v3 after-frontmatter placement.
+ * @param {string} content - LF-normalized file content
+ * @returns {{ hash: string, original: string }|null} The marker hash and the
+ *   content with the marker line removed (= the content the hash was
+ *   computed over), or null when no marker is found.
+ */
+function findHtmlMarker(content) {
+  const lines = content.split('\n');
+  const limit = Math.min(lines.length, MARKER_SEARCH_LINES);
+  for (let i = 0; i < limit; i++) {
+    const match = lines[i].match(MARKER_LINE_RE);
+    if (match) {
+      const original = lines.slice(0, i).concat(lines.slice(i + 1)).join('\n');
+      return { hash: match[1], original };
+    }
+  }
+  return null;
+}
+
+/**
+ * Remove the bmad-generated HTML marker line from content (old or new
+ * placement). Returns the content unchanged when no marker is present.
+ * @param {string} content
+ * @returns {string}
+ */
+export function stripGeneratedMarker(content) {
+  const found = findHtmlMarker(content.replace(/\r\n/g, '\n'));
+  return found ? found.original : content;
 }
 
 /**
@@ -80,15 +132,15 @@ export function isFileManuallyModified(filePath) {
   // false for both unmodified AND modified files — a broken detection path.
   const existing = readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n');
 
-  // Try HTML-comment hash on line 1
-  let match = existing.match(HASH_PATTERN);
-  if (match) {
-    const contentAfterHeader = existing.slice(match[0].length);
-    return match[1] !== contentHash(contentAfterHeader);
+  // Try HTML-comment marker within the first few lines (line 1 in the
+  // pre-v3 format, after the frontmatter fence in the v3 format).
+  const htmlMarker = findHtmlMarker(existing);
+  if (htmlMarker) {
+    return htmlMarker.hash !== contentHash(htmlMarker.original);
   }
 
   // Try JS-comment hash on line 1
-  match = existing.match(JS_HASH_PATTERN);
+  let match = existing.match(JS_HASH_PATTERN);
   if (match) {
     const contentAfterHeader = existing.slice(match[0].length);
     return match[1] !== contentHash(contentAfterHeader);

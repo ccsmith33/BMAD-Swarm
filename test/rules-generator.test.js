@@ -91,7 +91,16 @@ methodology:
     const files = readdirSync(paths.rulesDir).filter(f => f.endsWith('.md'));
     for (const file of files) {
       const content = readFileSync(join(paths.rulesDir, file), 'utf8');
-      assert.ok(content.startsWith('<!-- bmad-generated:'), `${file} should have bmad-generated header`);
+      // ADR-014: when the rule has frontmatter (e.g. coding-standards.md
+      // `paths:`), the frontmatter stays the first bytes and the marker
+      // follows the closing fence; otherwise the marker leads the file.
+      if (content.startsWith('---\n')) {
+        const fmEnd = content.indexOf('\n---\n', 4) + 5;
+        assert.ok(content.slice(fmEnd).startsWith('<!-- bmad-generated:'),
+          `${file} should have the bmad-generated marker after its frontmatter`);
+      } else {
+        assert.ok(content.startsWith('<!-- bmad-generated:'), `${file} should have bmad-generated header`);
+      }
     }
   });
 

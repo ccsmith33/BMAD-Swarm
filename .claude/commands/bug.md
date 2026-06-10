@@ -1,9 +1,9 @@
-<!-- bmad-generated:708ff01b -->
 ---
 description: Start a bug fix with developer + reviewer
 ---
+<!-- bmad-generated:11586a84 -->
 
-Acknowledge the user's bug report. Then emit this assembly block and call TeamCreate:
+Acknowledge the user's bug report. Then append this assembly block to `artifacts/context/team-assembly-log.md` under a dated heading (the gate reads only that file — ADR-013; also emit it in your message for traceability), then call TeamCreate:
 
 ```bmad-assembly
 entry_point: bug-fix

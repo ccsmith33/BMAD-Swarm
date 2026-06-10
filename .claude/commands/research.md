@@ -1,9 +1,9 @@
-<!-- bmad-generated:b6d4b2b6 -->
 ---
 description: Research-only task with researcher
 ---
+<!-- bmad-generated:76e0f21d -->
 
-Emit:
+Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then call TeamCreate:
 
 ```bmad-assembly
 entry_point: audit

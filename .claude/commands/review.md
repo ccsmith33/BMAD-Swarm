@@ -1,9 +1,9 @@
-<!-- bmad-generated:25475d2b -->
 ---
 description: Review an artifact with lens selection
 ---
+<!-- bmad-generated:570d1e6f -->
 
-Inspect the artifact the user referenced. Select lenses from the signal table in /identity-orchestrator (api, data, ui, perf, auth, test, docs). Emit the assembly block with those lenses:
+Inspect the artifact the user referenced. Select lenses from the signal table in /identity-orchestrator (api, data, ui, perf, auth, test, docs). Append the assembly block with those lenses to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then call TeamCreate:
 
 ```bmad-assembly
 entry_point: audit

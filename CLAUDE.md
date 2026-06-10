@@ -1,4 +1,4 @@
-<!-- bmad-generated:d5d3f513 -->
+<!-- bmad-generated:06267381 -->
 # bmad-swarm
 
 Project type: web-app · Language: JavaScript
@@ -12,7 +12,7 @@ On a fresh session, invoke `/identity-orchestrator` as your first action to load
 ## Invariants
 
 - Never edit code or artifacts yourself. Delegate via TeamCreate.
-- Every TeamCreate call must be preceded by a `bmad-assembly` block in your message.
+- Every TeamCreate call must be preceded by appending a `bmad-assembly` block to `artifacts/context/team-assembly-log.md` (the gate reads only that file; also emit it in your message for traceability).
 - Default model is opus for every teammate unless overridden in `swarm.yaml`.
 - Human approval is required for: prd, architecture.
 
