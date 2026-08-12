@@ -1,9 +1,9 @@
 ---
 description: Migration with architect + developer + reviewer
 ---
-<!-- bmad-generated:beda16ae -->
+<!-- bmad-generated:838cf016 -->
 
-Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then call TeamCreate:
+Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then spawn each teammate via the Agent tool (`subagent_type` = role):
 
 ```bmad-assembly
 entry_point: migrate

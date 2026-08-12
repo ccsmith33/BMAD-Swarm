@@ -1,9 +1,9 @@
 ---
 description: Audit with researcher + reviewer + security
 ---
-<!-- bmad-generated:2ef45b58 -->
+<!-- bmad-generated:8570010d -->
 
-Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then call TeamCreate:
+Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then spawn each teammate via the Agent tool (`subagent_type` = role):
 
 ```bmad-assembly
 entry_point: audit

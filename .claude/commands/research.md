@@ -1,9 +1,9 @@
 ---
 description: Research-only task with researcher
 ---
-<!-- bmad-generated:76e0f21d -->
+<!-- bmad-generated:929c414d -->
 
-Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then call TeamCreate:
+Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then spawn each teammate via the Agent tool (`subagent_type` = role):
 
 ```bmad-assembly
 entry_point: audit

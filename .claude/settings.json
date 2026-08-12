@@ -1,5 +1,5 @@
 {
-  "_bmadGenerated": "e2538d5f",
+  "_bmadGenerated": "8f0cc6d5",
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
@@ -19,7 +19,7 @@
       "Grep",
       "WebFetch",
       "WebSearch",
-      "TeamCreate",
+      "Agent",
       "TaskCreate",
       "TaskGet",
       "TaskList",
@@ -43,7 +43,8 @@
     ]
   },
   "env": {
-    "AGENT_ROLE": "orchestrator"
+    "AGENT_ROLE": "orchestrator",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "hooks": {
     "UserPromptSubmit": [
@@ -51,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/user-prompt-submit.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/user-prompt-submit.cjs\""
           }
         ]
       }
@@ -62,18 +63,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/post-compact-reinject.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-compact-reinject.cjs\""
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "TeamCreate",
+        "matcher": "Agent",
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/teamcreate-gate.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-assembly-lint.cjs\""
           }
         ]
       },
@@ -82,7 +83,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/orchestrator-write-gate.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/orchestrator-write-gate.cjs\""
           }
         ]
       }
