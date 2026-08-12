@@ -491,6 +491,64 @@ stack:
       assert.ok(content.includes('EJECTED'), 'Should have ejected header');
     });
 
+    it('F-016: eject places the provenance header below the frontmatter fence', () => {
+      const projectDir = join(tmpDir, 'eject-header-placement');
+      mkdirSync(projectDir, { recursive: true });
+      const paths = getProjectPaths(projectDir);
+
+      const ejectedPath = ejectAgent('developer', paths);
+      const content = readFileSync(ejectedPath, 'utf8');
+      // The package developer template has frontmatter; it must stay the
+      // first bytes of the ejected copy.
+      assert.ok(content.startsWith('---\n'), 'frontmatter must remain the first bytes');
+      const fenceEnd = content.indexOf('\n---\n', 4);
+      assert.ok(content.indexOf('EJECTED') > fenceEnd, 'EJECTED comment must sit below the closing fence');
+    });
+
+    it('F-016: eject + regenerate yields a registrable, spawnable agent file', () => {
+      const projectDir = join(tmpDir, 'eject-then-update');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: test\n');
+      const paths = getProjectPaths(projectDir);
+
+      ejectAgent('developer', paths);
+      const config = loadSwarmConfig(configPath);
+      const result = generateAgents(config, paths);
+      assert.ok(result.skipped.includes('developer'), 'ejected agent reported as skipped');
+
+      const content = readFileSync(join(paths.agentsDir, 'developer.md'), 'utf8');
+      assert.ok(content.startsWith('---\nname: developer\n'),
+        'output must start with identity frontmatter (Claude Code registration, ADR-014)');
+      const fm = content.slice(4, content.indexOf('\n---\n', 4));
+      assert.match(fm, /^description: /m, 'frontmatter must carry description');
+      assert.ok(content.includes('## Team task protocol'),
+        'ejected agents must keep the single-wake-channel protocol (D-028)');
+      assert.ok(!content.includes('EJECTED from'),
+        'provenance comments belong in overrides/, not the generated output');
+      assert.equal((fm.match(/^name:/gm) || []).length, 1, 'no duplicate name keys');
+    });
+
+    it('F-016: ejected override that already carries identity frontmatter is not double-stamped', () => {
+      const projectDir = join(tmpDir, 'eject-own-identity');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: test\n');
+      const paths = getProjectPaths(projectDir);
+
+      mkdirSync(paths.overridesAgentsDir, { recursive: true });
+      writeFileSync(join(paths.overridesAgentsDir, 'developer.md'),
+        '---\nname: developer\ndescription: "my custom developer"\n---\n# My Developer\n');
+
+      const config = loadSwarmConfig(configPath);
+      generateAgents(config, paths);
+
+      const content = readFileSync(join(paths.agentsDir, 'developer.md'), 'utf8');
+      const fm = content.slice(4, content.indexOf('\n---\n', 4));
+      assert.equal((fm.match(/^name:/gm) || []).length, 1, 'user-supplied name must not be duplicated');
+      assert.ok(fm.includes('my custom developer'), 'user description wins');
+    });
+
     it('throws when ejecting unknown agent', () => {
       const projectDir = join(tmpDir, 'eject-test-2');
       mkdirSync(projectDir, { recursive: true });
@@ -588,7 +646,7 @@ methodology:
       generateClaudeMd(config, paths);
       const content = readFileSync(paths.claudeMd, 'utf8');
       assert.ok(content.includes('/identity-orchestrator'), 'Should point at /identity-orchestrator');
-      assert.ok(content.includes('bmad-assembly'), 'Should require bmad-assembly block before TeamCreate');
+      assert.ok(content.includes('bmad-assembly'), 'Should require bmad-assembly block before team spawns');
       assert.ok(content.includes('opus'), 'Should mention opus default model');
     });
   });
@@ -729,8 +787,8 @@ methodology:
       assert.ok(content.includes('.session-active'), 'Should use session marker file');
     });
 
-    it('generates teamcreate-gate hook', () => {
-      const projectDir = join(tmpDir, 'hooks-test-teamcreate-gate');
+    it('generates team-assembly-lint hook (ADR-015 anchor)', () => {
+      const projectDir = join(tmpDir, 'hooks-test-assembly-lint');
       mkdirSync(projectDir, { recursive: true });
 
       const configPath = join(projectDir, 'swarm.yaml');
@@ -740,15 +798,20 @@ methodology:
       const paths = getProjectPaths(projectDir);
       generateHooks(config, paths);
 
-      const hookPath = join(paths.hooksDir, 'teamcreate-gate.cjs');
-      assert.ok(existsSync(hookPath), 'teamcreate-gate.cjs should exist');
+      const hookPath = join(paths.hooksDir, 'team-assembly-lint.cjs');
+      assert.ok(existsSync(hookPath), 'team-assembly-lint.cjs should exist');
+      assert.ok(!existsSync(join(paths.hooksDir, 'teamcreate-gate.cjs')),
+        'the dead TeamCreate-anchored hook must not be generated (ADR-015)');
       const content = readFileSync(hookPath, 'utf8');
       assert.ok(content.includes("permissionDecision: 'deny'") || content.includes('permissionDecision: \'deny\''), 'Should deny when assembly block missing');
       assert.ok(content.includes('bmad-assembly'), 'Should look for bmad-assembly block');
+      assert.ok(content.includes('subagent_type'), 'Should anchor on Agent-tool spawns (subagent_type)');
       // ADR-013: the handshake file is the sole channel; the transcript is
       // never read.
       assert.ok(content.includes('team-assembly-log.md'), 'Should read the assembly-log handshake');
       assert.ok(!content.includes('transcript_path'), 'Must not read the transcript (ADR-013)');
+      // ADR-015 / D-039: file-shape checks ship labeled advisory.
+      assert.ok(content.includes('not an authorization boundary'), 'Must carry the advisory classification');
     });
 
     it('generates orchestrator-write-gate hook', () => {
@@ -862,9 +925,9 @@ methodology:
       }
     });
 
-    // F-012: workflow command bodies must instruct the ADR-013 contract —
-    // append the assembly block to the handshake log before TeamCreate —
-    // not the retired "emit in your message and call TeamCreate" one.
+    // F-012: workflow command bodies must instruct the handshake contract —
+    // append the assembly block to the log before spawning — not the
+    // retired "emit in your message and call TeamCreate" one.
     it('workflow commands instruct the assembly-log append, not the retired message-channel contract (F-012)', () => {
       const projectDir = join(tmpDir, 'cmd-test-f012');
       mkdirSync(projectDir, { recursive: true });
@@ -876,20 +939,48 @@ methodology:
       generateCommands(config, paths);
 
       const commandsDir = join(paths.claudeDir, 'commands');
-      // Every command that drives a TeamCreate must name the handshake file.
+      // Every command that drives a team spawn must name the handshake file.
       const spawning = ['bug', 'feature', 'research', 'audit', 'explore-idea', 'migrate', 'review', 'plan', 'retrofit-team'];
       for (const wf of spawning) {
         const content = readFileSync(join(commandsDir, `${wf}.md`), 'utf8');
         assert.ok(content.includes('artifacts/context/team-assembly-log.md'),
-          `${wf}.md must instruct the append to the team-assembly log (ADR-013)`);
+          `${wf}.md must instruct the append to the team-assembly log`);
         assert.ok(!/[Ee]mit (this|the) assembly block and call TeamCreate/.test(content),
           `${wf}.md must not carry the retired message-channel instruction`);
       }
-      // /brainstorm never calls TeamCreate itself, but its exit handoff must
-      // point at the log for the follow-on TeamCreate.
+      // /brainstorm never spawns teammates itself, but its exit handoff must
+      // point at the log for the follow-on spawn.
       const brainstorm = readFileSync(join(commandsDir, 'brainstorm.md'), 'utf8');
       assert.ok(brainstorm.includes('artifacts/context/team-assembly-log.md'),
         'brainstorm.md exit handoff must reference the team-assembly log');
+    });
+
+    // AP-1 (ADR-015 §2): TeamCreate was removed from Claude Code — no
+    // workflow command may instruct calling it. Identity commands are
+    // excluded here: they embed agents/*.md verbatim, and any residual
+    // vocabulary there is the agent-docs sweep's contract, not this
+    // generator's.
+    it('AP-1: no workflow command body references the removed TeamCreate tool', () => {
+      const projectDir = join(tmpDir, 'cmd-test-ap1');
+      mkdirSync(projectDir, { recursive: true });
+      const configPath = join(projectDir, 'swarm.yaml');
+      writeFileSync(configPath, 'project:\n  name: cmd-test\nstack:\n  language: JS\n');
+      const config = loadSwarmConfig(configPath);
+      const paths = getProjectPaths(projectDir);
+      generateAgents(config, paths);
+      generateCommands(config, paths);
+
+      const commandsDir = join(paths.claudeDir, 'commands');
+      const workflows = ['bug', 'feature', 'research', 'audit', 'brainstorm', 'explore-idea', 'migrate', 'review', 'plan', 'retrofit-team'];
+      for (const wf of workflows) {
+        const content = readFileSync(join(commandsDir, `${wf}.md`), 'utf8');
+        assert.ok(!content.includes('TeamCreate'),
+          `${wf}.md must not reference the removed TeamCreate tool (ADR-015)`);
+      }
+      // Spawning commands must use the native vocabulary instead.
+      const bug = readFileSync(join(commandsDir, 'bug.md'), 'utf8');
+      assert.match(bug, /Agent tool/, 'spawn instruction must name the Agent tool');
+      assert.match(bug, /subagent_type/, 'spawn instruction must name subagent_type');
     });
 
     it('workflow command assembly blocks emit defaults.model (fable) instead of hardcoded opus', () => {

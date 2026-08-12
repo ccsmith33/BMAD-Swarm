@@ -94,12 +94,25 @@ describe('Cost Estimator', () => {
     });
 
     it('uses Opus pricing as baseline', () => {
-      // Opus pricing: $15/1M input, $75/1M output
+      // Opus pricing: $5/1M input, $25/1M output
       // A single ideator (min 10000 tokens) at 60/40 input/output split:
-      // input: 6000 tokens = $0.09, output: 4000 tokens = $0.30 => total ~$0.39
+      // input: 6000 tokens = $0.03, output: 4000 tokens = $0.10 => total $0.13
       const result = estimateCost(baseConfig, 'brainstorm');
-      const minCost = parseFloat(result.estimatedCostMin.slice(1));
-      assert.ok(minCost >= 0.05, 'Min cost for brainstorm should reflect Opus pricing');
+      assert.equal(result.estimatedCostMin, '$0.13');
+    });
+
+    it('applies sonnet pricing ($3/$15 per 1M) when defaults.model is sonnet', () => {
+      // input: 6000 tokens = $0.018, output: 4000 tokens = $0.06 => total ~$0.08
+      const config = { ...baseConfig, defaults: { model: 'sonnet' } };
+      const result = estimateCost(config, 'brainstorm');
+      assert.equal(result.estimatedCostMin, '$0.08');
+    });
+
+    it('applies haiku pricing ($1/$5 per 1M) when defaults.model is haiku', () => {
+      // input: 6000 tokens = $0.006, output: 4000 tokens = $0.02 => total ~$0.03
+      const config = { ...baseConfig, defaults: { model: 'haiku' } };
+      const result = estimateCost(config, 'brainstorm');
+      assert.equal(result.estimatedCostMin, '$0.03');
     });
 
     it('applies fable pricing ($10/$50 per 1M) when defaults.model is fable', () => {
@@ -114,12 +127,20 @@ describe('Cost Estimator', () => {
       // bug-fix = developer + reviewer. Developer on fable, reviewer on the
       // opus baseline. Min tokens: developer 30000, reviewer 15000.
       // developer: (18000/1M)*10 + (12000/1M)*50 = 0.18 + 0.60 = $0.78
-      // reviewer:  (9000/1M)*15  + (6000/1M)*75  = 0.135 + 0.45 = $0.585
-      // total = $1.365 => "$1.36" (binary float stores 1.365 as 1.3649…,
-      // so toFixed(2) rounds down)
+      // reviewer:  (9000/1M)*5   + (6000/1M)*25  = 0.045 + 0.15 = $0.195
+      // total = $0.975 => "$0.98"
       const config = { ...baseConfig, agents: { developer: { model: 'fable' } } };
       const result = estimateCost(config, 'bug-fix');
-      assert.equal(result.estimatedCostMin, '$1.36');
+      assert.equal(result.estimatedCostMin, '$0.98');
+    });
+
+    it('prices fable above opus for the same workload', () => {
+      const opus = parseFloat(estimateCost(baseConfig, 'brainstorm').estimatedCostMin.slice(1));
+      const fable = parseFloat(
+        estimateCost({ ...baseConfig, defaults: { model: 'fable' } }, 'brainstorm')
+          .estimatedCostMin.slice(1),
+      );
+      assert.ok(fable > opus, 'Fable ($10/$50) must cost more than opus ($5/$25)');
     });
   });
 });

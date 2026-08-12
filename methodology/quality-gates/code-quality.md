@@ -38,6 +38,7 @@ Before code can pass this gate, the following must be true:
 - [ ] **Negative tests exist**: Tests cover error conditions, invalid input, and failure scenarios
 - [ ] **Test names are descriptive**: Test names describe what is being tested and expected outcome
 - [ ] **No test cheating**: Tests do not mock away the behavior they should be testing
+- [ ] **Fixture provenance**: Fixtures for external data boundaries (third-party APIs, file formats, ingested documents) are captured real samples, not hand-rolled synthetic data; any synthetic fixture at such a boundary is flagged unless its fidelity to real data is demonstrated
 
 ### Security
 

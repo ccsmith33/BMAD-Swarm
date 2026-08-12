@@ -17,11 +17,11 @@
     "integrations/"
   ],
   "scripts": {
-    "test": "node --test test/**/*.test.js",
+    "test": "node --test",
     "start": "node bin/bmad-swarm.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "keywords": [
     "claude",

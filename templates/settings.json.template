@@ -18,7 +18,7 @@
       "Grep",
       "WebFetch",
       "WebSearch",
-      "TeamCreate",
+      "Agent",
       "TaskCreate",
       "TaskGet",
       "TaskList",
@@ -42,6 +42,7 @@
     ]
   },
   "env": {
-    "AGENT_ROLE": "orchestrator"
+    "AGENT_ROLE": "orchestrator",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }

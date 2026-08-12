@@ -68,7 +68,7 @@ So that [specific benefit].
 ## Change Log
 | Date | Change | Author |
 |------|--------|--------|
-| [date] | Story created | story-engineer |
+| [date] | Story created | strategist |
 ```
 
 ## Section Guidelines
@@ -91,7 +91,7 @@ The `## Domain:` heading declares the routing key used by the orchestrator in **
 | Regex | `^[a-z0-9][a-z0-9-]*[a-z0-9]$` (no leading/trailing hyphen, filesystem-safe) |
 | Required | no |
 | Default when absent | empty — routes to generic-dev fallback in **fixed** mode; ignored in **dynamic** mode |
-| Set by | story-engineer at story-creation time, or the human authoring the story; the architect's domain map (in `architecture.md`) is the source of valid slugs |
+| Set by | strategist at story-creation time, or the human authoring the story; the architect's domain map (in `architecture.md`) is the source of valid slugs |
 
 **Default behavior (no `## Domain:` field).** A story without a domain is **not invalid**. In `team.mode: fixed` it routes to the generic-dev fallback (when enabled). In `team.mode: dynamic` the field is ignored entirely. This is the explicit backward-compat path: every story authored before this schema addition continues to load and validate unchanged.
 

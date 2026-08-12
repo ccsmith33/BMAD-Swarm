@@ -197,20 +197,19 @@ phases:
       and validate quality throughout.
     agents:
       primary:
-        - story-engineer
+        - strategist   # owns story decomposition (absorbed the former story-engineer role)
         - developer
-        - reviewer
+        - reviewer     # test-coverage lens absorbs the former qa role
       supporting:
-        - qa
-        - retrospective
+        - orchestrator # runs the retrospective (absorbed the former retrospective role)
     sub_phases:
       - id: sprint-planning
         name: Sprint Planning
         description: >
-          Story engineer creates all epics and stories from PRD and
+          Strategist creates all epics and stories from PRD and
           architecture. Stories are sequenced into sprints based on
           dependencies and priority.
-        agents: [story-engineer]
+        agents: [strategist]
       - id: story-development
         name: Story Development
         description: >
@@ -226,12 +225,12 @@ phases:
           against acceptance criteria, architecture compliance, and
           code quality standards.
         agents: [reviewer]
-      - id: qa-validation
-        name: QA Validation
+      - id: test-validation
+        name: Test Validation
         description: >
-          QA engineer validates test coverage, creates additional
-          test suites as needed, and runs end-to-end validation.
-        agents: [qa]
+          Reviewer (test-coverage lens) validates test coverage, creates
+          additional test suites as needed, and runs end-to-end validation.
+        agents: [reviewer]
       - id: retrospective
         name: Retrospective
         description: >
@@ -239,15 +238,15 @@ phases:
           Analyzes review reports for recurring patterns, traces root
           causes through the artifact chain, and updates the project
           lessons-learned file with actionable findings.
-        agents: [retrospective]
+        agents: [orchestrator]
     artifacts:
       - type: epic
         path: artifacts/implementation/epics.md
-        producer: story-engineer
+        producer: strategist
         required: true
       - type: story
         path: artifacts/implementation/stories/
-        producer: story-engineer
+        producer: strategist
         required: true
       - type: source-code
         path: "{{output.code_dir}}"
@@ -281,15 +280,14 @@ phases:
   delivery:
     name: Delivery
     order: 5
-    default_mode: parallel  # Review and QA run independently
+    default_mode: parallel  # Review lenses run independently
     purpose: >
       Final validation, documentation, and handoff. Ensure everything
       works together, documentation is complete, and the human
       accepts the delivered product.
     agents:
       primary:
-        - reviewer
-        - qa
+        - reviewer  # code-quality + test-coverage + docs lenses
       supporting:
         - researcher  # Final documentation if needed
     artifacts:
@@ -299,7 +297,7 @@ phases:
         required: true
       - type: test-report
         path: artifacts/reviews/test-report.md
-        producer: qa
+        producer: reviewer
         required: true
     gate:
       name: delivery-accepted

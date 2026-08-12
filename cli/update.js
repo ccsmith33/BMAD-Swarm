@@ -164,6 +164,19 @@ async function runUpdate(options) {
         console.log(`  \u2713 Removed stale .claude/hooks/${name}`);
       }
     }
+    // Gate re-anchored from the removed TeamCreate tool to PreToolUse:Agent
+    // (ADR-015); the old hook file never fires and misleads readers.
+    const staleHooksAdr015 = ['teamcreate-gate.cjs'];
+    for (const name of staleHooksAdr015) {
+      const p = join(paths.hooksDir, name);
+      if (!existsSync(p)) continue;
+      const content = readFileSafe(p);
+      const secondLine = content ? content.split('\n')[1] : '';
+      if (content && /^\/\/ bmad-generated:[a-f0-9]+/.test(secondLine || '')) {
+        unlinkSync(p);
+        console.log(`  ✓ Removed stale .claude/hooks/${name}`);
+      }
+    }
     // System prompt file removed in Option C restructure (v2.0)
     if (existsSync(paths.systemPrompt)) {
       const content = readFileSafe(paths.systemPrompt);

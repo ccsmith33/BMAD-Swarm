@@ -303,3 +303,79 @@ Sequential D-IDs for all decisions that affect product direction, architecture, 
 ## D-032 — Teammate `identity-{role}` commands kept as inspection/debugging aids
 
 - 2026-06-09 — Tactical (developer, D-028 item 1 / ADR-014) — `commands-generator.js` still emits all 9 identity commands; teammate variants' descriptions now state they are inspection aids (identity arrives natively from `.claude/agents/{role}.md`). Deleting them would break muscle memory and the README's documented file layout for zero space savings; `/identity-orchestrator` remains load-bearing. (Inherited from the pre-restart session; verified and kept.)
+
+## D-033 — Overnight-autonomous mode for the reinvention session (dogfooding /sleep)
+
+- **Date:** 2026-08-11
+- **Classification:** Tactical (session-execution decision).
+- **Decision:** Human left mid-session ("food and the gym") and authorized running the rest as an overnight-autonomous session applying the just-designed /sleep decision ladder: proceed on reasoned defaults for reversible work, spike-both on forks where cheap, park only truly one-way + high-stakes + un-spikeable decisions for their return, never take destructive/irreversible external actions.
+- **Applied ruling — IMPLEMENTATION IS PARKED:** starting the actual code rewrite of the coordination core is one-way, high-stakes, and depends on four unratified human forks (A security posture, B model tier / supersede D-027, C gate posture, D orchestrator-as-native-agent) which are architecture-class and REQUIRE human approval per CLAUDE.md. So route around it: produce the vision, roadmap, ADR proposals, and doc drafts (all non-destructive, all reversible) and queue the forks + approvals for the morning. No source rewrite tonight.
+- **Referenced by:** morning report (artifacts/context/), strategist synthesis.
+
+## D-034 — Overnight guardrail model collapses to one axis: destructive vs non-destructive
+
+- **Date:** 2026-08-11
+- **Classification:** Strategic (defines the /sleep safety model, a core product feature).
+- **Decision:** Per human directive, drop the budget-usage cap and the review-debt cap as overnight constraints ("weekly limits shouldn't matter"; "review debt is fine — if I throw away 30 of 40 branches, we still got 10 branches of NEW output; ideas are never bad, as long as they aren't destructive"). The sole hard constitutional fence is DESTRUCTIVE vs NON-DESTRUCTIVE: no irreversible/world-facing external actions (push, publish, deploy, real-data migrations, rm outside worktree, destructive external APIs) and never auto-merge; everything reversible runs free and unrestrained. Retain only (a) a no-progress tripwire that REDIRECTS a degenerate loop to new work (maximizes output, not a cap) and (b) best-first ranking of the morning report as review convenience (not a cap). Precondition: Fork A shell-narrowing is what makes "worst case = throw away the branch" actually true today (security F-016/F-018).
+- **Supersedes:** the three-guardrail model in my earlier brief to ideator-overnight.
+- **Referenced by:** artifacts/exploration/diverge-2026-08-11-overnight.md, the reinvention vision.
+
+## D-035 — README + CHANGELOG rewrite is in scope, deferred to match the reinvented tool
+
+- **Date:** 2026-08-11
+- **Classification:** Tactical.
+- **Decision:** Human flagged README drift (confirmed by audit: stale 13-agent roster, wrong command counts, missing CLI commands, dead URL). Fold into the truth-sweep (WS-5) but do NOT patch it to the current-being-replaced state — rewrite it to describe the reinvented tool so it is written once. Overnight I produce a PROPOSED README + CHANGELOG as review artifacts (non-destructive, not overwriting the live files); the in-place update lands with the approved build.
+- **Referenced by:** truth-sweep workstream, morning report.
+
+## D-036 — One record envelope: D/R/L/C/F unified schema + shared promotion state machine + context file budget
+
+- 2026-08-11 — Strategic (strategist, reinvention synthesis; minted under D-033 overnight authority, queued for morning ratification) — One record shape (id, type, status, fingerprint, provenance/occurrences, evidence, links) for D/R/L/C/F; verification failure-class schema merges into L-records; F-records gain `fingerprint:` for mechanical F→L rollup; `checked/cited/attested/assumed` is the single evidence-status vocabulary; brain eviction mints fingerprinted lessons entering at `observed`; `artifacts/context/` capped at five standing files (project-brain, decision-log, ledger, task-ledger, team-assembly-log pending Fork C). Full record: `artifacts/planning/reinvention-vision-2026-08-11.md` §2.5/§9.
+
+## D-037 — Machine-state home: brain frontmatter + task-ledger; project.yaml deleted
+
+- 2026-08-11 — Strategic (strategist, reinvention synthesis; overnight per D-033, queued for ratification) — Phase/gates state lives in project-brain frontmatter (guaranteed reader: warm boot); lifecycle events in task-ledger; static init facts in swarm.yaml; project.yaml deleted (generated-view-only if tooling demands). Supersedes WS-2 item 5 of `artifacts/design/audit-2026-08-11-upgrade-design.md`. Full record: reinvention-vision §2.6/§9.
+
+## D-038 — One priced decision router: interruption tax ≡ Night Ladder ≡ regime routing; Governor mode-parameterized
+
+- 2026-08-11 — Strategic (strategist, reinvention synthesis; overnight per D-033, queued for ratification) — One stakes × human-availability × complexity routing function with a mode column, never parallel tables; the Budget Governor is one mode-parameterized subsystem (treasurer by day, scheduler by night) with the day/night subscription-quota coupling stated honestly (trade-off ratified in D-034); constitutional floors (security, contradiction escalator, destructive axis) invariant and unpriced. Confirms D-034 rank-don't-restrict; amends the novel doc's stale pre-D-034 Unlock 5 budget-cap line; night exploration is a supported mode. Full record: reinvention-vision §2.2/§2.6/§9.
+
+## D-039 — Product architecture is 2+2; thesis is outcome-linked decision memory
+
+- 2026-08-11 — Strategic (strategist, reinvention synthesis; overnight per D-033, queued for ratification) — Two mechanisms (record-promotion ledger, priced decision router) on the deterministic replay gate substrate with the project-brain cache; kept/deleted/replaced-with-native table adopted; standing rule: only deterministic replay and PreToolUse denies may be called enforcement, all file-shape checks ship labeled advisory. Full record: reinvention-vision §1–§3/§9.
+
+## D-040 — Must-spike-first rule for unverified primitives
+
+- 2026-08-11 — Strategic (strategist, reinvention synthesis; overnight per D-033, queued for ratification) — No roadmap phase depends on an unspiked primitive (TaskCompleted exit-2 hook payload, PreCompact summarizer steering, Workflow contract, --agent main session); Tier-0 ships with a deterministic pre-review-script degradation path either way; D-002 superseded only explicitly after payload re-verification. Full record: reinvention-vision §7/§9.
+
+## D-041 — Integrated roadmap adopted with hard gates
+
+- 2026-08-11 — Strategic (strategist, reinvention synthesis; overnight per D-033, queued for ratification) — Six phases (repair+spike → truth+envelope → enforcement+resilience → ship+heal-field → moat → beast+router); npm publish gated on WS-1+WS-5+WS-6; /sleep gated on Fork A + field-tested WS-2 + live replay gate; every phase reviewed against the protect-the-brain guardrails; Mission Control v1 read-only. Full record: reinvention-vision §5/§9.
+
+## D-042 — Fork ratification (orchestrator, under human "do whatever is best" delegation)
+
+- **Date:** 2026-08-11
+- **Classification:** Strategic (ratifies the 4 architecture forks; architecture-class).
+- **Decision:** Human delegated ("do whatever is best, idc") on return. Ratifying along the fork-sheet recommendations: **Fork A** = A1+A3 shell-narrowing (yes); **Fork C** = C2 advisory reframe + enforcement into the replay gate (yes); **Fork D** = D1 native `--agent` orchestrator ADOPTED PENDING spike 4 (conditional, not assumed). **Fork B** = tier mix (ADR-023) PROPOSED as new default but NOT silently applied — it supersedes the human's explicit standing directive D-027, so per the advisory contradiction-escalator it is surfaced for one-word veto; D-027 stays in force until the human confirms. Secondary calls: git-track swarm.yaml/CLAUDE.md/artifacts (yes); facade kill-list (yes).
+- **Execution ruling:** Do NOT begin the architectural rewrite. Start with the 4 feasibility spikes (D-040) — zero-risk investigations that gate the repair design — on branch `reinvention/honest-foundation`. Repair epic designed after spike results land. No merge, no push, no npm publish without explicit human sign-off.
+- **Referenced by:** artifacts/planning/forks-decision-sheet-2026-08-11.md, reinvention-vision, ADR-015..023.
+
+## D-043 — Feasibility spikes all green
+
+- 2026-08-12 — Tactical (developer spike, branch reinvention/honest-foundation) — All 4 unverified primitives verified live: blocking TaskCompleted exit-2 hook WORKS (replay gate feasible; D-002 supersession justified), PreCompact steering WORKS both halves (schema-driven compaction real), --agent main session WORKS (Fork D substrate confirmed). Workflow tool works-with-caveats: no `escalate: agentic` primitive → regime-router tier escalation must be script logic. No fallback forced. Full record: artifacts/exploration/spikes-2026-08-11.md.
+
+## D-044 — Honest Foundation P0 epic delivered + reviewed APPROVED
+
+- 2026-08-12 — Tactical (2 devs + devops + reviewer, branch reinvention/honest-foundation) — Delivered: dead gate re-anchored onto native Agent spawn + reframed advisory (ADR-015, teamcreate-gate→team-assembly-lint), F-022 future-mtime fixed, 3 blocking CLI bugs (eject+update, non-TTY init, --github workflow), npm test + engines>=22, cost-estimator prices corrected, phantom deleted-role sweep, AP-1 TeamCreate-vocabulary sweep, AP-2/AP-3 prompt fixes, fixture-provenance reviewer lens (L-001), CI + LICENSE + user-CI generator fixes. Reviewed APPROVED-with-minor (sonnet), 443/443 tests. Full record: artifacts/reviews/review-honest-foundation-2026-08-12.md.
+
+## D-045 — Live .claude/ regeneration deferred to pre-merge
+
+- 2026-08-12 — Tactical — Did NOT regenerate this repo's live .claude/ during the session: those hooks govern the running orchestrator, and regenerating them mid-session risks self-disruption. Verified regeneration correctness via temp-dir dogfood instead (lint present/fires/passes, stale hook removed, zero TeamCreate). Live regen via `bmad-swarm update` is a pre-merge step.
+
+## D-046 — F-023 (unpublished-version CI pin) deferred to the publish workstream
+
+- 2026-08-12 — Tactical — Reviewer F-023 (medium): generated --github CI pins bmad-swarm@2.0.0, which isn't on npm (only 1.2.0), so generated CI would fail step 1. Impact only materializes once a project is generated from a PUBLISHED build; fix is coupled to WS-10 (publish: register a resolvable version / npx-latest / repo install). Logged as known-issue tied to the publish gate; not fixed now to conserve usage.
+
+## D-047 — Fork B (tier mix) adopted in practice after usage-limit hit
+
+- 2026-08-12 — Strategic (supersedes D-027 by experience, pending explicit human confirmation) — Mid-session the human hit their usage limit and a fable reviewer died on it — live confirmation of the economics finding that fable-everywhere (D-027) ~2× burns limits on token-heavy roles. Switched remaining work to the tier mix (sonnet for token-heavy review; fable reserved for deep-reasoning roles). Surfaced to the human, not silent; D-027 formally superseded once they confirm.
+

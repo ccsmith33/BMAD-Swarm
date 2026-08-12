@@ -200,6 +200,95 @@ describe('CLI Integration', () => {
     assert.ok(content.includes('bmad-swarm validate'), 'Should contain validate step');
   });
 
+  it('F-018: --github workflow is runnable from a CI checkout', () => {
+    const dir = join(tmpBase, 'init-github-f018');
+    mkdirSync(dir, { recursive: true });
+    run('init -y --github', dir);
+    const content = readFileSync(join(dir, '.github', 'workflows', 'bmad-validate.yml'), 'utf8');
+
+    // doctor needs .claude/, which is gitignored and absent from CI
+    // checkouts — its presence guarantees a red workflow.
+    assert.ok(!content.includes('bmad-swarm doctor'), 'workflow must not run doctor');
+
+    // The install must be version-pinned, not floating on the public npm
+    // name.
+    const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
+    assert.ok(content.includes(`npm install -g ${pkg.name}@${pkg.version}`),
+      'CI install must be pinned to the generating package version');
+
+    // F-D4: supported Node runtime, least-privilege token, and a push
+    // trigger so main itself gets a validation signal (pull_request alone
+    // never runs on merge commits).
+    assert.ok(content.includes("node-version: '22'"), 'CI must target a supported Node version (18 is EOL)');
+    assert.match(content, /permissions:\s*\n\s+contents: read/, 'workflow must declare a read-only token');
+    assert.match(content, /on:\s*\n\s+push:\s*\n\s+branches: \[main, master\]/,
+      'workflow must trigger on pushes to main');
+
+    // Trigger paths must stay within the D-042 git-tracked set
+    // (artifacts/**, swarm.yaml). Nothing under .claude/, project.yaml, or
+    // overrides/ (permanently gitignored) may appear, or the trigger can
+    // never fire. Full trigger-vs-.gitignore composition also needs the
+    // D-042 gitignore flip in updateGitignore (shared change, tracked
+    // separately).
+    const pathLines = content.split('\n').filter(l => /^\s+- '/.test(l)).map(l => l.trim().slice(3, -1));
+    assert.ok(pathLines.length > 0, 'workflow should have a paths filter');
+    const tracked = ['artifacts/**', 'swarm.yaml'];
+    for (const p of pathLines) {
+      assert.ok(tracked.includes(p), `trigger path ${p} must be in the D-042 git-tracked set`);
+    }
+  });
+
+  it('F-017: interactive init on piped (non-TTY) stdin fails loudly instead of silent exit 0', () => {
+    const dir = join(tmpBase, 'init-non-tty');
+    mkdirSync(dir, { recursive: true });
+    let failed = null;
+    try {
+      execSync(`node "${CLI}" init`, {
+        cwd: dir,
+        encoding: 'utf8',
+        timeout: 15000,
+        input: 'proj\ndesc\nweb-app\nJS\n\n\n\nauto\n',
+      });
+    } catch (err) {
+      failed = err;
+    }
+    assert.ok(failed, 'init must exit non-zero when prompts cannot be answered');
+    const stderr = failed.stderr || '';
+    assert.match(stderr, /not a TTY|stdin closed/i, 'error must explain the non-TTY failure');
+    assert.match(stderr, /-y/, 'error must point at the non-interactive escape hatch');
+    assert.ok(!existsSync(join(dir, 'swarm.yaml')), 'no half-initialized project may be left behind');
+  });
+
+  it('update removes the stale teamcreate-gate hook (ADR-015 re-anchor)', () => {
+    const dir = join(tmpBase, 'update-stale-teamcreate');
+    mkdirSync(dir, { recursive: true });
+    run('init -y', dir);
+    const hooksDir = join(dir, '.claude', 'hooks');
+    // Simulate the pre-ADR-015 generated hook (hash on line 2, after shebang).
+    writeFileSync(join(hooksDir, 'teamcreate-gate.cjs'),
+      '#!/usr/bin/env node\n// bmad-generated:abcd1234\n// old gate\n');
+
+    const output = run('update', dir);
+    assert.ok(!existsSync(join(hooksDir, 'teamcreate-gate.cjs')),
+      'dead TeamCreate-anchored hook should be removed');
+    assert.ok(existsSync(join(hooksDir, 'team-assembly-lint.cjs')),
+      're-anchored lint should be present');
+    assert.ok(output.includes('teamcreate-gate.cjs'), 'removal should be logged');
+  });
+
+  it('update preserves a manually modified teamcreate-gate hook', () => {
+    const dir = join(tmpBase, 'update-modified-teamcreate');
+    mkdirSync(dir, { recursive: true });
+    run('init -y', dir);
+    const hooksDir = join(dir, '.claude', 'hooks');
+    writeFileSync(join(hooksDir, 'teamcreate-gate.cjs'),
+      '#!/usr/bin/env node\n// my hand-rolled gate, no marker\n');
+
+    run('update', dir);
+    assert.ok(existsSync(join(hooksDir, 'teamcreate-gate.cjs')),
+      'files without the generated marker must not be deleted');
+  });
+
   it('start --dangerous is not a valid option (permissions handled by settings.json)', () => {
     const dir = join(tmpBase, 'start-dangerous');
     mkdirSync(dir, { recursive: true });

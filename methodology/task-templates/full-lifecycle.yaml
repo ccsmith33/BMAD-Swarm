@@ -169,7 +169,7 @@ tasks:
 
   - id: create-epics-stories
     type: artifact
-    agent: story-engineer
+    agent: strategist
     phase: implementation
     description: >
       Decompose PRD and architecture into epics and stories with
@@ -189,7 +189,7 @@ tasks:
 
   - id: sprint-planning
     type: artifact
-    agent: story-engineer
+    agent: strategist
     phase: implementation
     description: >
       Organize stories into sprints based on dependencies and priority.
@@ -246,9 +246,9 @@ tasks:
     dependencies:
       - develop-story
 
-  - id: qa-validation
+  - id: test-validation
     type: validation
-    agent: qa
+    agent: reviewer
     phase: implementation
     description: >
       Validate test coverage, create E2E tests for critical flows,
@@ -281,11 +281,11 @@ tasks:
       - artifacts/reviews/final-review.md
     quality_gate: review-quality
     dependencies:
-      - qa-validation
+      - test-validation
 
   - id: final-testing
     type: validation
-    agent: qa
+    agent: reviewer
     phase: delivery
     description: >
       Final end-to-end testing across all features. Validate all
@@ -297,7 +297,7 @@ tasks:
       - artifacts/reviews/test-report.md
     quality_gate: null
     dependencies:
-      - qa-validation
+      - test-validation
 
   - id: human-accept-delivery
     type: decision

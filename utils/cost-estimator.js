@@ -13,12 +13,14 @@ const TOKENS_PER_AGENT = {
   security: { min: 15000, max: 45000 },
 };
 
-// Pricing per 1M tokens, keyed by model tier. opus is the long-standing
-// baseline; fable (Claude Fable 5, the tier above opus — D-023) is $10/$50.
-// Tiers without an entry fall back to the opus baseline.
+// Pricing per 1M tokens, keyed by model tier — Anthropic API rates as of
+// 2026-08. fable (Claude Fable 5, the tier above opus — D-023) is 2x opus.
+// Tiers without an entry fall back to the DEFAULT_MODEL baseline.
 const MODEL_PRICING = {
-  opus: { input: 15.00, output: 75.00 },
+  opus: { input: 5.00, output: 25.00 },
   fable: { input: 10.00, output: 50.00 },
+  sonnet: { input: 3.00, output: 15.00 },
+  haiku: { input: 1.00, output: 5.00 },
 };
 const INPUT_OUTPUT_RATIO = 0.6; // ~60% input, 40% output
 

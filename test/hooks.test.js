@@ -64,15 +64,25 @@ describe('Hooks (process-spawn contract)', () => {
   ].join('\n');
 
   // -----------------------------------------------------------------------
-  describe('teamcreate-gate.cjs', () => {
-    // ADR-013: the artifacts/context/team-assembly-log.md handshake is the
-    // SOLE Pass 1 channel. The transcript is never read (transcript_path in
-    // the event is ignored). Pass 1 anchors on the LAST ```bmad-assembly
-    // fence in the whole file (no byte window — F-009) and requires the file
-    // mtime to be fresh (< 15 minutes). Missing/stale/incomplete handshake =
-    // deny with an actionable message; fail-open is reserved for
-    // environmental errors (unparseable stdin, unreadable swarm.yaml,
-    // missing js-yaml).
+  describe('team-assembly-lint.cjs', () => {
+    // ADR-015: the lint anchors on PreToolUse:Agent (TeamCreate no longer
+    // exists) and only fires for orchestrator main-thread spawns of bmad
+    // team roles (.claude/agents/<type>.md exists). The
+    // artifacts/context/team-assembly-log.md handshake is the SOLE Pass 1
+    // channel. The transcript is never read (transcript_path in the event is
+    // ignored). Pass 1 anchors on the LAST ```bmad-assembly fence in the
+    // whole file (no byte window — F-009) and requires the file mtime to be
+    // fresh (< 15 minutes, and not in the future beyond skew tolerance —
+    // F-022). Missing/stale/incomplete declaration = deny with an actionable
+    // message; fail-open is reserved for environmental errors (unparseable
+    // stdin, unreadable swarm.yaml, missing js-yaml).
+
+    // The canonical team spawn: orchestrator main thread (no agent_id /
+    // agent_type) spawning a bmad team role via subagent_type.
+    const SPAWN_STDIN = JSON.stringify({
+      tool_name: 'Agent',
+      tool_input: { subagent_type: 'developer', name: 'dev-1', prompt: 'implement the story' },
+    });
 
     function makeProject(swarmYamlContents) {
       const projectDir = join(tmpDir, 'gate-' + Math.random().toString(36).slice(2));
@@ -80,6 +90,11 @@ describe('Hooks (process-spawn contract)', () => {
       if (swarmYamlContents !== null) {
         writeFileSync(join(projectDir, 'swarm.yaml'), swarmYamlContents);
       }
+      // A bmad role definition makes spawns of subagent_type "developer"
+      // count as team spawns for the lint.
+      mkdirSync(join(projectDir, '.claude', 'agents'), { recursive: true });
+      writeFileSync(join(projectDir, '.claude', 'agents', 'developer.md'),
+        '---\nname: developer\n---\n# Developer\n');
       return projectDir;
     }
 
@@ -109,9 +124,10 @@ describe('Hooks (process-spawn contract)', () => {
       mkdirSync(contextDir, { recursive: true });
       const logPath = join(contextDir, 'team-assembly-log.md');
       writeFileSync(logPath, contents);
-      if (ageMinutes > 0) {
-        const old = new Date(Date.now() - ageMinutes * 60 * 1000);
-        utimesSync(logPath, old, old);
+      if (ageMinutes !== 0) {
+        // Negative ageMinutes = mtime in the future (F-022 fixture).
+        const ts = new Date(Date.now() - ageMinutes * 60 * 1000);
+        utimesSync(logPath, ts, ts);
       }
       return logPath;
     }
@@ -136,14 +152,14 @@ describe('Hooks (process-spawn contract)', () => {
     it('accepts when a fresh log holds a valid block', () => {
       const projectDir = makeProject('project:\n  name: gate-accept\n');
       writeAssemblyLog(projectDir, '## 2026-06-09 — bug fix\n\n' + validAssemblyBlock + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null, 'fresh log with valid block → accept (no deny JSON)');
       assert.equal(result.status, 0);
     });
 
     it('denies when the log file is missing, with the append instruction', () => {
       const projectDir = makeProject('project:\n  name: gate-missing\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
       const reason = decision.hookSpecificOutput.permissionDecisionReason;
       assert.match(reason, /append a fenced bmad-assembly block/,
@@ -157,7 +173,7 @@ describe('Hooks (process-spawn contract)', () => {
     it('denies when the log is stale (mtime >= 15 minutes)', () => {
       const projectDir = makeProject('project:\n  name: gate-stale\n');
       writeAssemblyLog(projectDir, validAssemblyBlock + '\n', { ageMinutes: 16 });
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
         'stale handshake must not satisfy the gate');
       const reason = decision.hookSpecificOutput.permissionDecisionReason;
@@ -177,7 +193,7 @@ describe('Hooks (process-spawn contract)', () => {
         '```',
       ].join('\n');
       writeAssemblyLog(projectDir, partialBlock + '\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
       const reason = decision.hookSpecificOutput.permissionDecisionReason;
       assert.match(reason, /Missing: rationale\b/,
@@ -190,7 +206,7 @@ describe('Hooks (process-spawn contract)', () => {
     it('denies when the fresh log contains no fenced block at all', () => {
       const projectDir = makeProject('project:\n  name: gate-nofence\n');
       writeAssemblyLog(projectDir, '## just prose\n\nno fence here\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
       assert.match(decision.hookSpecificOutput.permissionDecisionReason,
         /no fenced bmad-assembly block/);
@@ -204,7 +220,7 @@ describe('Hooks (process-spawn contract)', () => {
         '```',
       ].join('\n');
       writeAssemblyLog(projectDir, staleIncomplete + '\n\n' + validAssemblyBlock + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null,
         'last (most recent) block decides, not the first');
     });
@@ -224,7 +240,7 @@ describe('Hooks (process-spawn contract)', () => {
         'rationale: unterminated append',
       ].join('\n');
       writeAssemblyLog(projectDir, validAssemblyBlock + '\n\n' + unclosedNewer + '\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
         'the stale previous block must not be accepted in place of the unclosed newest one');
       assert.match(decision.hookSpecificOutput.permissionDecisionReason, /unclosed/,
@@ -234,7 +250,7 @@ describe('Hooks (process-spawn contract)', () => {
     it('F-011: denies with the unclosed message when the only block is unclosed', () => {
       const projectDir = makeProject('project:\n  name: gate-f011-only\n');
       writeAssemblyLog(projectDir, '```bmad-assembly\nentry_point: bug-fix\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
       assert.match(decision.hookSpecificOutput.permissionDecisionReason, /unclosed/);
     });
@@ -247,7 +263,7 @@ describe('Hooks (process-spawn contract)', () => {
         '```',
       ].join('\n');
       writeAssemblyLog(projectDir, validAssemblyBlock + '\n\n' + incompleteLast + '\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
         'an earlier valid block must not rescue an incomplete last block');
     });
@@ -268,7 +284,7 @@ describe('Hooks (process-spawn contract)', () => {
         '```',
       ].join('\n');
       writeAssemblyLog(projectDir, bigBlock + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null,
         'a block whose fence falls outside the old 4KB tail must now be accepted');
       assert.equal(result.status, 0);
@@ -278,7 +294,7 @@ describe('Hooks (process-spawn contract)', () => {
       const projectDir = makeProject('project:\n  name: gate-f009-tail\n');
       const padding = ('x'.repeat(80) + '\n').repeat(64); // > 4KB after the block
       writeAssemblyLog(projectDir, validAssemblyBlock + '\n\n' + padding);
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null,
         'the last fence is found regardless of how much log follows it');
     });
@@ -290,16 +306,89 @@ describe('Hooks (process-spawn contract)', () => {
         type: 'assistant',
         message: { id: 'msg_1', content: [{ type: 'text', text: validAssemblyBlock }] },
       }) + '\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
-        stdin: JSON.stringify({ transcript_path: transcriptPath }), cwd: projectDir,
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', {
+        stdin: JSON.stringify({
+          transcript_path: transcriptPath,
+          tool_name: 'Agent',
+          tool_input: { subagent_type: 'developer' },
+        }),
+        cwd: projectDir,
       });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
         'the transcript is no longer a channel (ADR-013)');
     });
 
     it('fails open when stdin is not valid JSON (environmental error)', () => {
-      const result = runHook('teamcreate-gate.cjs', { stdin: 'not-json-at-all' });
+      const result = runHook('team-assembly-lint.cjs', { stdin: 'not-json-at-all' });
       assert.equal(result.decision, null);
+      assert.equal(result.status, 0);
+    });
+
+    // -------------------------------------------------------------------
+    // ADR-015 anchor: PreToolUse:Agent, no-op unless the call is an
+    // orchestrator main-thread spawn of a bmad team role.
+    // -------------------------------------------------------------------
+
+    it('ADR-015: no-ops when subagent_type is absent (generic Agent call), even with no log', () => {
+      const projectDir = makeProject('project:\n  name: gate-no-subtype\n');
+      const result = runHookInCwd('team-assembly-lint.cjs', {
+        stdin: JSON.stringify({ tool_name: 'Agent', tool_input: { prompt: 'search the repo' } }),
+        cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'non-team spawn must pass without a declaration');
+      assert.equal(result.status, 0);
+    });
+
+    it('ADR-015: no-ops for subagent-context spawns (agent_id present), even with no log', () => {
+      const projectDir = makeProject('project:\n  name: gate-subagent-ctx\n');
+      const result = runHookInCwd('team-assembly-lint.cjs', {
+        stdin: JSON.stringify({
+          agent_id: 'agent-abc123',
+          tool_name: 'Agent',
+          tool_input: { subagent_type: 'developer' },
+        }),
+        cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'teammates spawning helpers are not team assembly');
+    });
+
+    it('ADR-015: no-ops when subagent_type has no .claude/agents definition (built-in type)', () => {
+      const projectDir = makeProject('project:\n  name: gate-builtin-type\n');
+      const result = runHookInCwd('team-assembly-lint.cjs', {
+        stdin: JSON.stringify({ tool_name: 'Agent', tool_input: { subagent_type: 'Explore' } }),
+        cwd: projectDir,
+      });
+      assert.equal(result.decision, null, 'built-in agent types are not team spawns');
+    });
+
+    it('ADR-015: deny messages use Agent-spawn vocabulary, never TeamCreate', () => {
+      const projectDir = makeProject('project:\n  name: gate-vocab\n');
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
+      const reason = decision.hookSpecificOutput.permissionDecisionReason;
+      assert.match(reason, /retry the Agent spawn/);
+      assert.ok(!reason.includes('TeamCreate'), 'dead tool name must not appear in messaging');
+      assert.match(reason, /not an authorization boundary/,
+        'deny must carry the honest advisory classification (ADR-015 / D-039)');
+    });
+
+    // -------------------------------------------------------------------
+    // F-022: freshness must be bounded in BOTH directions.
+    // -------------------------------------------------------------------
+
+    it('F-022: denies when the log mtime is in the future beyond skew tolerance', () => {
+      const projectDir = makeProject('project:\n  name: gate-f022-future\n');
+      writeAssemblyLog(projectDir, validAssemblyBlock + '\n', { ageMinutes: -10 });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
+        'a future-dated log must not count as fresh');
+      assert.match(decision.hookSpecificOutput.permissionDecisionReason, /future/);
+    });
+
+    it('F-022: accepts a log mtime slightly in the future (within skew tolerance)', () => {
+      const projectDir = makeProject('project:\n  name: gate-f022-skew\n');
+      writeAssemblyLog(projectDir, validAssemblyBlock + '\n', { ageMinutes: -0.5 });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
+      assert.equal(result.decision, null, '30s of clock skew must not trip the lint');
       assert.equal(result.status, 0);
     });
 
@@ -317,7 +406,7 @@ describe('Hooks (process-spawn contract)', () => {
       const projectDir = makeProject('project:\n  name: dyn-test\n');
       const block = assemblyBlockFor('  - role: developer\n    domain: nonexistent-domain');
       writeAssemblyLog(projectDir, block + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null, 'dynamic mode → Pass 2 skipped → exit 0');
       assert.equal(result.status, 0);
     });
@@ -332,7 +421,7 @@ describe('Hooks (process-spawn contract)', () => {
       ].join('\n'));
       const block = assemblyBlockFor('  - role: developer\n    domain: nope');
       writeAssemblyLog(projectDir, block + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null);
     });
 
@@ -350,7 +439,7 @@ describe('Hooks (process-spawn contract)', () => {
       ].join('\n'));
       const block = assemblyBlockFor('  - role: developer\n    domain: backend-auth');
       writeAssemblyLog(projectDir, block + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null, 'matching (role,domain) → pass');
       assert.equal(result.status, 0);
     });
@@ -371,7 +460,7 @@ describe('Hooks (process-spawn contract)', () => {
       ].join('\n'));
       const block = assemblyBlockFor('  - role: developer');
       writeAssemblyLog(projectDir, block + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null, 'no-domain dev with fallback enabled → pass');
     });
 
@@ -390,7 +479,7 @@ describe('Hooks (process-spawn contract)', () => {
       ].join('\n'));
       const block = assemblyBlockFor('  - role: developer');
       writeAssemblyLog(projectDir, block + '\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
       const reason = decision.hookSpecificOutput.permissionDecisionReason;
       assert.match(reason, /team mode is "fixed"/);
@@ -413,7 +502,7 @@ describe('Hooks (process-spawn contract)', () => {
       ].join('\n'));
       const block = assemblyBlockFor('  - role: developer\n    domain: frontend-dashboard');
       writeAssemblyLog(projectDir, block + '\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
       const reason = decision.hookSpecificOutput.permissionDecisionReason;
       assert.match(reason, /developer domain=frontend-dashboard/);
@@ -441,7 +530,7 @@ describe('Hooks (process-spawn contract)', () => {
         '  - role: ideator',
       ].join('\n'));
       writeAssemblyLog(projectDir, block + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null, 'all non-specialized roles must pass through Pass 2');
     });
 
@@ -449,7 +538,7 @@ describe('Hooks (process-spawn contract)', () => {
       const projectDir = makeProject('project:\n  name: ac7\nteam:\n  mode: fixed\n  specializations: [this is: not valid: yaml: at all\n');
       const block = assemblyBlockFor('  - role: developer\n    domain: nope');
       writeAssemblyLog(projectDir, block + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null, 'malformed swarm.yaml → Pass 2 silently skipped');
       assert.equal(result.status, 0);
     });
@@ -458,7 +547,7 @@ describe('Hooks (process-spawn contract)', () => {
       const projectDir = makeProject(null);  // no swarm.yaml at all
       const block = assemblyBlockFor('  - role: developer\n    domain: nope');
       writeAssemblyLog(projectDir, block + '\n');
-      const result = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(result.decision, null, 'missing swarm.yaml → Pass 2 silently skipped');
       assert.equal(result.status, 0);
     });
@@ -484,7 +573,7 @@ describe('Hooks (process-spawn contract)', () => {
         '    domain: payments-api',   // INVALID — not declared
       ].join('\n'));
       writeAssemblyLog(projectDir, block + '\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
       const reason = decision.hookSpecificOutput.permissionDecisionReason;
       assert.match(reason, /developer domain=payments-api/,
@@ -506,7 +595,7 @@ describe('Hooks (process-spawn contract)', () => {
       ].join('\n'));
       const block = assemblyBlockFor('  - role: developer\n    domain: payments-api');
       writeAssemblyLog(projectDir, block + '\n');
-      const { decision } = runHookInCwd('teamcreate-gate.cjs', { stdin: '{}', cwd: projectDir });
+      const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
         'handshake-accepted block must still go through Pass 2 routing');
       assert.match(decision.hookSpecificOutput.permissionDecisionReason,
@@ -588,7 +677,7 @@ describe('Hooks (process-spawn contract)', () => {
       });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
       assert.match(decision.hookSpecificOutput.permissionDecisionReason,
-        /Delegate code\/artifact changes to a teammate via TeamCreate/);
+        /Delegate code\/artifact changes to a teammate spawned via the Agent tool/);
     });
 
     it('denies when file_path is missing (empty string does not match allow list)', () => {

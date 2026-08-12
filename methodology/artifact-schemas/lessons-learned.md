@@ -1,6 +1,6 @@
 # Artifact Schema: Lessons Learned
 
-The lessons-learned file is a project-level knowledge base that captures actionable learnings from retrospectives, code reviews, and implementation experience. It is the institutional memory of the project -- a curated set of directives that prevent future agents from repeating past mistakes and reinforce patterns that have proven effective. This file is maintained by the retrospective agent and read by all agents before starting work.
+The lessons-learned file is a project-level knowledge base that captures actionable learnings from retrospectives, code reviews, and implementation experience. It is the institutional memory of the project -- a curated set of directives that prevent future agents from repeating past mistakes and reinforce patterns that have proven effective. This file is maintained by the orchestrator during retrospectives and read by all agents before starting work.
 
 ## Expected Structure
 

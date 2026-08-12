@@ -71,6 +71,12 @@ async function runInit(options) {
   if (options.yes) {
     answers = getDefaults();
   } else {
+    // F-017: with piped/redirected stdin, readline drops buffered answers and
+    // Node exits 0 mid-await once stdin hits EOF — init would report success
+    // having created nothing. Interactive prompts require a real terminal.
+    if (!process.stdin.isTTY) {
+      throw new Error('interactive init needs a terminal (stdin is not a TTY). Use `bmad-swarm init -y` for defaults, optionally with --template <name> or --scan.');
+    }
     answers = await promptUser();
   }
 
@@ -184,26 +190,42 @@ async function promptUser() {
     output: process.stdout,
   });
 
-  const ask = (question, defaultVal) => new Promise((resolve) => {
+  // F-017 safety net: if stdin closes mid-prompt (EOF, Ctrl-D), the pending
+  // rl.question callback never fires and the awaited promise would hang the
+  // event loop into a silent exit-0. Reject instead so init fails loudly.
+  let finished = false;
+  let rejectPending = null;
+  rl.on('close', () => {
+    if (!finished && rejectPending) {
+      rejectPending(new Error('stdin closed before all prompts were answered. Use `bmad-swarm init -y` for defaults.'));
+    }
+  });
+
+  const ask = (question, defaultVal) => new Promise((resolve, reject) => {
+    rejectPending = reject;
     const prompt = defaultVal ? `${question} (${defaultVal}): ` : `${question}: `;
     rl.question(prompt, (answer) => {
+      rejectPending = null;
       resolve(answer.trim() || defaultVal || '');
     });
   });
 
-  console.log('');
-  const name = await ask('? Project name', 'my-project');
-  const description = await ask('? Project description', '');
-  const type = await ask('? Project type (web-app|api|cli|library|mobile|monorepo|other)', 'web-app');
-  const language = await ask('? Primary language', 'TypeScript');
-  const framework = await ask('? Framework (optional)', '');
-  const database = await ask('? Database (optional)', '');
-  const testing = await ask('? Test framework (optional)', '');
-  const autonomy = await ask('? Autonomy level (auto|guided|collaborative)', 'guided');
+  try {
+    console.log('');
+    const name = await ask('? Project name', 'my-project');
+    const description = await ask('? Project description', '');
+    const type = await ask('? Project type (web-app|api|cli|library|mobile|monorepo|other)', 'web-app');
+    const language = await ask('? Primary language', 'TypeScript');
+    const framework = await ask('? Framework (optional)', '');
+    const database = await ask('? Database (optional)', '');
+    const testing = await ask('? Test framework (optional)', '');
+    const autonomy = await ask('? Autonomy level (auto|guided|collaborative)', 'guided');
 
-  rl.close();
-
-  return { name, description, type, language, framework, database, testing, autonomy };
+    return { name, description, type, language, framework, database, testing, autonomy };
+  } finally {
+    finished = true;
+    rl.close();
+  }
 }
 
 /**

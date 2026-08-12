@@ -33,9 +33,18 @@ export function generateAgents(config, projectPaths, options = {}) {
     const outputPath = join(projectPaths.agentsDir, `${agentName}.md`);
     const ejectedPath = join(projectPaths.overridesAgentsDir, `${agentName}.md`);
 
-    // Layer 3: If ejected override exists, use it directly (don't overwrite)
+    // Layer 3: If ejected override exists, it replaces the BODY, not the
+    // registration envelope (F-016 fix). The ejected content still gets the
+    // swarm.yaml overrides, the team task protocol, and the identity
+    // frontmatter — otherwise the output has no name/description and Claude
+    // Code cannot register it as a spawnable agent (ADR-014, D-029).
     if (existsSync(ejectedPath)) {
-      const ejectedContent = readFileSync(ejectedPath, 'utf8');
+      let ejectedContent = stripEjectedHeader(readFileSync(ejectedPath, 'utf8'));
+      ejectedContent = applyAgentOverrides(ejectedContent, agentConfig || {}, agentName, config);
+      if (agentName !== 'orchestrator' && !ejectedContent.includes('## Team task protocol')) {
+        ejectedContent += TEAM_TASK_PROTOCOL;
+      }
+      ejectedContent = applyIdentityFrontmatter(ejectedContent, agentName);
       writeFileSafe(outputPath, ejectedContent);
       skipped.push(agentName);
       continue;
@@ -108,10 +117,29 @@ export function applyIdentityFrontmatter(content, agentName) {
   if (content.startsWith('---\n')) {
     const endIdx = content.indexOf('\n---\n', 4);
     if (endIdx !== -1) {
+      // An ejected/custom file may already carry its own identity keys;
+      // prepending a second name: would produce duplicate-key frontmatter.
+      if (/^name:\s*\S/m.test(content.slice(4, endIdx))) {
+        return content;
+      }
       return `---\n${fields}\n${content.slice(4)}`;
     }
   }
   return `---\n${fields}\n---\n${content}`;
+}
+
+// Matches the provenance comments ejectAgent writes (both the pre-fix
+// placement above the frontmatter and the current placement below it).
+const EJECTED_HEADER_RE = /^<!-- (?:EJECTED from|To return to package version)[^\n]*-->\n?/gm;
+
+/**
+ * Remove ejectAgent's provenance comment lines so the ejected content can be
+ * treated as a plain agent body during generation.
+ * @param {string} content - Ejected agent file content
+ * @returns {string}
+ */
+export function stripEjectedHeader(content) {
+  return content.replace(EJECTED_HEADER_RE, '').replace(/^\n+/, '');
 }
 
 /**
@@ -212,8 +240,23 @@ export function ejectAgent(agentName, projectPaths) {
   const content = readFileSync(packageTemplatePath, 'utf8');
   const header = `<!-- EJECTED from @bmad/swarm - this file takes priority over the package version -->\n<!-- To return to package version, run: bmad-swarm uneject agent ${agentName} -->\n\n`;
 
+  // Keep any frontmatter as the first bytes of the file (F-016): a comment
+  // above the fence would break agent registration if the file were ever
+  // consumed verbatim.
+  let ejectedContent;
+  if (content.startsWith('---\n')) {
+    const endIdx = content.indexOf('\n---\n', 4);
+    if (endIdx !== -1) {
+      const fmEnd = endIdx + '\n---\n'.length;
+      ejectedContent = content.slice(0, fmEnd) + header + content.slice(fmEnd);
+    }
+  }
+  if (ejectedContent === undefined) {
+    ejectedContent = header + content;
+  }
+
   ensureDir(projectPaths.overridesAgentsDir);
-  writeFileSafe(ejectedPath, header + content);
+  writeFileSafe(ejectedPath, ejectedContent);
 
   return ejectedPath;
 }

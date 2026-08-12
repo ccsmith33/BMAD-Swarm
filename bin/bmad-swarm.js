@@ -21,7 +21,7 @@ Getting started:
   $ bmad-swarm status        Check project configuration
   $ bmad-swarm update        Regenerate managed files after editing swarm.yaml
 
-Learn more: https://github.com/bmad-sim/bmad-swarm
+Learn more: https://github.com/ccsmith33/BMAD-Swarm
 `);
 
 // Import and register commands

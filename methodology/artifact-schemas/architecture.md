@@ -1,6 +1,6 @@
 # Artifact Schema: Architecture Document
 
-The architecture document translates PRD requirements into technical design. It is the authoritative reference for all technology selections, system structure, data models, API contracts, and key design decisions. Developers and story engineers use this document to ensure implementation follows the intended design. Every architectural decision must trace to a PRD requirement.
+The architecture document translates PRD requirements into technical design. It is the authoritative reference for all technology selections, system structure, data models, API contracts, and key design decisions. Developers and the strategist (during story decomposition) use this document to ensure implementation follows the intended design. Every architectural decision must trace to a PRD requirement.
 
 ## Expected Structure
 

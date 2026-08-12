@@ -1,0 +1,71 @@
+# CI for the bmad-swarm package itself.
+# Runs the test suite across supported Node versions, then dogfoods the CLI
+# by running its own `validate` and `doctor` commands against this repo.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 and 24 are the currently-supported LTS lines.
+        node-version: ['22', '24']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  dogfood:
+    name: Dogfood CLI (validate + doctor)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # CB-3/WS-5: validate currently fails on 28 legacy artifacts (schema
+      # single-sourcing pending); advisory until the truth-sweep phase, then
+      # flip to blocking.
+      - name: Validate artifacts with own CLI (advisory)
+        run: node bin/bmad-swarm.js validate
+        continue-on-error: true
+
+      - name: Health check with own CLI
+        run: node bin/bmad-swarm.js doctor

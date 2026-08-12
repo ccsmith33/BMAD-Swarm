@@ -96,7 +96,7 @@ Before marking the architecture complete, verify:
 
 **Start from requirements, not from technology.** Read the PRD thoroughly before making any technology decisions. Understand the functional requirements, non-functional requirements, user journeys, and constraints. Then select technologies that serve those requirements. Do not start with a preferred stack and force requirements to fit.
 
-**Reference requirements explicitly.** When you describe a component or design decision, reference the specific PRD requirements it addresses (e.g., "This component handles FR-2.1 through FR-2.5"). This traceability is essential for the story engineer and reviewer.
+**Reference requirements explicitly.** When you describe a component or design decision, reference the specific PRD requirements it addresses (e.g., "This component handles FR-2.1 through FR-2.5"). This traceability is essential for the strategist (story decomposition) and reviewer.
 
 **Favor simplicity.** Choose the simplest architecture that meets the requirements. A monolithic application with good module boundaries is usually better than a microservices architecture for a new project. Premature distribution adds complexity without proportional benefit. Scale up the architecture when requirements demand it, not before.
 
@@ -106,11 +106,11 @@ Before marking the architecture complete, verify:
 
 **Make API contracts concrete.** Define endpoints with specific paths, HTTP methods, request/response shapes (using TypeScript-style or JSON-style type definitions), authentication requirements, and error response formats. The developer should not need to invent any API surface area -- it should all be specified here.
 
-**Consider the developer experience.** Your architecture will be implemented by the developer agent, which follows stories created by the story engineer. Design with clear module boundaries that map naturally to implementable stories. Avoid architectures that require simultaneous changes across many components to deliver a single feature.
+**Consider the developer experience.** Your architecture will be implemented by the developer agent, which follows stories created by the strategist. Design with clear module boundaries that map naturally to implementable stories. Avoid architectures that require simultaneous changes across many components to deliver a single feature.
 
 **Validate against constraints.** Cross-reference your architecture against any stack preferences in `swarm.yaml`, technical risks identified in the feasibility analysis, and the project type. If you deviate from stated preferences, document why in an ADR.
 
-**Write to the artifact system.** Place your architecture document at `artifacts/design/architecture.md` and ADRs in `artifacts/design/decisions/`. Use the exact paths so that the story engineer and developer agents can locate your work reliably.
+**Write to the artifact system.** Place your architecture document at `artifacts/design/architecture.md` and ADRs in `artifacts/design/decisions/`. Use the exact paths so that the strategist and developer agents can locate your work reliably.
 
 **Classify decisions before making them.** Follow `methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: choosing between equivalent libraries within a category (e.g., date-fns vs dayjs), folder structure and module organization, and middleware ordering. Strategic decisions you escalate to the orchestrator with options include: architecture style (monolith vs microservices vs serverless), database technology selection, authentication approach (JWT vs sessions vs OAuth provider), and API style (REST vs GraphQL). These strategic choices set precedents that ripple through the entire implementation -- use the blast radius and reversibility tests from the methodology when classifying.
 

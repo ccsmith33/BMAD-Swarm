@@ -48,7 +48,7 @@ describe('Settings Generator', () => {
     assert.ok(content.hooks, 'Should have hooks section');
     assert.ok(content.hooks.UserPromptSubmit, 'Should have UserPromptSubmit hooks');
     assert.ok(content.hooks.SessionStart, 'Should have SessionStart hooks');
-    assert.ok(content.hooks.PreToolUse, 'Should have PreToolUse hooks (TeamCreate + Edit/Write gates)');
+    assert.ok(content.hooks.PreToolUse, 'Should have PreToolUse hooks (Agent assembly lint + Edit/Write gate)');
     assert.ok(!content.hooks.TaskCompleted, 'Should NOT have TaskCompleted hooks (removed per ADR-002)');
     assert.ok(!content.hooks.PostToolUse, 'Should NOT have PostToolUse hooks (task-tool-warning removed)');
     assert.ok(!content.hooks.TeammateIdle, 'Should NOT have TeammateIdle hooks (dead capability removed)');
@@ -69,11 +69,12 @@ describe('Settings Generator', () => {
     assert.ok(!content.permissions.allow.includes('TodoWrite'), 'TodoWrite must not be in allow-list');
   });
 
-  it('permissions.allow contains TeamCreate', () => {
-    const { config, paths } = makeProject('settings-teamcreate');
+  it('permissions.allow contains Agent and not the removed TeamCreate (ADR-015)', () => {
+    const { config, paths } = makeProject('settings-agent-allow');
     generateSettings(config, paths);
     const content = JSON.parse(readFileSync(paths.settingsJson, 'utf8'));
-    assert.ok(content.permissions.allow.includes('TeamCreate'), 'TeamCreate must be in allow-list');
+    assert.ok(content.permissions.allow.includes('Agent'), 'Agent must be in allow-list (teams form on Agent spawns)');
+    assert.ok(!content.permissions.allow.includes('TeamCreate'), 'TeamCreate no longer exists and must not be listed');
   });
 
   it('env.AGENT_ROLE is set to orchestrator', () => {
@@ -82,6 +83,26 @@ describe('Settings Generator', () => {
     const content = JSON.parse(readFileSync(paths.settingsJson, 'utf8'));
     assert.ok(content.env, 'Should have env section');
     assert.equal(content.env.AGENT_ROLE, 'orchestrator', 'AGENT_ROLE env must be set to orchestrator');
+  });
+
+  it('env enables experimental agent teams (ADR-015)', () => {
+    const { config, paths } = makeProject('settings-agent-teams-env');
+    generateSettings(config, paths);
+    const content = JSON.parse(readFileSync(paths.settingsJson, 'utf8'));
+    assert.equal(content.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS, '1',
+      'agent-teams events (team spawns, TaskCreated/TaskCompleted) require the experimental flag');
+  });
+
+  it('PreToolUse anchors the assembly lint on Agent, not TeamCreate (ADR-015)', () => {
+    const { config, paths } = makeProject('settings-agent-anchor');
+    generateSettings(config, paths);
+    const content = JSON.parse(readFileSync(paths.settingsJson, 'utf8'));
+    const matchers = content.hooks.PreToolUse.map(h => h.matcher);
+    assert.ok(matchers.includes('Agent'), 'PreToolUse must match the Agent tool');
+    assert.ok(!matchers.includes('TeamCreate'), 'dead TeamCreate matcher must not ship (misleads settings readers)');
+    const agentHook = content.hooks.PreToolUse.find(h => h.matcher === 'Agent');
+    assert.match(agentHook.hooks[0].command, /team-assembly-lint\.cjs/, 'Agent matcher runs the assembly lint');
+    assert.match(agentHook.hooks[0].command, /\$CLAUDE_PROJECT_DIR/, 'hook command must be project-dir anchored (M-2)');
   });
 
   it('permissions.defaultMode is acceptEdits (ADR-001)', () => {

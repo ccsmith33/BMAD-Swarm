@@ -80,7 +80,7 @@ export function generateCommands(config, projectPaths, options = {}) {
 }
 
 function buildBugBody(model) {
-  return `Acknowledge the user's bug report. Then append this assembly block to \`artifacts/context/team-assembly-log.md\` under a dated heading (the gate reads only that file — ADR-013; also emit it in your message for traceability), then call TeamCreate:
+  return `Acknowledge the user's bug report. Then append this assembly block to \`artifacts/context/team-assembly-log.md\` under a dated heading (the advisory assembly lint reads only that file — ADR-015; also emit it in your message for traceability), then spawn each teammate via the Agent tool (\`subagent_type\` = role; the team forms implicitly on the first spawn):
 
 \`\`\`bmad-assembly
 entry_point: bug-fix
@@ -99,7 +99,7 @@ Spawn both teammates with a curated brief including the bug description and affe
 }
 
 function buildFeatureBody(model) {
-  return `Score complexity (5-15). If 5-7 use small-feature; if ≥8 use full-lifecycle. Append the assembly block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then call TeamCreate. Default team for small-feature:
+  return `Score complexity (5-15). If 5-7 use small-feature; if ≥8 use full-lifecycle. Append the assembly block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn each teammate via the Agent tool (\`subagent_type\` = role). Default team for small-feature:
 
 \`\`\`bmad-assembly
 entry_point: small-feature
@@ -118,7 +118,7 @@ rationale: Small feature — architect designs, developer implements, reviewer v
 }
 
 function buildResearchBody(model) {
-  return `Append this block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then call TeamCreate:
+  return `Append this block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn each teammate via the Agent tool (\`subagent_type\` = role):
 
 \`\`\`bmad-assembly
 entry_point: audit
@@ -134,7 +134,7 @@ Spawn researcher with the user's question. Relay findings.`;
 }
 
 function buildAuditBody(model) {
-  return `Append this block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then call TeamCreate:
+  return `Append this block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn each teammate via the Agent tool (\`subagent_type\` = role):
 
 \`\`\`bmad-assembly
 entry_point: audit
@@ -159,7 +159,7 @@ function buildExploreIdeaBody(model) {
 
 Step 1 (in your session): Read \`agents/ideator.md\` in full. Overlay the ideator persona onto your own session for the conversation with the user. Apply the Four Lenses, brainstorming techniques, elicitation methods invisibly. Check the exit condition at every turn.
 
-Step 2 (parallel spawn): After your first exchange with the user — once the topic is clear enough to seed a research brief — append the assembly block below to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn a researcher via TeamCreate. The researcher gathers external evidence (market signals, technical feasibility, prior art, competitive landscape) while you continue the conversation with the user.
+Step 2 (parallel spawn): After your first exchange with the user — once the topic is clear enough to seed a research brief — append the assembly block below to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn a researcher via the Agent tool (\`subagent_type: researcher\`). The researcher gathers external evidence (market signals, technical feasibility, prior art, competitive landscape) while you continue the conversation with the user.
 
 \`\`\`bmad-assembly
 entry_point: explore-idea
@@ -174,13 +174,13 @@ rationale: Mode B — ideator overlay on orchestrator + parallel researcher for 
 Step 3 (on exit): When the user signals readiness to build, ask the researcher to finalize their report (SendMessage), then:
 - Write \`artifacts/planning/brainstorm-<topic-slug>-<YYYY-MM-DD>.md\` — the brainstorm summary (same template as /brainstorm).
 - Reference the researcher's evidence report in the summary's "open questions" / "supporting evidence" section.
-- Emit a second assembly block for the next phase (typically strategist + architect); when you proceed to that TeamCreate, append it to \`artifacts/context/team-assembly-log.md\` first.
+- Emit a second assembly block for the next phase (typically strategist + architect); when you proceed to those spawns, append it to \`artifacts/context/team-assembly-log.md\` first.
 
 DO NOT suppress the researcher spawn if the conversation hasn't started yet — the assembly block in Step 2 is mandatory and should go out in your first or second turn. The researcher will idle waiting for clarifying messages if needed.`;
 }
 
 function buildBrainstormBody() {
-  return `Enter brainstorm mode (orchestrator-overlay pattern). Do NOT emit a bmad-assembly block. Do NOT call TeamCreate. Brainstorming is a conversational orchestrator process step — teammates cannot converse with the human directly, so the ideator persona overlays onto your own session instead.
+  return `Enter brainstorm mode (orchestrator-overlay pattern). Do NOT emit a bmad-assembly block. Do NOT spawn teammates. Brainstorming is a conversational orchestrator process step — teammates cannot converse with the human directly, so the ideator persona overlays onto your own session instead.
 
 1. Read \`agents/ideator.md\` in full. Internalize the Four Lenses, brainstorming techniques, elicitation methods, and adaptive interaction rules.
 2. Greet the user as a thinking partner. Ask what they want to explore.
@@ -189,12 +189,12 @@ function buildBrainstormBody() {
 5. **Check the exit condition at every turn.** Before your turn ends, ask: has the user signaled readiness to build ("let's do this", "ok, build it", "hand it off")? If yes, exit now — do not take another brainstorming turn.
 6. On exit:
    - Write \`artifacts/planning/brainstorm-<topic-slug>-<YYYY-MM-DD>.md\` containing: topic, key decisions with D-IDs, open questions, recommended next step.
-   - Emit a \`bmad-assembly\` block for the recommended next phase (typically strategist for product brief + architect if architecture questions surfaced); when you proceed to that TeamCreate, append it to \`artifacts/context/team-assembly-log.md\` first — the gate reads only that file.
+   - Emit a \`bmad-assembly\` block for the recommended next phase (typically strategist for product brief + architect if architecture questions surfaced); when you proceed to those spawns, append it to \`artifacts/context/team-assembly-log.md\` first — the assembly lint reads only that file.
 7. If the conversation reveals the idea needs substantial external research before it can be shaped further, suggest the user run \`/explore-idea\` (Mode B — ideator overlay + researcher in parallel). Do NOT silently spawn a researcher yourself mid-brainstorm.`;
 }
 
 function buildMigrateBody(model) {
-  return `Append this block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then call TeamCreate:
+  return `Append this block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn each teammate via the Agent tool (\`subagent_type\` = role):
 
 \`\`\`bmad-assembly
 entry_point: migrate
@@ -213,7 +213,7 @@ rationale: Migration — architect plans, developer executes, reviewer validates
 }
 
 function buildReviewBody(model) {
-  return `Inspect the artifact the user referenced. Select lenses from the signal table in /identity-orchestrator (api, data, ui, perf, auth, test, docs). Append the assembly block with those lenses to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then call TeamCreate:
+  return `Inspect the artifact the user referenced. Select lenses from the signal table in /identity-orchestrator (api, data, ui, perf, auth, test, docs). Append the assembly block with those lenses to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn the reviewer via the Agent tool (\`subagent_type: reviewer\`):
 
 \`\`\`bmad-assembly
 entry_point: audit
@@ -228,7 +228,7 @@ rationale: Lens-based review of <artifact>.
 }
 
 function buildPlanBody() {
-  return `Plan mode: assess the request, emit a bmad-assembly block in your message, then STOP and wait for the user to approve. Do NOT call TeamCreate yet and do NOT append to the assembly log yet. After user says "go" or equivalent, append the block to \`artifacts/context/team-assembly-log.md\` (the gate reads only that file) and execute it.`;
+  return `Plan mode: assess the request, emit a bmad-assembly block in your message, then STOP and wait for the user to approve. Do NOT spawn any teammates yet and do NOT append to the assembly log yet. After user says "go" or equivalent, append the block to \`artifacts/context/team-assembly-log.md\` (the assembly lint reads only that file) and execute it by spawning the listed teammates via the Agent tool.`;
 }
 
 function buildRetrofitTeamBody(model) {
@@ -271,7 +271,7 @@ Walk these steps in order. Refuse cleanly at any gate that fails — do not impr
 
 7. **Human approval gate.** Pause and explicitly ask: "Approve the Domain Map for insertion into \`artifacts/design/architecture.md\`?" Wait for an explicit "yes" / "approve" / equivalent affirmative. This honors the CLAUDE.md invariant "Human approval is required for: ... architecture". If the user declines, exit cleanly with no edits and no D-ID logged.
 
-8. **On approval: spawn ONE architect for the file edit.** Append this \`bmad-assembly\` block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then call TeamCreate with a brief that contains the approved Domain Map verbatim and the chosen insertion position:
+8. **On approval: spawn ONE architect for the file edit.** Append this \`bmad-assembly\` block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn the architect via the Agent tool (\`subagent_type: architect\`) with a brief that contains the approved Domain Map verbatim and the chosen insertion position:
 
 \`\`\`bmad-assembly
 entry_point: small-feature

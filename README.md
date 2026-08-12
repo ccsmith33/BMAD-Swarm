@@ -57,7 +57,7 @@ Claude itself becomes the orchestrator -- an AI coordinator that never writes co
 1. **Assesses complexity** across 5 dimensions (scope, clarity, technical risk, codebase size, dependencies)
 2. **Selects the orchestration mode**:
    - **Interactive** -- Single agent works directly with you (brainstorming, planning, design decisions)
-   - **Parallel** -- Multiple agents work simultaneously (implementation, review, QA)
+   - **Parallel** -- Multiple agents work simultaneously (implementation, review)
    - **Hybrid** -- Interactive for planning phases, parallel for building
 3. **Assembles the right team** -- only the agents needed, not the full roster
 4. **Creates a task graph** with dependencies and quality gates
@@ -73,8 +73,8 @@ Planning phases default to interactive mode (one agent working with you). Buildi
 | **1. Exploration** | Interactive | Research problem space | Researcher |
 | **2. Definition** | Interactive | Define requirements (PRD) | Strategist |
 | **3. Design** | Interactive | Architecture and technical decisions | Architect |
-| **4. Implementation** | Parallel | Build, test, review in sprints | Developer, Reviewer, QA |
-| **5. Delivery** | Parallel | Final validation and handoff | Reviewer, QA |
+| **4. Implementation** | Parallel | Build, test, review in sprints | Strategist, Developer, Reviewer |
+| **5. Delivery** | Parallel | Final validation and handoff | Reviewer |
 
 Phases are skipped based on complexity. A bug fix goes straight to Implementation. A small feature might skip Exploration and Definition.
 
@@ -85,16 +85,12 @@ Phases are skipped based on complexity. A bug fix goes straight to Implementatio
 | **orchestrator** | Team lead. Assesses complexity, builds teams, creates task graphs. Never implements directly. |
 | **ideator** | Structured brainstorming partner. Uses 17 techniques, anti-bias protocols, and elicitation methods. Adapts to your thinking style. |
 | **researcher** | Discovery, analysis, and context acquisition. Web research and codebase scanning. |
-| **strategist** | Product strategy, requirements definition, PRD creation. |
+| **strategist** | Product strategy, requirements definition, PRD creation, and story decomposition (implementation-ready stories with BDD acceptance criteria). |
 | **architect** | Technical design, system architecture, technology selection. |
-| **story-engineer** | Creates implementation-ready stories with BDD acceptance criteria. |
 | **developer** | Story implementation following TDD. Multiple developers can work in parallel. |
-| **reviewer** | Adversarial code review. Validates quality, security, architecture compliance, and decision traceability. |
-| **qa** | Test strategy, automated test creation, coverage analysis. |
-| **retrospective** | Post-epic analysis. Extracts patterns from reviews and updates lessons-learned. |
+| **reviewer** | Adversarial code review. Validates quality, security, architecture compliance, and decision traceability. Lens system covers test coverage (former qa role) and documentation (former tech-writer role). |
 | **devops** | Infrastructure, CI/CD, deployment automation. |
 | **security** | Security design, threat modeling, vulnerability analysis. |
-| **tech-writer** | Documentation, API docs, user guides. |
 
 ### Decision Traceability
 
@@ -105,7 +101,7 @@ Human says "mobile-first" during brainstorming
   -> D-001 logged in product brief
     -> Strategist references D-001 in PRD requirement
       -> Architect references D-001 in frontend design
-        -> Story engineer includes D-001 in acceptance criteria
+        -> Strategist includes D-001 in acceptance criteria
           -> Reviewer verifies D-001 compliance
 ```
 
@@ -204,6 +200,30 @@ Detect stack from the current codebase and generate `project-context.md`.
 ### `bmad-swarm status`
 
 Show project configuration, current phase, agent status, and artifact counts.
+
+### `bmad-swarm validate`
+
+Validate artifact quality against quality gate criteria.
+
+### `bmad-swarm doctor`
+
+Check project configuration health and report issues.
+
+### `bmad-swarm phase`
+
+Manage project phase transitions. Subcommands: `show` (current phase and available transitions), `advance` (move to the next phase), `set <name>` (manually set the current phase).
+
+### `bmad-swarm workspace`
+
+Manage workspace/monorepo discovery. Subcommands: `list` (discover and list workspaces from `swarm.yaml`), `detect` (check whether the current directory is a workspace in a monorepo).
+
+### `bmad-swarm plugin`
+
+Manage plugin agents. Subcommands: `list` (discover and list plugin agents).
+
+### `bmad-swarm scaffold-team`
+
+Generate the `swarm.yaml` `team:` block from the architecture Domain Map (see "Retrofit tooling" below).
 
 ## Escape Hatches
 
@@ -410,14 +430,14 @@ agents:
     # model: sonnet             # Preferred model hint (string: haiku, sonnet, opus, fable, inherit)
     # extra_context: ""         # Appended to the agent's prompt (string)
     # extra_rules: []           # Additional behavioral rules (string[])
+  # ideator: { ... }
   # researcher: { ... }
   # strategist: { ... }
   # architect: { ... }
-  # story-engineer: { ... }
   # developer: { ... }
   # reviewer: { ... }
-  # qa: { ... }
-  # ideator: { ... }
+  # devops: { ... }
+  # security: { ... }
 
 # Output locations
 output:
@@ -482,7 +502,7 @@ bmad-swarm/
     quality-gates/             Quality validation criteria (PRD, architecture, code, etc.)
     artifact-schemas/          Expected structure for each artifact type
     task-templates/            Pre-built task graphs for common workflows
-    testing-knowledge/         Stack-aware testing guides for the QA agent
+    testing-knowledge/         Stack-aware testing guides for the reviewer's test-coverage lens
     decision-classification.md Tactical vs strategic decision framework
     decision-traceability.md   D-ID system for tracking decisions through artifacts
     orchestration-modes.md     When to use interactive vs parallel vs hybrid

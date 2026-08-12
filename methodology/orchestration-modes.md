@@ -47,7 +47,7 @@ The orchestrator selects one of three modes based on what the human is asking fo
 **When to use:**
 - Implementation of well-defined work — stories exist, acceptance criteria are clear
 - Independent research tracks — market research and technical research can run simultaneously
-- Review + QA — reviewer and QA agent work on different aspects of the same code
+- Multi-lens review — reviewer runs code-quality and test-coverage passes over the same code
 - Multi-module development — two developers on independent modules with no shared interfaces
 
 **How it works:**
@@ -65,7 +65,7 @@ The orchestrator selects one of three modes based on what the human is asking fo
 **Example triggers:**
 - "build this feature" (when stories/specs already exist)
 - "implement the stories from the sprint plan"
-- "review and QA the code"
+- "review and test-validate the code"
 - "research both the market opportunity and the technical feasibility"
 
 **Complexity signal:** Score 11+ on the complexity assessment, or any task in the Implementation/Delivery phases with clear specs.

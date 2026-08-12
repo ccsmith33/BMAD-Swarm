@@ -13,7 +13,7 @@ description: >
 tasks:
   - id: create-epics-stories
     type: artifact
-    agent: story-engineer
+    agent: strategist
     description: >
       Decompose the PRD and architecture into epics and stories.
       Each epic groups related functionality. Each story must include:
@@ -43,7 +43,7 @@ tasks:
 
   - id: sprint-planning
     type: artifact
-    agent: story-engineer
+    agent: strategist
     description: >
       Organize stories into sprints based on dependencies and priority.
       Create a sprint status tracker that maps epics to stories with
@@ -117,9 +117,9 @@ tasks:
     dependencies:
       - "develop-story-{{story_key}}"
 
-  - id: qa-validation
+  - id: test-validation
     type: validation
-    agent: qa
+    agent: reviewer
     description: >
       Validate overall test coverage and quality after all stories in
       a sprint are complete. Identify gaps in test coverage, create
@@ -149,4 +149,4 @@ tasks:
       - artifacts/context/decision-log.md  # Append learnings
     quality_gate: null
     dependencies:
-      - qa-validation
+      - test-validation
