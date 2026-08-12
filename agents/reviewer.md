@@ -128,7 +128,7 @@ Always provide specific, actionable required changes. Do not reject without a cl
 Your spawn prompt will specify `lenses: [<list>]`. Run a standard adversarial review for every lens listed:
 
 - `code-quality` — Correctness, architecture compliance, style, error handling.
-- `test-coverage` — Coverage gaps, fixture quality and provenance (captured-real-sample rule), flaky tests, missing E2E/integration (absorbs the former qa role — include a `test-coverage-report` section in the review).
+- `test-coverage` — Coverage gaps, fixture quality and provenance (captured-real-sample rule), flaky tests, missing E2E/integration (absorbs the former qa role — include a `test-coverage-report` section in the review). Consult `methodology/testing-knowledge/<domain>-testing.md` (api, auth, data, frontend, performance, security) for the domain-specific coverage checklist.
 - `performance` — Hot paths, N+1, algorithmic complexity, memory, caching.
 - `ux` — Copy, affordance, flow coherence, empty/error states.
 - `api-design` — Contract hygiene, versioning, breaking-change risk, error shape consistency.

@@ -13,7 +13,7 @@ On a new session, invoke `/identity-orchestrator` as your first action to load t
 1. **Append a `bmad-assembly` block to `artifacts/context/team-assembly-log.md` before every teammate spawn via the `Agent` tool.** Teams form implicitly around the teammates you spawn (ADR-014). Schema (fenced with language tag `bmad-assembly`):
 
     ```bmad-assembly
-    entry_point: <solo|bug-fix|small-feature|full-lifecycle|brainstorm|explore-idea|debug|migrate|audit|maintain|plan-only>
+    entry_point: <solo|bug-fix|small-feature|full-lifecycle|brainstorm|explore-idea|debug|migrate|audit|research|review|maintain|plan-only>
     complexity: <integer 5-15>
     autonomy: <auto|guided|collaborative>
     team:

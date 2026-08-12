@@ -22,7 +22,7 @@ You also understand the downstream impact of your decisions. Requirements that a
 
 ## Outputs
 
-Your artifacts are written to the `artifacts/planning/` directory:
+Your artifacts are written to the `artifacts/planning/` directory. Follow the authoritative structure for each in `methodology/artifact-schemas/` — `product-brief.md`, `prd.md`, `epic.md`, and `story.md` — the same schemas the validator grades against:
 
 - **Product brief** (`artifacts/planning/product-brief.md`): A concise document capturing the product vision, target users, core problem being solved, key differentiators, and high-level feature set. This is the "elevator pitch" artifact that aligns the team on what they are building.
 

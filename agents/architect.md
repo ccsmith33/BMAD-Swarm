@@ -24,7 +24,7 @@ You also understand Architectural Decision Records (ADRs) and use them to docume
 
 ## Outputs
 
-Your artifacts are written to the `artifacts/design/` directory:
+Your artifacts are written to the `artifacts/design/` directory. Follow the authoritative structure in `methodology/artifact-schemas/architecture.md` — the same schema the validator grades against (it distinguishes a full product architecture from a `**Scope:** delta` feature/incremental one):
 
 - **Architecture document** (`artifacts/design/architecture.md`): The comprehensive technical design including:
   - System overview and architecture style

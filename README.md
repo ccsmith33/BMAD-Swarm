@@ -497,16 +497,15 @@ bmad-swarm/
   bin/bmad-swarm.js           CLI entry point
   cli/                        Command implementations (init, update, start, eject, scan, etc.)
   agents/                     Agent templates (13 agents)
-  methodology/
-    phases.yaml               Phase definitions, gates, transitions
-    quality-gates/             Quality validation criteria (PRD, architecture, code, etc.)
-    artifact-schemas/          Expected structure for each artifact type
-    task-templates/            Pre-built task graphs for common workflows
+  methodology/                 Authoritative methodology; a load-bearing subset ships
+                               into generated projects at .claude/bmad/methodology/
+    phases.yaml               Phase definitions, gates, transitions (repo reference)
+    artifact-schemas/          Single source of artifact structure + quality checklists;
+                               spec.yaml is the machine projection the validator consumes
+    quality-gates/             code-quality.md (the other gates folded into artifact-schemas/)
     testing-knowledge/         Stack-aware testing guides for the reviewer's test-coverage lens
     decision-classification.md Tactical vs strategic decision framework
     decision-traceability.md   D-ID system for tracking decisions through artifacts
-    orchestration-modes.md     When to use interactive vs parallel vs hybrid
-    adaptive-interaction.md    How agents read and adapt to the human's style
     brainstorming-techniques.md  Curated technique library for the ideator
     elicitation-methods.md     Methods for deepening weak artifact sections
   templates/                   Template files for code generation (settings.json, CLAUDE.md, rules)

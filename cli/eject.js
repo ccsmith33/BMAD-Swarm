@@ -1,8 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { getProjectPaths, PACKAGE_METHODOLOGY_DIR } from '../utils/paths.js';
+import { getProjectPaths } from '../utils/paths.js';
 import { ejectAgent } from '../generators/agent-generator.js';
-import { writeFileSafe, ensureDir } from '../utils/fs-helpers.js';
 
 /**
  * Register the eject command with the CLI program.
@@ -12,17 +9,18 @@ export function registerEjectCommand(program) {
   program
     .command('eject')
     .description('Copy a package agent to overrides/ for full local customization')
-    .argument('<type>', 'Type to eject ("agent" or "methodology")')
+    .argument('<type>', 'Type to eject ("agent")')
     .argument('<name>', 'Name of the item to eject')
     .addHelpText('after', `
 Examples:
   $ bmad-swarm eject agent developer              Eject the developer agent
   $ bmad-swarm eject agent orchestrator            Eject the orchestrator agent
-  $ bmad-swarm eject methodology phases            Eject phases.yaml
-  $ bmad-swarm eject methodology quality-gate prd-quality  Eject a quality gate
 
 Agent ejections go to overrides/agents/<name>.md
-Methodology ejections go to overrides/methodology/<path>
+
+Methodology is no longer ejected: the load-bearing subset ships into
+.claude/bmad/methodology/ on init/update and that shipped copy IS the editable
+surface — edit it in place (\`bmad-swarm update\` preserves your edits).
 `)
     .action(async (type, name) => {
       try {
@@ -50,52 +48,13 @@ async function runEject(type, name) {
     console.log(`\`bmad-swarm update\` will NOT overwrite it.`);
     console.log(`To return to package version: bmad-swarm uneject agent ${name}`);
   } else if (type === 'methodology') {
-    const ejectedPath = ejectMethodology(name, paths);
-    console.log(`Ejected methodology "${name}" to ${ejectedPath}`);
-    console.log('This local copy now takes priority over the package version.');
-    console.log(`To return to package version: bmad-swarm uneject methodology ${name}`);
+    console.error('Methodology eject was removed. The load-bearing methodology subset now ships');
+    console.error('into `.claude/bmad/methodology/` on init/update — that shipped copy IS the');
+    console.error('editable surface. Edit those files in place; `bmad-swarm update` preserves your');
+    console.error('edits (they are hash-tracked like agents and skipped unless you pass --force).');
+    process.exit(1);
   } else {
-    console.error(`Unknown eject type: "${type}". Supported types: agent, methodology`);
+    console.error(`Unknown eject type: "${type}". Supported types: agent`);
     process.exit(1);
   }
-}
-
-/**
- * Eject a methodology file to overrides/methodology/.
- * @param {string} name - Name like "phases" or "quality-gate/prd-quality"
- * @param {object} paths - Project paths
- * @returns {string} Path to the ejected file
- */
-function ejectMethodology(name, paths) {
-  // Map name to source file
-  let sourcePath;
-  let destRelative;
-  if (name === 'phases') {
-    sourcePath = join(PACKAGE_METHODOLOGY_DIR, 'phases.yaml');
-    destRelative = 'phases.yaml';
-  } else if (name.startsWith('quality-gate/') || name.startsWith('quality-gate\\')) {
-    const gateName = name.split(/[/\\]/).pop();
-    sourcePath = join(PACKAGE_METHODOLOGY_DIR, 'quality-gates', `${gateName}.md`);
-    destRelative = join('quality-gates', `${gateName}.md`);
-  } else {
-    // Try as a direct path under methodology/
-    sourcePath = join(PACKAGE_METHODOLOGY_DIR, name.endsWith('.yaml') ? name : `${name}.yaml`);
-    destRelative = name.endsWith('.yaml') ? name : `${name}.yaml`;
-  }
-
-  if (!existsSync(sourcePath)) {
-    throw new Error(`No methodology file found for "${name}" at ${sourcePath}`);
-  }
-
-  const destPath = join(paths.overridesMethodologyDir, destRelative);
-  if (existsSync(destPath)) {
-    throw new Error(`Methodology "${name}" is already ejected at ${destPath}`);
-  }
-
-  const content = readFileSync(sourcePath, 'utf8');
-  const header = `# EJECTED from @bmad/swarm - this file takes priority over the package version\n# To return to package version, run: bmad-swarm uneject methodology ${name}\n\n`;
-
-  ensureDir(paths.overridesMethodologyDir);
-  writeFileSafe(destPath, header + content);
-  return destPath;
 }

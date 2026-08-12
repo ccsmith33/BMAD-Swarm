@@ -3,6 +3,7 @@ import { join, basename } from 'node:path';
 import { PACKAGE_AGENTS_DIR } from '../utils/paths.js';
 import { getAgentNames } from '../utils/config.js';
 import { writeFileSafe, ensureDir, readFileSafe, writeGeneratedFile, isFileManuallyModified } from '../utils/fs-helpers.js';
+import { rewriteScaffoldPaths } from '../utils/scaffold-paths.js';
 
 /**
  * Generate .claude/agents/ files by merging:
@@ -72,6 +73,11 @@ export function generateAgents(config, projectPaths, options = {}) {
     if (agentName !== 'orchestrator') {
       content += TEAM_TASK_PROTOCOL;
     }
+
+    // Self-containment (CB-1): rewrite repo-relative methodology/agent
+    // references to the shipped scaffold layout so they resolve inside a user
+    // project. Applied to the body before the frontmatter is prepended.
+    content = rewriteScaffoldPaths(content);
 
     // Registration identity (ADR-014): name + description make the file a
     // valid Claude Code custom agent definition, spawnable via

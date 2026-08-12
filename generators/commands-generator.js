@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { writeGeneratedFile, isFileManuallyModified, ensureDir, stripGeneratedMarker } from '../utils/fs-helpers.js';
 import { getAgentNames } from '../utils/config.js';
 import { DEFAULT_MODEL } from '../utils/validator.js';
+import { rewriteScaffoldPaths } from '../utils/scaffold-paths.js';
 
 /**
  * Generate .claude/commands/ files.
@@ -35,7 +36,10 @@ export function generateCommands(config, projectPaths, options = {}) {
     const agentPath = join(projectPaths.agentsDir, `${name}.md`);
     if (!existsSync(agentPath)) continue;
     const agentContent = readFileSync(agentPath, 'utf8');
-    const stripped = stripGeneratedMarker(agentContent);
+    // The generated agent file is already path-rewritten; re-applying is
+    // idempotent and keeps identity command bodies self-contained even if the
+    // source ever changes (§3.2).
+    const stripped = rewriteScaffoldPaths(stripGeneratedMarker(agentContent));
     const commandPath = join(commandsDir, `identity-${name}.md`);
     if (!options.force && isFileManuallyModified(commandPath)) {
       modified.push(`identity-${name}.md`);
@@ -72,7 +76,10 @@ export function generateCommands(config, projectPaths, options = {}) {
       modified.push(`${wf.name}.md`);
       continue;
     }
-    writeGeneratedFile(commandPath, `---\ndescription: ${wf.description}\n---\n\n${wf.body}`);
+    // Self-containment (CB-1): workflow bodies reference `agents/<role>.md` and
+    // `methodology/…` repo-relative; rewrite to the shipped scaffold layout.
+    const body = rewriteScaffoldPaths(wf.body);
+    writeGeneratedFile(commandPath, `---\ndescription: ${wf.description}\n---\n\n${body}`);
     generated.push(`${wf.name}.md`);
   }
 
@@ -121,7 +128,7 @@ function buildResearchBody(model) {
   return `Append this block to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn each teammate via the Agent tool (\`subagent_type\` = role):
 
 \`\`\`bmad-assembly
-entry_point: audit
+entry_point: research
 complexity: 6
 autonomy: auto
 team:
@@ -216,7 +223,7 @@ function buildReviewBody(model) {
   return `Inspect the artifact the user referenced. Select lenses from the signal table in /identity-orchestrator (api, data, ui, perf, auth, test, docs). Append the assembly block with those lenses to \`artifacts/context/team-assembly-log.md\` (and emit it in your message for traceability), then spawn the reviewer via the Agent tool (\`subagent_type: reviewer\`):
 
 \`\`\`bmad-assembly
-entry_point: audit
+entry_point: review
 complexity: 6
 autonomy: auto
 team:

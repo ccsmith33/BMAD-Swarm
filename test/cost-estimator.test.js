@@ -88,9 +88,15 @@ describe('Cost Estimator', () => {
       assert.ok(maxCost >= minCost, 'Max cost should be >= min cost');
     });
 
-    it('falls back to full-lifecycle for unknown entry point', () => {
-      const result = estimateCost(baseConfig, 'nonexistent-entry');
-      assert.equal(result.agents.length, 9, 'Should use all 9 agents for unknown entry point');
+    it('throws on an unknown entry point (no silent allAgents fallback)', () => {
+      // CB-9: unknown keys used to fall back to the full roster, which mis-priced
+      // plan-only (spawns nothing). The entry-point vocabulary is now closed.
+      assert.throws(() => estimateCost(baseConfig, 'nonexistent-entry'), /Unknown entry point/);
+    });
+
+    it('returns no agents for plan-only', () => {
+      const result = estimateCost(baseConfig, 'plan-only');
+      assert.deepEqual(result.agents, []);
     });
 
     it('uses Opus pricing as baseline', () => {

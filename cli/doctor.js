@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { getProjectPaths } from '../utils/paths.js';
 import { loadSwarmConfig, getAgentNames } from '../utils/config.js';
 import { readFileSafe } from '../utils/fs-helpers.js';
+import { METHODOLOGY_SHIP_LIST } from '../utils/scaffold-paths.js';
 
 export function registerDoctorCommand(program) {
   program
@@ -115,6 +116,26 @@ async function runDoctor() {
     hasIssues = true;
   }
 
+  // 6.6. Shipped methodology subset (self-containment, CB-1)
+  if (existsSync(paths.bmadMethodologyDir)) {
+    const shipped = METHODOLOGY_SHIP_LIST.filter((rel) => existsSync(join(paths.bmadMethodologyDir, rel)));
+    if (shipped.length === METHODOLOGY_SHIP_LIST.length) {
+      check(true, `.claude/bmad/methodology/ has all ${METHODOLOGY_SHIP_LIST.length} shipped files`);
+    } else {
+      check(false, `.claude/bmad/methodology/ is missing ${METHODOLOGY_SHIP_LIST.length - shipped.length} shipped file(s)`, 'Run `bmad-swarm update` to regenerate');
+      hasIssues = true;
+    }
+  } else {
+    check(false, '.claude/bmad/methodology/ not found', 'Run `bmad-swarm update` to ship the methodology subset');
+    hasIssues = true;
+  }
+
+  // 6.7. Skew note (advisory): generated agents/commands that were manually
+  // modified may retain dangling repo-relative refs (`methodology/…`,
+  // `agents/<role>.md`) that only resolved in the dev repo. Report, don't fail
+  // — user-modified files are their owner's responsibility (§3.4).
+  reportPathSkew(paths);
+
   // 7. project.yaml
   if (existsSync(paths.projectYaml)) {
     check(true, 'project.yaml exists');
@@ -164,5 +185,39 @@ function check(pass, message, fix) {
   console.log(`  ${icon} ${message}`);
   if (!pass && fix) {
     console.log(`    Fix: ${fix}`);
+  }
+}
+
+// A dangling repo-relative reference: `methodology/\u2026` not already shipped-prefixed,
+// or `agents/<role>.md` not already under `.claude/`.
+function danglingRefRegex() {
+  const roles = getAgentNames().map((r) => r.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return new RegExp(`(?<![\\w/.])(methodology/|agents/(?:${roles})\\.md)`);
+}
+
+/**
+ * Advisory scan: report generated agent/command files whose bodies still carry
+ * dangling repo-relative references. These appear only when a user manually
+ * edited a generated file and reintroduced (or kept) an un-rewritten path.
+ * @param {object} paths - Project paths
+ */
+function reportPathSkew(paths) {
+  const re = danglingRefRegex();
+  const dirs = [paths.agentsDir, join(paths.claudeDir, 'commands')];
+  const flagged = [];
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.md'))) {
+      const content = readFileSafe(join(dir, f));
+      if (content && re.test(content)) {
+        flagged.push(join(dir.endsWith('commands') ? 'commands' : 'agents', f));
+      }
+    }
+  }
+  if (flagged.length > 0) {
+    console.log(`  \u2139 Path skew: dangling repo-relative refs in ${flagged.length} generated file(s): ${flagged.join(', ')}`);
+    console.log('    These reference `methodology/` or `agents/<role>.md` instead of the shipped');
+    console.log('    `.claude/bmad/methodology/` / `.claude/agents/` paths. Likely manually edited.');
+    console.log('    Fix: re-run `bmad-swarm update --force`, or update the refs by hand.');
   }
 }

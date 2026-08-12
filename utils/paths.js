@@ -31,6 +31,8 @@ export function getProjectPaths(projectRoot) {
     swarmYaml: join(root, 'swarm.yaml'),
     claudeDir: join(root, '.claude'),
     agentsDir: join(root, '.claude', 'agents'),
+    bmadDir: join(root, '.claude', 'bmad'),
+    bmadMethodologyDir: join(root, '.claude', 'bmad', 'methodology'),
     hooksDir: join(root, '.claude', 'hooks'),
     settingsJson: join(root, '.claude', 'settings.json'),
     rulesDir: join(root, '.claude', 'rules'),

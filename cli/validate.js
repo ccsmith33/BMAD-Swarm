@@ -7,7 +7,7 @@ export function registerValidateCommand(program) {
   program
     .command('validate')
     .description('Validate artifact quality against quality gate criteria')
-    .option('--phase <name>', 'Check only artifacts in a specific phase (exploration, planning, design, implementation)')
+    .option('--phase <name>', 'Check only artifacts in a specific phase (exploration, planning, design, implementation, reviews)')
     .option('--artifact <path>', 'Check a single artifact file')
     .addHelpText('after', `
 Examples:

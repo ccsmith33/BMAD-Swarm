@@ -6,6 +6,7 @@ import yaml from 'js-yaml';
 import { getProjectPaths } from '../utils/paths.js';
 import { writeFileSafe, ensureDir, updateGitignore } from '../utils/fs-helpers.js';
 import { generateAgents } from '../generators/agent-generator.js';
+import { generateMethodology } from '../generators/methodology-generator.js';
 import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
@@ -115,6 +116,11 @@ async function runInit(options) {
   // 3. Generate .claude/agents/
   const agentResult = generateAgents(config, paths);
   console.log(`  \u2713 Generated .claude/agents/ (${agentResult.generated.length} agents)`);
+
+  // 3.5. Ship the methodology subset into .claude/bmad/methodology/ so the
+  // generated agents' and commands' methodology references resolve (CB-1).
+  const methodologyResult = generateMethodology(config, paths);
+  console.log(`  \u2713 Generated .claude/bmad/methodology/ (${methodologyResult.generated.length} files)`);
 
   // 4. Generate .claude/settings.json
   generateSettings(config, paths);

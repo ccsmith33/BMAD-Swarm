@@ -202,30 +202,66 @@ export function writeGeneratedJsFile(filePath, content) {
   writeFileSync(filePath, output, 'utf8');
 }
 
+// The D-042 sharing model tracks everything and ignores only these three
+// (§3.5). This is the whole managed set: the scaffold (`.claude/`), config
+// (`swarm.yaml`, `CLAUDE.md`), and work outputs (`artifacts/`) are deliberately
+// git-visible so a team can commit and share them.
+const GITIGNORE_MARKER = '# bmad-swarm (generated files)';
+const GITIGNORE_ENTRIES = ['.claude/settings.local.json', '.session-active', '*.bak'];
+// Entries the tool has ever managed inside the marker block: the current
+// minimal set plus the v1 broad set. Anything else found inside the block is a
+// user-added custom ignore that the wholesale replace would silently drop —
+// callers warn about these so the user can move them above the marker.
+const GITIGNORE_KNOWN_MANAGED = new Set([
+  ...GITIGNORE_ENTRIES,
+  '.claude/', 'artifacts/', 'swarm.yaml', 'project.yaml', 'CLAUDE.md', 'overrides/',
+]);
+
 /**
- * Add bmad-swarm generated files to .gitignore if not already present.
- * Idempotent - safe to call on every init/update.
+ * Ensure the bmad-swarm managed section of .gitignore holds exactly the minimal
+ * ignore set (D-042). Unlike v1, this REPLACES the marker section wholesale:
+ * a pre-Phase-1 project whose section still lists the old broad ignores
+ * (`.claude/`, `artifacts/`, `swarm.yaml`, `CLAUDE.md`, `overrides/`) is
+ * migrated to the sharing model — those entries are removed, not merely
+ * supplemented. User lines outside the marker section are preserved. Idempotent.
  * @param {string} projectRoot - Project root directory
+ * @returns {{ changed: boolean, droppedCustom: string[] }} whether the file was
+ *   rewritten, and any user-added custom ignores that lived inside the managed
+ *   block and were removed by the replace (so the caller can warn — L1).
  */
 export function updateGitignore(projectRoot) {
   const gitignorePath = join(projectRoot, '.gitignore');
-  const marker = '# bmad-swarm (generated files)';
-  const entries = ['.claude/', 'artifacts/', 'swarm.yaml', 'project.yaml', 'CLAUDE.md', 'overrides/'];
+  const section = GITIGNORE_MARKER + '\n' + GITIGNORE_ENTRIES.join('\n');
 
-  let existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+  const lines = existing.split('\n');
+  const markerIdx = lines.findIndex((l) => l.replace(/\r$/, '').trim() === GITIGNORE_MARKER);
 
-  if (existing.includes(marker)) {
-    const lines = existing.split(/\r?\n/).map(l => l.trim());
-    let updated = existing;
-    for (const entry of entries) {
-      if (!lines.includes(entry)) {
-        updated = updated.trimEnd() + '\n' + entry + '\n';
-      }
-    }
-    if (updated !== existing) writeFileSync(gitignorePath, updated, 'utf8');
-    return;
+  if (markerIdx === -1) {
+    // No managed section yet: append one, keeping a blank separator after any
+    // existing user content.
+    const prefix = existing.trim() ? existing.replace(/\s*$/, '') + '\n\n' : '';
+    writeFileSync(gitignorePath, prefix + section + '\n', 'utf8');
+    return { changed: true, droppedCustom: [] };
   }
 
-  const newSection = '\n' + marker + '\n' + entries.join('\n') + '\n';
-  writeFileSync(gitignorePath, existing.trimEnd() + newSection, 'utf8');
+  // Managed entries are the consecutive non-blank, non-comment lines directly
+  // below the marker. Replace that whole block with the current minimal set.
+  let end = markerIdx + 1;
+  while (end < lines.length) {
+    const l = lines[end].replace(/\r$/, '').trim();
+    if (l === '' || l.startsWith('#')) break;
+    end++;
+  }
+
+  // Any in-block entry that is neither a current nor a historical bmad entry is
+  // a user custom ignore the replace would drop.
+  const droppedCustom = lines.slice(markerIdx + 1, end)
+    .map((l) => l.replace(/\r$/, '').trim())
+    .filter((l) => l && !GITIGNORE_KNOWN_MANAGED.has(l));
+
+  const rebuilt = [...lines.slice(0, markerIdx), GITIGNORE_MARKER, ...GITIGNORE_ENTRIES, ...lines.slice(end)].join('\n');
+  const changed = rebuilt !== existing;
+  if (changed) writeFileSync(gitignorePath, rebuilt, 'utf8');
+  return { changed, droppedCustom };
 }

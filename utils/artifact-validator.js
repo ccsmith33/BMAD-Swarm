@@ -1,5 +1,26 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import yaml from 'js-yaml';
+import { PACKAGE_METHODOLOGY_DIR } from './paths.js';
+
+/**
+ * The machine projection of the artifact schemas. This is the ONE structural
+ * source the validator consults — nothing about artifact structure is hardcoded
+ * here. See methodology/artifact-schemas/spec.yaml (lockstep-tested against the
+ * prose schemas by test/artifact-spec.test.js).
+ */
+const SPEC_PATH = join(PACKAGE_METHODOLOGY_DIR, 'artifact-schemas', 'spec.yaml');
+
+/** Phases the validator understands, in report order. Also drives `validate --phase`. */
+export const VALID_PHASES = ['exploration', 'planning', 'design', 'implementation', 'reviews'];
+
+let cachedSpec = null;
+function loadSpec() {
+  if (!cachedSpec) {
+    cachedSpec = yaml.load(readFileSync(SPEC_PATH, 'utf8'));
+  }
+  return cachedSpec;
+}
 
 /**
  * Validate artifacts and return results.
@@ -16,18 +37,16 @@ export function validateArtifacts(artifactsDir, options = {}) {
     return { passed, failed: results.length - passed, results };
   }
 
-  const phaseMap = {
-    exploration: 'exploration',
-    planning: 'planning',
-    design: 'design',
-    implementation: 'implementation',
-    reviews: 'reviews',
-  };
+  if (options.phase && !VALID_PHASES.includes(options.phase)) {
+    throw new Error(
+      `Unknown phase: ${options.phase}. Valid phases: ${VALID_PHASES.join(', ')}`,
+    );
+  }
 
-  const phases = options.phase ? { [options.phase]: phaseMap[options.phase] } : phaseMap;
+  const phases = options.phase ? [options.phase] : VALID_PHASES;
 
-  for (const [phaseName, dir] of Object.entries(phases)) {
-    const phaseDir = join(artifactsDir, dir);
+  for (const phase of phases) {
+    const phaseDir = join(artifactsDir, phase);
     if (!existsSync(phaseDir)) continue;
 
     const files = findMarkdownFiles(phaseDir);
@@ -57,7 +76,6 @@ function findMarkdownFiles(dir) {
 }
 
 function validateSingleArtifact(filePath) {
-  const name = basename(filePath);
   const issues = [];
 
   if (!existsSync(filePath)) {
@@ -65,70 +83,89 @@ function validateSingleArtifact(filePath) {
   }
 
   const content = readFileSync(filePath, 'utf8');
+  const spec = loadSpec();
+  const def = classifyArtifact(filePath, spec);
+  const effective = def.variants ? selectVariant(content, def.variants) : def;
 
-  if (name === 'prd.md') {
-    validatePRD(content, issues);
-  } else if (name === 'architecture.md') {
-    validateArchitecture(content, issues);
-  } else if (name === 'product-brief.md') {
-    validateProductBrief(content, issues);
-  } else if (filePath.includes('stories') || name.startsWith('story-')) {
-    validateStory(content, issues);
-  } else {
-    // Generic: check for heading and non-trivial content
-    if (!content.includes('# ')) {
-      issues.push('Missing heading');
-    }
-    if (content.trim().length < 50) {
-      issues.push('Content appears too short (< 50 chars)');
-    }
-  }
+  checkSections(content, effective.required_sections, issues);
+  checkPatterns(content, effective.required_patterns, issues);
 
   return { file: filePath, status: issues.length === 0 ? 'pass' : 'fail', issues };
 }
 
-function validatePRD(content, issues) {
-  const requiredSections = ['Purpose', 'Functional Requirements', 'Non-Functional Requirements', 'User Journeys', 'Success Criteria'];
-  for (const section of requiredSections) {
-    if (!content.toLowerCase().includes(section.toLowerCase())) {
-      issues.push(`Missing required section: ${section}`);
+/**
+ * Select the artifact class from the spec by matching file name / path.
+ * Falls back to the `generic` class.
+ */
+function classifyArtifact(filePath, spec) {
+  const name = basename(filePath);
+  for (const [key, def] of Object.entries(spec.artifacts)) {
+    if (key === 'generic') continue;
+    const m = def.match || {};
+    if (m.basename && name === m.basename) return def;
+    if (m.basenamePrefix && name.startsWith(m.basenamePrefix)) return def;
+    if (m.pathIncludes && filePath.includes(m.pathIncludes)) return def;
+  }
+  return spec.artifacts.generic;
+}
+
+/**
+ * Pick the variant whose discriminator matches the content; the discriminator-less
+ * variant is the default when none match.
+ */
+function selectVariant(content, variants) {
+  let fallback = null;
+  for (const vdef of Object.values(variants)) {
+    if (vdef.discriminator) {
+      if (new RegExp(vdef.discriminator, 'im').test(content)) return vdef;
+    } else {
+      fallback = vdef;
     }
   }
-  // Check FRs are numbered
-  if (content.includes('Functional Requirements') && !/FR[-.]?\d+|FR\s+\d+|\d+\.\s/.test(content)) {
-    issues.push('Functional requirements should be numbered');
+  return fallback || Object.values(variants)[0];
+}
+
+/** Normalize a heading's text for tolerant matching (numbering, bold, trailing colon). */
+function normalizeHeading(text) {
+  return text
+    .replace(/\*\*/g, '')
+    .replace(/^[\d.]+\s*/, '')
+    .replace(/:\s*$/, '')
+    .trim()
+    .toLowerCase();
+}
+
+/** Extract all Markdown heading texts from the content, normalized. */
+function contentHeadings(content) {
+  const headings = [];
+  for (const line of content.split('\n')) {
+    const m = /^#{1,6}\s+(.+?)\s*$/.exec(line);
+    if (m) headings.push(normalizeHeading(m[1]));
+  }
+  return headings;
+}
+
+function checkSections(content, sections, issues) {
+  if (!sections) return;
+  const headings = contentHeadings(content);
+  for (const section of sections) {
+    const needle = section.trim().toLowerCase();
+    const found = headings.some(h => h === needle || h.startsWith(needle));
+    if (!found) issues.push(`Missing required section: ${section}`);
   }
 }
 
-function validateArchitecture(content, issues) {
-  const requiredSections = ['Overview', 'System Components', 'API Contracts', 'Data Models', 'Decisions'];
-  for (const section of requiredSections) {
-    if (!content.toLowerCase().includes(section.toLowerCase())) {
-      issues.push(`Missing required section: ${section}`);
+function checkPatterns(content, patterns, issues) {
+  if (!patterns) return;
+  for (const p of patterns) {
+    if (p.regex) {
+      if (!new RegExp(p.regex, 'm').test(content)) {
+        issues.push(p.message || `Missing required pattern: ${p.name}`);
+      }
+    } else if (typeof p.min_length === 'number') {
+      if (content.trim().length < p.min_length) {
+        issues.push(p.message || `Content appears too short (< ${p.min_length} chars)`);
+      }
     }
-  }
-}
-
-function validateProductBrief(content, issues) {
-  const requiredSections = ['Vision', 'Target Users', 'Value Proposition', 'Scope'];
-  for (const section of requiredSections) {
-    if (!content.toLowerCase().includes(section.toLowerCase())) {
-      issues.push(`Missing required section: ${section}`);
-    }
-  }
-}
-
-function validateStory(content, issues) {
-  // BDD acceptance criteria
-  if (!/given|when|then/i.test(content)) {
-    issues.push('Missing BDD acceptance criteria (Given/When/Then)');
-  }
-  // Task checklist
-  if (!/- \[[ x]\]/i.test(content)) {
-    issues.push('Missing task checklist (- [ ] items)');
-  }
-  // Size estimate
-  if (!/story points|size|estimate|points:/i.test(content)) {
-    issues.push('Missing story points or size estimate');
   }
 }

@@ -161,4 +161,18 @@ Error Paths:
 - [ ] No subjective adjectives without quantification
 - [ ] No implementation details in functional requirements
 - [ ] Requirements are numbered for traceability
-- [ ] Domain requirements addressed if applicable
+- [ ] Each FR is singular (one capability), traceable to a user journey or objective
+- [ ] Domain requirements addressed if applicable (regulated domains: name specific compliance standards)
+
+## Common Failures to Check For
+
+(Folded from the former `quality-gates/prd-quality.md`, which is retired — this schema is the single source.)
+
+- **Wishful thinking**: impressive-sounding but unmeasurable requirements ("AI-powered insights", "seamless experience")
+- **Kitchen-sink scope**: an MVP that tries to include everything, making it unachievable
+- **Missing error flows**: only happy-path journeys, no consideration of failures
+- **Copy-paste requirements**: generic NFRs not tailored to the project (e.g. "99.999% uptime" for a hobby project)
+- **Orphan requirements**: FRs that trace to no user journey or business need
+- **Assumption gaps**: implicit assumptions about infrastructure, third parties, or user behavior, never stated
+- **Duplicate requirements**: the same capability expressed differently in multiple places
+- **Contradictions**: requirements that conflict with each other or with stated constraints

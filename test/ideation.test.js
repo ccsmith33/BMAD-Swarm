@@ -93,15 +93,15 @@ describe('Ideation Feature', () => {
       assert.equal(phases.entry_points.brainstorm.start_phase, 'ideation');
     });
 
-    it('has ideate-then-build entry point', () => {
+    it('has explore-idea entry point starting at ideation', () => {
+      // CB-9: the former `ideate-then-build` / `vague-idea` intents folded into
+      // the canonical `explore-idea` (ideation + parallel research). See phases.yaml.
       const phasesContent = readFileSync(join(ROOT, 'methodology', 'phases.yaml'), 'utf8');
       const phases = yaml.load(phasesContent);
-      assert.ok(phases.entry_points['ideate-then-build'], 'Should have ideate-then-build entry point');
-      assert.equal(phases.entry_points['ideate-then-build'].start_phase, 'ideation');
-      assert.ok(phases.entry_points['ideate-then-build'].phases.includes('ideation'),
-        'ideate-then-build should include ideation phase');
-      assert.ok(phases.entry_points['ideate-then-build'].phases.includes('implementation'),
-        'ideate-then-build should include implementation phase');
+      assert.ok(phases.entry_points['explore-idea'], 'Should have explore-idea entry point');
+      assert.equal(phases.entry_points['explore-idea'].start_phase, 'ideation');
+      assert.ok(phases.entry_points['explore-idea'].phases.includes('ideation'),
+        'explore-idea should include ideation phase');
     });
   });
 

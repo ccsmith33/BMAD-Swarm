@@ -27,10 +27,24 @@ methodology:
       - prd
       - architecture
 defaults:
-  # D-027 (supersedes D-023's tiered overrides for this repo): everything on
-  # fable while Claude Fable 5 is available — human directive 2026-06-09; this
-  # account is on a subscription plan, so the 2× API cost does not apply.
-  model: fable
+  # D-048 (supersedes D-027): tier mix per ADR-023 (Fork B). D-027's
+  # fable-everywhere burned the subscription usage limit ~2x on token-heavy
+  # roles (human hit the cap 2026-08-12, killing a reviewer mid-pass) — live
+  # confirmation of the economics finding. Default opus; fable reserved for
+  # deep-reasoning low-volume roles + complexity >=12; sonnet for token-light
+  # research/ops. Override per task via the Agent spawn's model field.
+  model: opus
+agents:
+  architect:
+    model: fable
+  strategist:
+    model: fable
+  security:
+    model: fable
+  researcher:
+    model: sonnet
+  devops:
+    model: sonnet
 output:
   artifacts_dir: ./artifacts
   code_dir: .

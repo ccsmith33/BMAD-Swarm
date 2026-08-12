@@ -109,10 +109,19 @@ The `## Domain:` heading declares the routing key used by the orchestrator in **
 **Inadequate**: "As a user, I want search, so that I can find things."
 
 ### Acceptance Criteria
-- Must use BDD format: Given/When/Then
 - Must include at least one happy-path criterion and at least one error-path criterion
 - Each criterion must be independently testable
 - Criteria must use concrete values (specific HTTP status codes, exact error messages, precise behaviors)
+
+#### Acceptance-criteria formats
+
+Both formats are valid; both require an `## Acceptance Criteria` section. The story's register determines which one to use:
+
+1. **BDD (Given/When/Then)** — the default, and **required for feature stories** (full-lifecycle and small-feature decomposition). Each criterion frames a behavioral scenario: a precondition, an action, and an observable outcome, laid out under an `### AC<n>:` heading (as shown in Expected Structure above). The **When** clause is optional for state-assertion criteria that fold the action into the precondition (a `Given … Then` pair). Use this whenever the criterion describes *behavior or state the system exhibits*.
+
+2. **Verifiable checklist ACs (`- [ ] AC<n>: <testable assertion>`)** — acceptable for **bug-fix, debug, and maintain stories**, where each acceptance criterion is a concrete, verifiable claim about the code or system rather than a behavioral scenario (e.g. `- [ ] AC1: validate --phase bogus exits 1 with a "valid phases" message instead of throwing`). Each checklist AC must still be a single, objectively-checkable assertion — not a vague task.
+
+Do not mix the two registers within a single story; pick the one that fits the work. A story that carries either an `## Acceptance Criteria` section with Given/When/Then scenarios **or** a list of `- [ ] AC<n>:` checklist items satisfies this schema.
 
 **Adequate**:
 ```
@@ -198,13 +207,28 @@ Use the query builder pattern from the architecture ADR-003.
 
 - [ ] Status is set appropriately
 - [ ] Domain field is set when project uses team.mode: fixed (or omitted intentionally for cross-cutting work)
-- [ ] User story has specific user type and clear benefit
-- [ ] At least 2 acceptance criteria in BDD format
+- [ ] User story has specific user type and clear benefit (not generic "user")
+- [ ] At least 2 acceptance criteria in one register — BDD (Given/When/Then) for feature stories, or verifiable `- [ ] AC<n>:` checklist items for bug-fix/debug/maintain stories
 - [ ] At least one error-path acceptance criterion
-- [ ] Tasks are ordered by dependency
+- [ ] Acceptance criteria are specific and testable (concrete values, not "succeeds")
+- [ ] Tasks are ordered by dependency (models before APIs before UI)
 - [ ] Tasks include test-writing (not just implementation)
+- [ ] Story is right-sized — a single development session, not an epic disguised as a story (more than ~10 tasks/subtasks is a signal)
 - [ ] Dev notes include architecture context with specific references
 - [ ] Dev notes include exact file locations for new and modified files
 - [ ] Dev notes include testing approach with framework and patterns
 - [ ] Dev notes include anti-patterns specific to this implementation
 - [ ] Dependencies on other stories are documented
+- [ ] Story traces to at least one PRD functional requirement
+
+## Common Failures to Check For
+
+(Folded from the former `quality-gates/story-quality.md`, which is retired — this schema is the single source.)
+
+- **Epic disguised as story**: scope too large for one session (indicator: more than ~10 tasks/subtasks)
+- **Missing error handling**: only happy-path acceptance criteria, no error or edge cases
+- **Vague dev notes**: "follow the architecture" without naming the patterns, files, or conventions
+- **Orphan story**: does not trace to any PRD requirement
+- **Missing test tasks**: implementation tasks but no test-writing tasks
+- **Incorrect sequencing**: tasks ordered wrong (API routes before data models)
+- **Copy-paste criteria**: acceptance criteria lifted from another story without adapting to this one

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import yaml from 'js-yaml';
@@ -42,11 +42,10 @@ function collectRoles(node, found = []) {
 }
 
 describe('Methodology role references', () => {
+  // task-templates/ was deleted (AP-9): zero readers, staffed the retired roster.
+  // phases.yaml is now the only role-staffing methodology file.
   const files = [
     join(methodologyDir, 'phases.yaml'),
-    ...readdirSync(join(methodologyDir, 'task-templates'))
-      .filter((f) => f.endsWith('.yaml'))
-      .map((f) => join(methodologyDir, 'task-templates', f)),
   ];
 
   for (const file of files) {

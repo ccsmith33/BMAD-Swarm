@@ -1,4 +1,5 @@
 import { DEFAULT_MODEL } from './validator.js';
+import { agentsForEntryPoint } from './entry-points.js';
 
 // Token estimates per agent role based on typical usage patterns
 const TOKENS_PER_AGENT = {
@@ -65,22 +66,10 @@ export function estimateCost(config, entryPoint = 'full-lifecycle') {
 }
 
 function determineAgents(config, entryPoint) {
-  const allAgents = ['orchestrator', 'ideator', 'researcher', 'strategist', 'architect', 'developer', 'reviewer', 'security', 'devops'];
-
-  const entryPointAgents = {
-    'solo': ['developer'],
-    'full-lifecycle': allAgents,
-    'bug-fix': ['developer', 'reviewer'],
-    'small-feature': ['architect', 'developer', 'reviewer'],
-    'brainstorm': ['ideator'],
-    'explore-idea': ['ideator', 'researcher'],
-    'debug': ['developer', 'reviewer'],
-    'migrate': ['architect', 'developer', 'reviewer'],
-    'audit': ['researcher', 'reviewer', 'security'],
-    'maintain': ['developer', 'reviewer'],
-  };
-
-  const agents = entryPointAgents[entryPoint] || allAgents;
+  // Entry-point → agents is owned by the canonical ENTRY_POINTS constant
+  // (utils/entry-points.js). Unknown keys throw here rather than silently
+  // falling back to the full roster (which mis-priced plan-only, etc.).
+  const agents = agentsForEntryPoint(entryPoint);
 
   // Filter disabled agents
   return agents.filter(name => {

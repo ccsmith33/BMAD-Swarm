@@ -111,6 +111,34 @@ The architecture document translates PRD requirements into technical design. It 
 **Consequences**: [Tradeoffs and implications]
 ```
 
+## Delta Architecture Variant
+
+The full section set above is required for a **product architecture** (greenfield / full-lifecycle output). The majority brownfield case — a feature, migration, or retrofit that extends an existing system (the `/feature`, `/migrate`, and retrofit-team outputs) — produces a **delta architecture** instead. A delta architecture documents only what changes, and declares itself with a `**Scope:** delta` line in its header block.
+
+A delta architecture is NOT required to restate the greenfield product sections (Technology Stack, Data Models, etc. — those live in the existing product architecture). It requires only:
+
+- A `**Scope:** delta` discriminator in the header block.
+- An **Overview** section describing the change and its blast radius.
+- Explicit decision references (`ADR-NNN` or `D-NNN`) tracing the delta to its decisions.
+
+### Expected Structure (delta)
+
+```markdown
+# Architecture Delta - [Feature or Change Name]
+
+**Scope:** delta
+
+## Overview
+[What is changing and why; which existing components/data models/APIs are touched;
+ the blast radius of the change. Reference the decisions that drove it: ADR-012, D-041.]
+
+## [Additional sections as needed]
+[Only the sections the change actually affects — e.g. a new endpoint under API Design,
+ a schema migration under Data Models. Omit sections the delta does not touch.]
+```
+
+A delta architecture that carries `**Scope:** delta`, an `## Overview` section, and at least one `ADR-NNN`/`D-NNN` reference satisfies this schema. Product architectures (no `Scope: delta` line) are held to the full section set above.
+
 ## Section Guidelines
 
 ### Technology Stack
@@ -183,13 +211,40 @@ Errors:
 
 ## Quality Checklist
 
-- [ ] All required sections present with substantive content
+- [ ] All required sections present with substantive content (product architecture), or `Scope: delta` + Overview + decision references (delta architecture)
 - [ ] Every technology selection includes version and rationale
 - [ ] All PRD entities are represented in data models
 - [ ] Data model relationships include cardinality
+- [ ] Data models note required/unique constraints and an indexing strategy
 - [ ] API endpoints include request/response schemas and error codes
-- [ ] Auth strategy is fully designed (not just named)
+- [ ] Auth strategy is fully designed (not just named) — token lifecycle, refresh, permission model
 - [ ] Project structure defines directory layout and conventions
 - [ ] Key decisions follow ADR format with alternatives and tradeoffs
-- [ ] Every architectural element traces to a PRD requirement
-- [ ] No architectural components exist without a PRD justification
+- [ ] Every functional requirement has a corresponding architectural element
+- [ ] Every non-functional requirement has an explicit architectural strategy (caching, pooling, etc.)
+- [ ] No architectural components exist without a PRD justification (no orphan architecture, no scope expansion)
+
+## Common Failures to Check For
+
+(Folded from the former `quality-gates/architecture-quality.md`, which is retired — this schema is the single source.)
+
+- **Resume-driven architecture**: technologies chosen for trendiness, not fit
+- **Astronaut architecture**: over-engineered abstractions and infrastructure beyond the requirements
+- **Missing error strategies**: API design shows happy paths but no error-handling patterns
+- **Implicit security**: auth "mentioned but not designed" (e.g. "we'll use JWT" with no lifecycle or permission model)
+- **Database-as-afterthought**: vague or incomplete data models that push schema design onto the developer
+- **Missing deployment story**: runtime behavior described, but not how the system deploys, configures, or is monitored
+- **Unresolved contradictions**: decisions that conflict with stated constraints (e.g. "serverless" but needs persistent WebSockets)
+
+## ADR Readiness Reference
+
+(Folded from the former `quality-gates/adr-readiness.md`. A **reference checklist**, not a rigid gate — the architect applies the criteria relevant to the project type and notes why any skipped criterion does not apply; the reviewer validates that the selection was reasonable. Not every criterion applies to every project.)
+
+- **Testability & automation**: test strategy and boundaries defined; CI runs and blocks on tests; contract tests planned for service/API integrations.
+- **Test data strategy**: how test data is created and cleaned up; no production-data dependency; migration testing plan; multi-tenant isolation where relevant.
+- **Scalability & availability**: concurrency model and limits; horizontal-scaling and database-scaling approach where NFRs require; availability target with redundancy/failover/health-check implications; graceful degradation for dependency failures.
+- **Disaster recovery**: backup frequency/retention/restore; RTO and RPO defined and supported by the backup plan; failover procedure; post-recovery data-integrity verification.
+- **Security**: authentication mechanism fully designed; authorization model with enforcement points; encryption at rest/in transit and key management; secrets management (no hardcoded/committed secrets); input-validation strategy; dependency scanning in CI.
+- **Observability & debugging**: logging strategy (levels, structured format); error tracking/alerting; request tracing/correlation IDs for multi-service paths; health-check endpoints; key metrics identified.
+- **Quality of service**: p50/p95/p99 response-time targets; throughput targets; rate limiting on client-facing APIs; timeout strategy (no unbounded waits); retry and circuit-breaker patterns for unreliable dependencies.
+- **Deployability**: deployment strategy (rolling/blue-green/canary); environment parity; configuration management without code changes; zero-downtime deploys where availability targets require; documented rollback (including DB); feature flags for gradual rollout where needed.

@@ -2,8 +2,10 @@
 # Defines the SDLC phases, their agents, gates, and transition rules.
 
 phases:
-  # Default orchestration mode per phase. See methodology/orchestration-modes.md
-  # for full definitions of interactive, parallel, and hybrid modes.
+  # Default orchestration mode per phase (interactive, parallel, hybrid). The
+  # live definitions of these modes are in the orchestrator identity
+  # (agents/orchestrator.md); the former methodology/orchestration-modes.md was
+  # retired as unreferenced duplication (AP-9).
 
   ideation:
     name: Ideation
@@ -132,13 +134,14 @@ phases:
         PRD passes automated quality validation, then human approves
         scope, requirements, and priorities before design begins.
       criteria:
-        - PRD passes prd-quality gate
+        - PRD passes the Quality Checklist in artifact-schemas/prd.md
         - All functional requirements are testable and specific
         - Non-functional requirements have measurable targets
         - User journeys cover primary use cases
         - Success criteria are defined and measurable
         - Human approves scope and priorities
-      quality_gate: prd-quality
+      # Quality gate folded into the schema's Quality Checklist (AP-9).
+      quality_gate: artifact-schemas/prd
     skip_when:
       - Bug fix with obvious scope
       - Small feature where requirements fit in the request
@@ -175,13 +178,14 @@ phases:
         requirements, and human approves key technical decisions
         before implementation begins.
       criteria:
-        - Architecture passes architecture-quality gate
+        - Architecture passes the Quality Checklist in artifact-schemas/architecture.md
         - All PRD functional requirements are addressable by the design
         - Non-functional requirements have corresponding architectural decisions
         - Technology selections have documented rationale
         - API contracts and data models are defined
         - Human approves key technical decisions
-      quality_gate: architecture-quality
+      # Quality gate folded into the schema's Quality Checklist (AP-9).
+      quality_gate: artifact-schemas/architecture
     skip_when:
       - Single-file change with trivial implementation
       - Bug fix in existing, well-understood code
@@ -366,54 +370,63 @@ transitions:
     description: >
       All stories complete, all reviews approved, all tests pass.
 
-# Entry points define where to start based on context
+# Entry points define where to start based on context.
+#
+# CANONICAL SET (CB-9): these keys are the ONE entry-point vocabulary, kept in
+# lockstep with utils/entry-points.js (the code source of truth), the orchestrator
+# invariant enum (agents/orchestrator.md), and utils/cost-estimator.js. The
+# `agents:` list of each key must equal ENTRY_POINTS[key].agents in that constant.
+# test/entry-points.test.js enforces this lockstep. Do not add/remove keys here
+# without updating the constant.
+#
+# Former orphan intents folded as descriptions (removed as separate keys):
+#   vague-idea → brainstorm / explore-idea      clear-requirements → full-lifecycle
+#   add-feature → small-feature                 refactor → migrate
+#   ideate-then-build → brainstorm (then build) exploration-only → research
 entry_points:
-  vague-idea:
-    description: "Human has a vague concept or idea to explore"
-    start_phase: exploration
-    phases: [exploration, definition, design, implementation, delivery]
-    autonomy_default: collaborative
-
-  clear-requirements:
-    description: "Human provides clear requirements or a spec"
-    start_phase: definition
-    phases: [definition, design, implementation, delivery]
-    autonomy_default: guided
-
-  add-feature:
-    description: "Adding a feature to an existing project"
-    start_phase: design
-    phases: [design, implementation, delivery]
-    autonomy_default: guided
+  solo:
+    description: "Single developer, minimal process — 'just do it' / 'keep it simple'"
+    start_phase: implementation
+    phases: [implementation]
+    agents: [developer]
+    triggers:
+      - "just do it"
+      - "solo"
+      - "keep it simple"
 
   bug-fix:
     description: "Fixing a specific bug"
     start_phase: implementation
     phases: [implementation]
+    agents: [developer, reviewer]
     autonomy_default: auto
 
-  exploration-only:
-    description: "Research and analysis without building"
-    start_phase: exploration
-    phases: [exploration]
-    autonomy_default: collaborative
-
-  refactor:
-    description: "Restructuring existing code"
+  small-feature:
+    description: "Adding a feature to an existing project (former add-feature)"
     start_phase: design
     phases: [design, implementation, delivery]
+    agents: [architect, developer, reviewer]
+    autonomy_default: guided
+
+  full-lifecycle:
+    description: "Clear requirements → build end to end (former clear-requirements)"
+    start_phase: definition
+    phases: [definition, design, implementation, delivery]
+    agents: [orchestrator, ideator, researcher, strategist, architect, developer, reviewer, security, devops]
     autonomy_default: guided
 
   brainstorm:
-    description: "Interactive brainstorming to refine a vague idea (Mode A)"
+    description: "Interactive brainstorming to refine a vague idea (Mode A); may lead into a build (former ideate-then-build)"
     start_phase: ideation
     phases: [ideation]
+    agents: [ideator]
     autonomy_default: collaborative
 
-  ideate-then-build:
-    description: "Brainstorm an idea and then build it through the full lifecycle"
+  explore-idea:
+    description: "Explore a vague idea with ideation plus parallel research (Mode B; former vague-idea)"
     start_phase: ideation
-    phases: [ideation, exploration, definition, design, implementation, delivery]
+    phases: [ideation, exploration]
+    agents: [ideator, researcher]
     autonomy_default: collaborative
 
   debug:
@@ -427,7 +440,7 @@ entry_points:
       - "investigate why"
 
   migrate:
-    description: Migrate between frameworks, languages, or major versions
+    description: Migrate between frameworks, languages, or major versions; also restructuring existing code (former refactor)
     start_phase: design
     phases: [design, implementation, delivery]
     agents: [architect, developer, reviewer]
@@ -440,11 +453,24 @@ entry_points:
     description: Security or code quality audit of existing codebase
     start_phase: exploration
     phases: [exploration]
-    agents: [researcher, reviewer]
+    agents: [researcher, reviewer, security]
     triggers:
       - "audit this"
       - "security review"
       - "code quality check"
+
+  research:
+    description: "Research and analysis without building (former exploration-only)"
+    start_phase: exploration
+    phases: [exploration]
+    agents: [researcher]
+    autonomy_default: collaborative
+
+  review:
+    description: "Review an existing artifact or change set with the reviewer lenses"
+    start_phase: implementation
+    phases: [implementation]
+    agents: [reviewer]
 
   maintain:
     description: Routine maintenance - dependency updates, deprecation fixes, test coverage
@@ -456,14 +482,11 @@ entry_points:
       - "fix deprecations"
       - "improve test coverage"
 
-  solo:
-    start_phase: implementation
-    phases: [implementation]
-    agents: [developer]
-    triggers:
-      - "just do it"
-      - "solo"
-      - "keep it simple"
+  plan-only:
+    description: "Produce the assembly block / plan only — spawns no teammates"
+    start_phase: definition
+    phases: [definition]
+    agents: []
 
 # Complexity determines team size, process depth, and check-in frequency
 complexity:

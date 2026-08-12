@@ -379,3 +379,7 @@ Sequential D-IDs for all decisions that affect product direction, architecture, 
 
 - 2026-08-12 — Strategic (supersedes D-027 by experience, pending explicit human confirmation) — Mid-session the human hit their usage limit and a fable reviewer died on it — live confirmation of the economics finding that fable-everywhere (D-027) ~2× burns limits on token-heavy roles. Switched remaining work to the tier mix (sonnet for token-heavy review; fable reserved for deep-reasoning roles). Surfaced to the human, not silent; D-027 formally superseded once they confirm.
 
+
+## D-048 — Fork B confirmed: tier mix active, D-027 retired
+
+- 2026-08-12 — Strategic (human confirmed "go for it... maybe dont use fable for all models" after usage-limit reset) — D-027 (fable-everywhere) formally SUPERSEDED. swarm.yaml now implements ADR-023 tier mix: default opus; fable for architect/strategist/security + complexity >=12; sonnet for researcher/devops. Per-task overrides via the Agent spawn model field. Closes the Fork B decision (D-042 had it pending veto). ADR-023 status: ratified.

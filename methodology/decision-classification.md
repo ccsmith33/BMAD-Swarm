@@ -22,10 +22,11 @@ Tactical decisions are implementation-level choices where multiple options are a
 1. Identify that a decision is needed
 2. Evaluate whether it is tactical (implementation-level, multiple acceptable options, does not affect product direction)
 3. Choose the option that best fits existing project conventions, or the simplest option if no convention exists
-4. Log to `artifacts/context/decision-log.md`:
+4. Log to `artifacts/context/decision-log.md` using the row format defined by `methodology/artifact-schemas/decision-log.md` — assign the next sequential D-ID (one higher than the current maximum; never skip or reuse):
    ```
-   | [date] | [What was decided] | [Why -- 1 sentence] |
+   | [D-ID] | [date] | [What was decided -- summary] | agent | accepted |
    ```
+   The D-ID is required even for tactical decisions (the lightweight record is a single row — no rationale or affects list needed), so that a pattern of tactical decisions remains visible and auditable.
 5. Continue working without interruption
 
 ## Strategic Decisions (Escalate)

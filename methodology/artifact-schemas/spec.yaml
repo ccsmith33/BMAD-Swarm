@@ -1,0 +1,90 @@
+# Machine projection of the artifact schemas (methodology/artifact-schemas/*.md).
+#
+# This file is the ONLY structural input to utils/artifact-validator.js — the
+# validator hardcodes nothing. The schemas' prose (*.md) remain the authoritative
+# human source; this projection derives from them and is held in lockstep by
+# test/artifact-spec.test.js, which asserts every required_section here appears as
+# a heading in the corresponding schema .md's Expected Structure block.
+#
+# Package-only: the CLI reads this from PACKAGE_METHODOLOGY_DIR; it is NOT shipped
+# into generated projects (see phase1 design §3.3), so scaffolds cannot drift from it.
+#
+# Matching semantics:
+#   required_sections  — matched against Markdown headings (tolerant of `## 2.`-style
+#                        numbering and bold), NOT substring-anywhere.
+#   required_patterns  — regex (multiline) / min_length checks over the whole file.
+#   variants           — the variant whose discriminator regex matches the content is
+#                        used; the discriminator-less variant is the default.
+
+artifacts:
+  prd:
+    match: { basename: "prd.md" }
+    required_sections:
+      - "Executive Summary"
+      - "Success Criteria"
+      - "Product Scope"
+      - "User Journeys"
+      - "Functional Requirements"
+      - "Non-Functional Requirements"
+    required_patterns:
+      - name: numbered-frs
+        regex: "FR-\\d+"
+        message: "Functional requirements must be numbered (FR-NNN)"
+
+  product-brief:
+    match: { basename: "product-brief.md" }
+    required_sections:
+      - "Vision Statement"
+      - "Problem Statement"
+      - "Target Users"
+      - "Core Capabilities"
+      - "Success Metrics"
+      - "Scope Boundaries"
+
+  architecture:
+    match: { basename: "architecture.md" }
+    variants:
+      delta:
+        # A `Scope: delta` header line, tolerant of bold markers and spacing around
+        # both the key and the value (e.g. `**Scope:** delta`, `Scope: delta`,
+        # `**Scope: delta**`). Bounded to a single line by the `m` flag + [*\t ] classes.
+        discriminator: "^[*\\t ]*scope[*\\t ]*:[*\\t ]*delta"
+        required_sections:
+          - "Overview"
+        required_patterns:
+          - name: decision-references
+            regex: "ADR-\\d{3}|D-\\d{3}"
+            message: "Architecture must reference its decisions (ADR-NNN or D-NNN)"
+      full:
+        required_sections:
+          - "Technology Stack"
+          - "System Architecture"
+          - "Data Models"
+          - "API Design"
+          - "Key Architectural Decisions"
+
+  story:
+    match: { pathIncludes: "stories", basenamePrefix: "story-" }
+    required_sections:
+      - "Acceptance Criteria"
+    required_patterns:
+      # Exactly TWO accepted registers (see artifact-schemas/story.md — the schema
+      # sanctions these two and no others; a bare `### ACn:` heading is neither):
+      #   1. BDD scenarios — Given ... Then (the When is optional; state-assertion
+      #      ACs frequently fold it into the Given).
+      #   2. Verifiable checklist ACs — `- [ ] ACn:` (bug-fix/debug/maintain stories).
+      - name: acceptance-criteria-format
+        regex: "(\\bGiven\\b[\\s\\S]*\\bThen\\b)|(- \\[[ x]\\] ?AC\\d+)"
+        message: "Acceptance criteria must be BDD (Given/When/Then) or verifiable checklist ACs (- [ ] ACn:)"
+      - name: task-checklist
+        regex: "- \\[[ x]\\]"
+        message: "Missing task checklist (- [ ] items)"
+
+  generic:
+    required_patterns:
+      - name: has-heading
+        regex: "^# "
+        message: "Missing heading"
+      - name: non-trivial
+        min_length: 50
+        message: "Content appears too short (< 50 chars)"

@@ -5,6 +5,7 @@ import { readFileSafe, updateGitignore } from '../utils/fs-helpers.js';
 import { getProjectPaths } from '../utils/paths.js';
 import { loadSwarmConfig } from '../utils/config.js';
 import { generateAgents } from '../generators/agent-generator.js';
+import { generateMethodology } from '../generators/methodology-generator.js';
 import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
@@ -78,6 +79,23 @@ async function runUpdate(options) {
       console.log(`    Skipped (manually modified): ${agentResult.modified.join(', ')}`);
       console.log(`    Use --force to overwrite, or 'bmad-swarm eject agent <name>' to keep your changes.`);
     }
+  }
+
+  // 1.5. Ship / migrate the methodology subset into .claude/bmad/methodology/.
+  // On a pre-Phase-1 project all files are new (clean generation); user-edited
+  // shipped files are skipped like any other generated file (CB-1, §3.4).
+  let methodologyMigrated = false;
+  if (options.dryRun) {
+    console.log('  Would regenerate .claude/bmad/methodology/');
+  } else {
+    const existedBefore = existsSync(paths.bmadMethodologyDir);
+    const methodologyResult = generateMethodology(config, paths, genOptions);
+    console.log(`  ✓ Regenerated .claude/bmad/methodology/ (${methodologyResult.generated.length} files)`);
+    if (methodologyResult.modified.length > 0) {
+      console.log(`    Skipped (manually modified): ${methodologyResult.modified.join(', ')}`);
+      console.log(`    Use --force to overwrite.`);
+    }
+    methodologyMigrated = !existedBefore && methodologyResult.generated.length > 0;
   }
 
   // 2. Regenerate CLAUDE.md
@@ -212,8 +230,30 @@ async function runUpdate(options) {
   }
 
   // Ensure .gitignore stays current
+  let gitignoreResult = { changed: false, droppedCustom: [] };
   if (!options.dryRun) {
-    updateGitignore(projectRoot);
+    gitignoreResult = updateGitignore(projectRoot);
+  }
+
+  // Sharing-model migration notice (D-042): first time the methodology subset
+  // is shipped into a pre-Phase-1 project, tell the user the scaffold and its
+  // config are now git-tracked and should be reviewed/committed.
+  if (!options.dryRun && methodologyMigrated) {
+    console.log('\n  Sharing model updated: `.claude/`, `artifacts/`, `swarm.yaml`, and `CLAUDE.md` are now git-tracked.');
+    console.log('  Review `git status` and commit the scaffold to share it with your team.');
+    console.log('  The bmad-managed `.gitignore` section was replaced with a minimal ignore set.');
+  }
+
+  // L1: the wholesale replace drops any custom ignores a user had added INSIDE
+  // the bmad-managed block. Warn explicitly and list them (git-recoverable) so
+  // they can be re-added ABOVE the marker to persist across future updates.
+  if (!options.dryRun && gitignoreResult.droppedCustom.length > 0) {
+    console.log(`\n  ! Removed ${gitignoreResult.droppedCustom.length} custom ignore(s) from inside the bmad-managed \`.gitignore\` section:`);
+    for (const entry of gitignoreResult.droppedCustom) {
+      console.log(`      ${entry}`);
+    }
+    console.log('    That section is now bmad-managed and gets replaced on every update. To keep these,');
+    console.log('    re-add them ABOVE the `# bmad-swarm (generated files)` marker (recoverable via git).');
   }
 
   // Post-install probe: verify the orchestrator-write-gate accepts subagent
