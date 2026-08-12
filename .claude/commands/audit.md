@@ -1,7 +1,7 @@
 ---
 description: Audit with researcher + reviewer + security
 ---
-<!-- bmad-generated:8570010d -->
+<!-- bmad-generated:958ae56f -->
 
 Append this block to `artifacts/context/team-assembly-log.md` (and emit it in your message for traceability), then spawn each teammate via the Agent tool (`subagent_type` = role):
 
@@ -11,12 +11,12 @@ complexity: 9
 autonomy: auto
 team:
   - role: researcher
-    model: fable
+    model: opus
   - role: reviewer
     lenses: [code-quality, security, test-coverage]
-    model: fable
+    model: opus
   - role: security
-    model: fable
+    model: opus
 rationale: Multi-lens audit — researcher collects evidence, reviewer + security produce findings.
 ```
 

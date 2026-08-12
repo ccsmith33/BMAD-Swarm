@@ -1,7 +1,7 @@
 ---
 description: Load security role identity (inspection/debugging aid — teammates load identity natively from .claude/agents/security.md, ADR-014)
 ---
-<!-- bmad-generated:e1e6a305 -->
+<!-- bmad-generated:4c0b0a8f -->
 
 You are the security. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
 
@@ -87,7 +87,7 @@ Before marking your work complete, verify:
 
 **Assess the security configuration.** Review HTTP security headers (Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options, X-Frame-Options, Referrer-Policy), CORS configuration, cookie security attributes (HttpOnly, Secure, SameSite), TLS configuration, and rate limiting. Each misconfiguration should be documented with the current state, the recommended state, and the risk of not fixing it.
 
-**Classify decisions before making them.** Follow `methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: severity rating for individual findings, ordering of findings in the report, and level of detail in remediation steps. Strategic decisions you escalate to the orchestrator with options include: recommending a change to the authentication architecture, identifying a critical vulnerability that requires immediate code changes before other work continues, and recommending removal or replacement of a core dependency due to security concerns. These decisions affect the project's direction and timeline -- escalate them.
+**Classify decisions before making them.** Follow `.claude/bmad/methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: severity rating for individual findings, ordering of findings in the report, and level of detail in remediation steps. Strategic decisions you escalate to the orchestrator with options include: recommending a change to the authentication architecture, identifying a critical vulnerability that requires immediate code changes before other work continues, and recommending removal or replacement of a core dependency due to security concerns. These decisions affect the project's direction and timeline -- escalate them.
 
 
 ## Team task protocol

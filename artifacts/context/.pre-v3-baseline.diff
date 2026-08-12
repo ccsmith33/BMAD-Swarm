@@ -1,0 +1,1462 @@
+diff --git a/.claude/agents/architect.md b/.claude/agents/architect.md
+index 326768d..71185e3 100644
+--- a/.claude/agents/architect.md
++++ b/.claude/agents/architect.md
+@@ -1,6 +1,6 @@
+-<!-- bmad-generated:f2b924b4 -->
++<!-- bmad-generated:246e5938 -->
+ ---
+-model: opus
++model: fable
+ ---
+ # Architect
+ 
+diff --git a/.claude/agents/developer.md b/.claude/agents/developer.md
+index ce13dc8..9587d99 100644
+--- a/.claude/agents/developer.md
++++ b/.claude/agents/developer.md
+@@ -1,7 +1,7 @@
+-<!-- bmad-generated:71b1dce3 -->
++<!-- bmad-generated:9f6ddd29 -->
+ ---
+ isolation: worktree
+-model: opus
++model: fable
+ ---
+ # Developer
+ 
+@@ -71,4 +71,6 @@ Before marking a story complete, verify:
+ 
+ **Escalate when uncertain.** If you encounter something the story doesn't cover — an ambiguous requirement, a missing API, a case the architecture didn't address — halt and escalate to the orchestrator. Do not classify the decision or try to resolve it yourself. Just stop and report what you need.
+ 
++**Autonomy calibration.** For minor implementation choices — naming, file placement, picking between equivalent approaches — pick a reasonable option and note it in your completion message rather than escalating. Escalation stays mandatory for architectural decisions, story ambiguity, and blockers; the rules above are unchanged.
++
+ **Documentation is part of the story.** If the story mentions documentation (README update, CHANGELOG entry, API reference), treat it as a story task and implement it with the same rigor as code. Do not wait for a separate documentation pass.
+diff --git a/.claude/agents/devops.md b/.claude/agents/devops.md
+index ae993e1..06cfca7 100644
+--- a/.claude/agents/devops.md
++++ b/.claude/agents/devops.md
+@@ -1,6 +1,6 @@
+-<!-- bmad-generated:57b09d6a -->
++<!-- bmad-generated:a2bf1ce2 -->
+ ---
+-model: opus
++model: fable
+ ---
+ # DevOps
+ 
+diff --git a/.claude/agents/ideator.md b/.claude/agents/ideator.md
+index 5ec224e..950b99b 100644
+--- a/.claude/agents/ideator.md
++++ b/.claude/agents/ideator.md
+@@ -1,6 +1,6 @@
+-<!-- bmad-generated:ab302fcf -->
++<!-- bmad-generated:dde5b60c -->
+ ---
+-model: opus
++model: fable
+ ---
+ # Ideator
+ 
+diff --git a/.claude/agents/orchestrator.md b/.claude/agents/orchestrator.md
+index 8a33cc7..98d8b68 100644
+--- a/.claude/agents/orchestrator.md
++++ b/.claude/agents/orchestrator.md
+@@ -1,6 +1,6 @@
+-<!-- bmad-generated:12c02d20 -->
++<!-- bmad-generated:c39eff93 -->
+ ---
+-model: opus
++model: fable
+ ---
+ # Orchestrator
+ 
+@@ -30,6 +30,8 @@ On a new session, invoke `/identity-orchestrator` as your first action to load t
+ 
+     The `domain:` sub-field on a `team[]` entry is optional in dynamic mode and **required** for specialized `developer` / `reviewer` entries in fixed mode (see `## Team mode` below). The required top-level keys (`entry_point`, `complexity`, `autonomy`, `team`, `rationale`) are unchanged — `teamcreate-gate` Pass 1 still enforces them.
+ 
++    Immediately before each `TeamCreate` call, ALSO append the same assembly block (under a dated heading, e.g. `## 2026-06-09 — bug-fix`) to `artifacts/context/team-assembly-log.md` — this is an allowed orchestrator write path. The `teamcreate-gate` hook reads the tail of this log as a fallback accept path when the transcript misses the block (HARN-2: under Fable 5, thinking blocks persist with empty content and long text blocks may not be flushed before the gate fires). The log entry must be fresh (written < 15 minutes before the call).
++
+ 2. **Never edit code or artifacts.** Writes allowed ONLY to `artifacts/context/`, `artifacts/design/decisions/`, and `project.yaml`. The `orchestrator-write-gate` hook blocks anything else.
+ 3. **Never use `Task` for project delegation.** `Task` is removed from the permission list; teammates are created via `TeamCreate`. Use `Task` only for your own internal lookups (read a file, quick grep).
+ 4. **Delegate analysis.** Researcher and reviewer read and scan code. You do not.
+@@ -194,4 +196,11 @@ This is an orchestrator process step — same category as the epic retrospective
+ 
+ ## Model selection
+ 
+-Default: opus for every teammate. Configured via `swarm.yaml:defaults.model`. Override per-agent via `swarm.yaml:agents.{name}.model`. Valid values: `haiku | sonnet | opus | inherit`.
++Default: opus for every teammate. Configured via `swarm.yaml:defaults.model`. Override per-agent via `swarm.yaml:agents.{name}.model`. Valid values: `haiku | sonnet | opus | fable | inherit`.
++
++`fable` (Claude Fable 5) is the tier above opus — highest intelligence ceiling, 2× opus cost ($10/$50 per MTok). Promotion heuristics:
++
++- Promote a teammate to `fable` when complexity ≥ 12.
++- Use `fable` for architect / strategist / security on full-lifecycle work — deep-reasoning, low-token-volume roles where the intelligence ceiling matters most.
++- Use `fable` for adversarial review of security-critical changes.
++- Token-heavy roles (developer, reviewer) default to `opus` — fable's 2× cost compounds fastest there.
+diff --git a/.claude/agents/researcher.md b/.claude/agents/researcher.md
+index 8339895..8ebcb7c 100644
+--- a/.claude/agents/researcher.md
++++ b/.claude/agents/researcher.md
+@@ -1,6 +1,6 @@
+-<!-- bmad-generated:d541d279 -->
++<!-- bmad-generated:2a9034b2 -->
+ ---
+-model: opus
++model: fable
+ ---
+ # Researcher
+ 
+diff --git a/.claude/agents/reviewer.md b/.claude/agents/reviewer.md
+index 9ba3b01..f9abf31 100644
+--- a/.claude/agents/reviewer.md
++++ b/.claude/agents/reviewer.md
+@@ -1,6 +1,6 @@
+-<!-- bmad-generated:b162765d -->
++<!-- bmad-generated:d03045a1 -->
+ ---
+-model: opus
++model: fable
+ ---
+ # Reviewer
+ 
+@@ -83,6 +83,8 @@ Before marking a review complete, verify:
+ 
+ **Separate blocking from non-blocking feedback.** Be clear in your review about what must be fixed before the story can be considered complete (high-severity findings) versus what would be nice to fix but does not block progress (medium and low findings). The developer and orchestrator need to make efficient decisions about how to proceed.
+ 
++**Report every finding — do not self-filter for importance.** Include findings you are uncertain about or consider low-severity; tag each with a severity and a confidence level. Your job at the finding stage is coverage, not filtering — categorize blocking vs advisory and let the orchestrator and the quality gate filter downstream. It is better to surface a finding that later gets filtered out than to silently drop a defect.
++
+ **Audit the decision log.** As part of each review, check `artifacts/context/decision-log.md` for tactical decisions auto-resolved by the implementing agent. Verify these were reasonable -- that they were genuinely tactical (implementation-level, reversible, low blast radius) and not strategic decisions that should have been escalated to the orchestrator. Flag any misclassified decisions as a medium-severity finding. See `methodology/decision-classification.md` for the classification framework.
+ 
+ **Check the findings register before writing findings.** Read `artifacts/context/findings-register.md` at the start of every review. If an issue you are about to flag already has an entry (same claim, same location), re-use its existing ID rather than inventing a new one. Append a `YYYY-MM-DD — by reviewer — reconfirm — <why>` line to the entry's `decision_trail`. Never duplicate finding IDs for the same issue across audits — this is how the register stays coherent across time.
+diff --git a/.claude/agents/security.md b/.claude/agents/security.md
+index 4907a7c..16b0adc 100644
+--- a/.claude/agents/security.md
++++ b/.claude/agents/security.md
+@@ -1,6 +1,6 @@
+-<!-- bmad-generated:304c90c3 -->
++<!-- bmad-generated:6c188544 -->
+ ---
+-model: opus
++model: fable
+ ---
+ # Security
+ 
+diff --git a/.claude/agents/strategist.md b/.claude/agents/strategist.md
+index 40197e5..6ef7428 100644
+--- a/.claude/agents/strategist.md
++++ b/.claude/agents/strategist.md
+@@ -1,6 +1,6 @@
+-<!-- bmad-generated:8eec471b -->
++<!-- bmad-generated:b24087f8 -->
+ ---
+-model: opus
++model: fable
+ ---
+ # Product Strategist
+ 
+diff --git a/.claude/commands/audit.md b/.claude/commands/audit.md
+index 0dae3eb..26c3e38 100644
+--- a/.claude/commands/audit.md
++++ b/.claude/commands/audit.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:412b3765 -->
++<!-- bmad-generated:b3c9d1bd -->
+ ---
+ description: Audit with researcher + reviewer + security
+ ---
+@@ -11,12 +11,12 @@ complexity: 9
+ autonomy: auto
+ team:
+   - role: researcher
+-    model: opus
++    model: fable
+   - role: reviewer
+     lenses: [code-quality, security, test-coverage]
+-    model: opus
++    model: fable
+   - role: security
+-    model: opus
++    model: fable
+ rationale: Multi-lens audit — researcher collects evidence, reviewer + security produce findings.
+ ```
+ 
+diff --git a/.claude/commands/bug.md b/.claude/commands/bug.md
+index 7af0e28..39c2871 100644
+--- a/.claude/commands/bug.md
++++ b/.claude/commands/bug.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:807ff476 -->
++<!-- bmad-generated:708ff01b -->
+ ---
+ description: Start a bug fix with developer + reviewer
+ ---
+@@ -11,10 +11,10 @@ complexity: 6
+ autonomy: auto
+ team:
+   - role: developer
+-    model: opus
++    model: fable
+   - role: reviewer
+     lenses: [code-quality]
+-    model: opus
++    model: fable
+ rationale: Bug fix — developer implements, reviewer verifies.
+ ```
+ 
+diff --git a/.claude/commands/feature.md b/.claude/commands/feature.md
+index 6677a71..3772d13 100644
+--- a/.claude/commands/feature.md
++++ b/.claude/commands/feature.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:28fe85ee -->
++<!-- bmad-generated:03f64a7c -->
+ ---
+ description: Start a feature with architect + developer + reviewer
+ ---
+@@ -11,11 +11,11 @@ complexity: 7
+ autonomy: auto
+ team:
+   - role: architect
+-    model: opus
++    model: fable
+   - role: developer
+-    model: opus
++    model: fable
+   - role: reviewer
+     lenses: [code-quality]
+-    model: opus
++    model: fable
+ rationale: Small feature — architect designs, developer implements, reviewer verifies.
+ ```
+\ No newline at end of file
+diff --git a/.claude/commands/identity-architect.md b/.claude/commands/identity-architect.md
+index 7b2a2ce..ebce103 100644
+--- a/.claude/commands/identity-architect.md
++++ b/.claude/commands/identity-architect.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:f96a6112 -->
++<!-- bmad-generated:1c603a99 -->
+ ---
+ description: Load architect role identity
+ ---
+@@ -6,7 +6,7 @@ description: Load architect role identity
+ You are the architect. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+ 
+ ---
+-model: opus
++model: fable
+ ---
+ # Architect
+ 
+diff --git a/.claude/commands/identity-developer.md b/.claude/commands/identity-developer.md
+index 959a10e..d4afb74 100644
+--- a/.claude/commands/identity-developer.md
++++ b/.claude/commands/identity-developer.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:5f247ebf -->
++<!-- bmad-generated:1f82c7c9 -->
+ ---
+ description: Load developer role identity
+ ---
+@@ -7,7 +7,7 @@ You are the developer. Your full role instructions follow — read and internali
+ 
+ ---
+ isolation: worktree
+-model: opus
++model: fable
+ ---
+ # Developer
+ 
+@@ -77,4 +77,6 @@ Before marking a story complete, verify:
+ 
+ **Escalate when uncertain.** If you encounter something the story doesn't cover — an ambiguous requirement, a missing API, a case the architecture didn't address — halt and escalate to the orchestrator. Do not classify the decision or try to resolve it yourself. Just stop and report what you need.
+ 
++**Autonomy calibration.** For minor implementation choices — naming, file placement, picking between equivalent approaches — pick a reasonable option and note it in your completion message rather than escalating. Escalation stays mandatory for architectural decisions, story ambiguity, and blockers; the rules above are unchanged.
++
+ **Documentation is part of the story.** If the story mentions documentation (README update, CHANGELOG entry, API reference), treat it as a story task and implement it with the same rigor as code. Do not wait for a separate documentation pass.
+diff --git a/.claude/commands/identity-devops.md b/.claude/commands/identity-devops.md
+index fb3994c..5a62e67 100644
+--- a/.claude/commands/identity-devops.md
++++ b/.claude/commands/identity-devops.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:17565989 -->
++<!-- bmad-generated:09fc7ed5 -->
+ ---
+ description: Load devops role identity
+ ---
+@@ -6,7 +6,7 @@ description: Load devops role identity
+ You are the devops. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+ 
+ ---
+-model: opus
++model: fable
+ ---
+ # DevOps
+ 
+diff --git a/.claude/commands/identity-ideator.md b/.claude/commands/identity-ideator.md
+index e1bcd99..14ed15d 100644
+--- a/.claude/commands/identity-ideator.md
++++ b/.claude/commands/identity-ideator.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:e27a0942 -->
++<!-- bmad-generated:d4f6b367 -->
+ ---
+ description: Load ideator role identity
+ ---
+@@ -6,7 +6,7 @@ description: Load ideator role identity
+ You are the ideator. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+ 
+ ---
+-model: opus
++model: fable
+ ---
+ # Ideator
+ 
+diff --git a/.claude/commands/identity-orchestrator.md b/.claude/commands/identity-orchestrator.md
+index 6a0fee3..b337cff 100644
+--- a/.claude/commands/identity-orchestrator.md
++++ b/.claude/commands/identity-orchestrator.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:ac74b470 -->
++<!-- bmad-generated:10b31e46 -->
+ ---
+ description: Load orchestrator role identity
+ ---
+@@ -6,7 +6,7 @@ description: Load orchestrator role identity
+ You are the orchestrator. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+ 
+ ---
+-model: opus
++model: fable
+ ---
+ # Orchestrator
+ 
+@@ -36,6 +36,8 @@ On a new session, invoke `/identity-orchestrator` as your first action to load t
+ 
+     The `domain:` sub-field on a `team[]` entry is optional in dynamic mode and **required** for specialized `developer` / `reviewer` entries in fixed mode (see `## Team mode` below). The required top-level keys (`entry_point`, `complexity`, `autonomy`, `team`, `rationale`) are unchanged — `teamcreate-gate` Pass 1 still enforces them.
+ 
++    Immediately before each `TeamCreate` call, ALSO append the same assembly block (under a dated heading, e.g. `## 2026-06-09 — bug-fix`) to `artifacts/context/team-assembly-log.md` — this is an allowed orchestrator write path. The `teamcreate-gate` hook reads the tail of this log as a fallback accept path when the transcript misses the block (HARN-2: under Fable 5, thinking blocks persist with empty content and long text blocks may not be flushed before the gate fires). The log entry must be fresh (written < 15 minutes before the call).
++
+ 2. **Never edit code or artifacts.** Writes allowed ONLY to `artifacts/context/`, `artifacts/design/decisions/`, and `project.yaml`. The `orchestrator-write-gate` hook blocks anything else.
+ 3. **Never use `Task` for project delegation.** `Task` is removed from the permission list; teammates are created via `TeamCreate`. Use `Task` only for your own internal lookups (read a file, quick grep).
+ 4. **Delegate analysis.** Researcher and reviewer read and scan code. You do not.
+@@ -200,4 +202,11 @@ This is an orchestrator process step — same category as the epic retrospective
+ 
+ ## Model selection
+ 
+-Default: opus for every teammate. Configured via `swarm.yaml:defaults.model`. Override per-agent via `swarm.yaml:agents.{name}.model`. Valid values: `haiku | sonnet | opus | inherit`.
++Default: opus for every teammate. Configured via `swarm.yaml:defaults.model`. Override per-agent via `swarm.yaml:agents.{name}.model`. Valid values: `haiku | sonnet | opus | fable | inherit`.
++
++`fable` (Claude Fable 5) is the tier above opus — highest intelligence ceiling, 2× opus cost ($10/$50 per MTok). Promotion heuristics:
++
++- Promote a teammate to `fable` when complexity ≥ 12.
++- Use `fable` for architect / strategist / security on full-lifecycle work — deep-reasoning, low-token-volume roles where the intelligence ceiling matters most.
++- Use `fable` for adversarial review of security-critical changes.
++- Token-heavy roles (developer, reviewer) default to `opus` — fable's 2× cost compounds fastest there.
+diff --git a/.claude/commands/identity-researcher.md b/.claude/commands/identity-researcher.md
+index 6452833..3a92a7f 100644
+--- a/.claude/commands/identity-researcher.md
++++ b/.claude/commands/identity-researcher.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:e50bf509 -->
++<!-- bmad-generated:408f1478 -->
+ ---
+ description: Load researcher role identity
+ ---
+@@ -6,7 +6,7 @@ description: Load researcher role identity
+ You are the researcher. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+ 
+ ---
+-model: opus
++model: fable
+ ---
+ # Researcher
+ 
+diff --git a/.claude/commands/identity-reviewer.md b/.claude/commands/identity-reviewer.md
+index 05268ac..be057bc 100644
+--- a/.claude/commands/identity-reviewer.md
++++ b/.claude/commands/identity-reviewer.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:355407f7 -->
++<!-- bmad-generated:fea9d087 -->
+ ---
+ description: Load reviewer role identity
+ ---
+@@ -6,7 +6,7 @@ description: Load reviewer role identity
+ You are the reviewer. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+ 
+ ---
+-model: opus
++model: fable
+ ---
+ # Reviewer
+ 
+@@ -89,6 +89,8 @@ Before marking a review complete, verify:
+ 
+ **Separate blocking from non-blocking feedback.** Be clear in your review about what must be fixed before the story can be considered complete (high-severity findings) versus what would be nice to fix but does not block progress (medium and low findings). The developer and orchestrator need to make efficient decisions about how to proceed.
+ 
++**Report every finding — do not self-filter for importance.** Include findings you are uncertain about or consider low-severity; tag each with a severity and a confidence level. Your job at the finding stage is coverage, not filtering — categorize blocking vs advisory and let the orchestrator and the quality gate filter downstream. It is better to surface a finding that later gets filtered out than to silently drop a defect.
++
+ **Audit the decision log.** As part of each review, check `artifacts/context/decision-log.md` for tactical decisions auto-resolved by the implementing agent. Verify these were reasonable -- that they were genuinely tactical (implementation-level, reversible, low blast radius) and not strategic decisions that should have been escalated to the orchestrator. Flag any misclassified decisions as a medium-severity finding. See `methodology/decision-classification.md` for the classification framework.
+ 
+ **Check the findings register before writing findings.** Read `artifacts/context/findings-register.md` at the start of every review. If an issue you are about to flag already has an entry (same claim, same location), re-use its existing ID rather than inventing a new one. Append a `YYYY-MM-DD — by reviewer — reconfirm — <why>` line to the entry's `decision_trail`. Never duplicate finding IDs for the same issue across audits — this is how the register stays coherent across time.
+diff --git a/.claude/commands/identity-security.md b/.claude/commands/identity-security.md
+index 652b1c2..e8854bf 100644
+--- a/.claude/commands/identity-security.md
++++ b/.claude/commands/identity-security.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:19016b5b -->
++<!-- bmad-generated:73064c15 -->
+ ---
+ description: Load security role identity
+ ---
+@@ -6,7 +6,7 @@ description: Load security role identity
+ You are the security. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+ 
+ ---
+-model: opus
++model: fable
+ ---
+ # Security
+ 
+diff --git a/.claude/commands/identity-strategist.md b/.claude/commands/identity-strategist.md
+index 0b46603..96a4375 100644
+--- a/.claude/commands/identity-strategist.md
++++ b/.claude/commands/identity-strategist.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:12546729 -->
++<!-- bmad-generated:d251d814 -->
+ ---
+ description: Load strategist role identity
+ ---
+@@ -6,7 +6,7 @@ description: Load strategist role identity
+ You are the strategist. Your full role instructions follow — read and internalize them, then respond to the user's next message in character.
+ 
+ ---
+-model: opus
++model: fable
+ ---
+ # Product Strategist
+ 
+diff --git a/.claude/commands/migrate.md b/.claude/commands/migrate.md
+index 84a0dfe..71cb0a9 100644
+--- a/.claude/commands/migrate.md
++++ b/.claude/commands/migrate.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:982185d0 -->
++<!-- bmad-generated:40f1f117 -->
+ ---
+ description: Migration with architect + developer + reviewer
+ ---
+@@ -11,11 +11,11 @@ complexity: 9
+ autonomy: guided
+ team:
+   - role: architect
+-    model: opus
++    model: fable
+   - role: developer
+-    model: opus
++    model: fable
+   - role: reviewer
+     lenses: [code-quality, test-coverage]
+-    model: opus
++    model: fable
+ rationale: Migration — architect plans, developer executes, reviewer validates coverage.
+ ```
+\ No newline at end of file
+diff --git a/.claude/commands/research.md b/.claude/commands/research.md
+index 596c846..76df4b9 100644
+--- a/.claude/commands/research.md
++++ b/.claude/commands/research.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:b21e6378 -->
++<!-- bmad-generated:b6d4b2b6 -->
+ ---
+ description: Research-only task with researcher
+ ---
+@@ -11,7 +11,7 @@ complexity: 6
+ autonomy: auto
+ team:
+   - role: researcher
+-    model: opus
++    model: fable
+ rationale: Research-only exploration, no build.
+ ```
+ 
+diff --git a/.claude/commands/review.md b/.claude/commands/review.md
+index 9ee74d8..bfa716b 100644
+--- a/.claude/commands/review.md
++++ b/.claude/commands/review.md
+@@ -1,4 +1,4 @@
+-<!-- bmad-generated:34781f6a -->
++<!-- bmad-generated:25475d2b -->
+ ---
+ description: Review an artifact with lens selection
+ ---
+@@ -12,6 +12,6 @@ autonomy: auto
+ team:
+   - role: reviewer
+     lenses: [<selected>]
+-    model: opus
++    model: fable
+ rationale: Lens-based review of <artifact>.
+ ```
+\ No newline at end of file
+diff --git a/.claude/hooks/teamcreate-gate.cjs b/.claude/hooks/teamcreate-gate.cjs
+index bfddf29..68aae3f 100644
+--- a/.claude/hooks/teamcreate-gate.cjs
++++ b/.claude/hooks/teamcreate-gate.cjs
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env node
+-// bmad-generated:035d3a4b
++// bmad-generated:e9cb1fb3
+ // BMAD Swarm - PreToolUse gate on TeamCreate
+ // Generated by bmad-swarm - do not edit manually
+ //
+@@ -18,6 +18,20 @@
+ // scans the raw transcript text for the fence. Both passes enforce the same
+ // 5-key requirement; only denies if NEITHER finds a valid block.
+ //
++// Pass 3 (HARN-2): team-assembly-log fallback. Under Fable 5, thinking
++// blocks persist to the transcript with EMPTY content (display: omitted)
++// and long assistant text blocks are not flushed to the transcript before
++// PreToolUse fires — so both transcript passes can miss a block the
++// orchestrator genuinely produced and TeamCreate would be permanently
++// blocked. The orchestrator also appends each assembly block to
++// artifacts/context/team-assembly-log.md immediately before TeamCreate
++// (agents/orchestrator.md Invariant 1). Before denying, Pass 3 reads that
++// log (cwd-relative); if its tail (last ~4KB) contains a fenced
++// bmad-assembly block with all 5 required keys AND the file mtime is fresh
++// (< 15 minutes), the block is accepted — and still goes through Pass 2
++// routing. Errors in this pass fall through to the transcript-based deny;
++// it only ever widens acceptance.
++//
+ // Pass 2 (ADR-008, D-009): fixed-mode routing enforcement. After Pass 1
+ // accepts the bmad-assembly envelope shape, Pass 2 reads swarm.yaml from
+ // CWD. When team.mode === 'fixed', it validates each team[].entry against
+@@ -131,6 +145,31 @@ process.stdin.on('end', () => {
+     }
+   }
+ 
++  // Pass 3 (HARN-2): team-assembly-log fallback — see header comment. Only
++  // consulted when both transcript passes came up empty; any error here
++  // falls through to the transcript-based deny.
++  if (acceptedBlock === null) {
++    try {
++      const logPath = path.join(process.cwd(), 'artifacts', 'context', 'team-assembly-log.md');
++      const FRESH_MS = 15 * 60 * 1000;
++      const TAIL_BYTES = 4096;
++      const st = fs.statSync(logPath);
++      if (Date.now() - st.mtimeMs < FRESH_MS) {
++        const logRaw = fs.readFileSync(logPath, 'utf8');
++        const tail = logRaw.length > TAIL_BYTES ? logRaw.slice(logRaw.length - TAIL_BYTES) : logRaw;
++        // The log is append-only, so the LAST fenced block in the tail is
++        // the one the orchestrator just wrote for this TeamCreate call.
++        const fenceAll = new RegExp(FENCE_RE.source, 'g');
++        let m;
++        let lastBlock = null;
++        while ((m = fenceAll.exec(tail)) !== null) { lastBlock = m[1]; }
++        if (lastBlock !== null && missingKeys(lastBlock).length === 0) {
++          acceptedBlock = lastBlock;
++        }
++      }
++    } catch {}
++  }
++
+   if (acceptedBlock === null) {
+     denyMissing(structuredMissing);
+     process.exit(0);
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 2424521..75f6b22 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,8 +6,18 @@ All notable changes to bmad-swarm.
+ 
+ Wide-team retrofit tooling. Two opt-in tools remove the manual edits required to adopt wide-team specialization (D-004) in an existing project. Neither runs automatically — both are deliberate user actions, preserving the no-silent-migration principle from `architecture.md` §8.4.
+ 
++Fable 5 model tier support (D-023). `fable` (Claude Fable 5, the tier above opus — 1M context, $10/$50 per MTok, 2× opus) is now a valid model everywhere a model can be configured. The framework default stays `opus`; fable adoption is opt-in per agent.
++
+ ### New
+ 
++- **`fable` model tier.** Added to `VALID_MODELS` in `utils/validator.js` and accepted in `defaults.model`, `agents.{name}.model`, `team.specializations[].model`, and `team.fallback.model`. The duplicated default-model literal is centralized as an exported `DEFAULT_MODEL` constant in `utils/validator.js`, imported by `utils/config.js`, `cli/init.js`, `utils/cost-estimator.js`, and `generators/commands-generator.js`. The cost estimator prices fable agents at $10/$50 per MTok. The orchestrator identity gains fable promotion heuristics (complexity ≥ 12, architect/strategist/security on full-lifecycle work, adversarial review of security-critical changes), and README documents the model tiers including the 2× cost caveat. Implements **D-023**.
++- **Workflow command generators parameterized on `defaults.model`.** The `bmad-assembly` blocks in the generated `/bug`, `/feature`, `/research`, `/audit`, `/explore-idea`, `/migrate`, `/review`, and `/retrofit-team` commands previously hardcoded `model: opus`; they now emit `swarm.yaml:defaults.model` at generation time (fallback `opus`). Touches: `generators/commands-generator.js`.
++- **Fable-class prompt tuning of agent identities.** Per Anthropic's Opus 4.8/Fable 5 migration guidance: `agents/developer.md` gains an "Autonomy calibration" note (pick-and-note for minor implementation choices; escalation unchanged for architectural decisions, story ambiguity, and blockers), and `agents/reviewer.md` gains a report-every-finding rule (severity + confidence on each finding; blocking-vs-advisory categorization downstream, no self-filtering for importance).
++
++### Fixed
++
++- **HARN-2: `teamcreate-gate` Fable 5 compatibility.** Under Fable 5, thinking blocks persist to the transcript with empty content (`display: omitted`) and long assistant text blocks are not flushed before `PreToolUse` fires — both transcript passes failed closed and `TeamCreate` was permanently blocked. Added a third accept path: before denying, the hook reads `artifacts/context/team-assembly-log.md` (cwd-relative); if the last ~4KB contains a fenced `bmad-assembly` block with all 5 required keys and the file mtime is fresh (< 15 minutes), the block is accepted and still routed through Pass 2. The orchestrator identity (Invariant 1) now instructs appending each assembly block to that log immediately before `TeamCreate`. Existing passes and fail-open posture unchanged. 8 new tests in `test/hooks.test.js`. Touches: `generators/hooks-generator.js`, `agents/orchestrator.md`.
++
+ - **New CLI command: `bmad-swarm scaffold-team`.** Reads the `## Domain Map` section from `artifacts/design/architecture.md` and emits the corresponding `swarm.yaml:team` block. Default behavior is read-only (prints YAML to stdout). Pass `--write` to inject the block into `swarm.yaml`; `--write` rolls a `swarm.yaml.bak`, writes atomically, and round-trips the result through `loadSwarmConfig` for validation before declaring success. Refuses with a unified diff if a `team:` block already exists. Implements parent decision **D-014** (adopt retrofit tooling) and tactical decisions D-016 (write-safety strategy) and D-017 (Domain Map parser contract). Touches: `cli/scaffold-team.js` (new), `bin/bmad-swarm.js` (registration), `utils/domain-map.js` (new shared parser). See `artifacts/design/architecture-retrofit.md` §4 and ADR-011 / ADR-012.
+ - **New slash command: `/retrofit-team`.** Orchestrator-overlay command that proposes a Domain Map for an existing project's architecture, iterates with the user, pauses for explicit human approval (architecture is approval-gated per CLAUDE.md), and on approval spawns one architect teammate to perform a single Edit call inserting the approved Domain Map into `architecture.md`. The architect spawn is a write-delegate, not a designer — its brief explicitly forbids authoring or writing an ADR. Hybrid pattern (overlay + spawn) chosen over pure-overlay or pure-spawn per **D-015**; see ADR-010 for the six alternatives considered. Implements parent decision **D-014**. Touches: `generators/commands-generator.js` (new `buildRetrofitTeamBody`). See `artifacts/design/architecture-retrofit.md` §3.
+ 
+diff --git a/README.md b/README.md
+index eb979af..1f311f5 100644
+--- a/README.md
++++ b/README.md
+@@ -407,7 +407,7 @@ methodology:
+ agents:
+   orchestrator:
+     # enabled: true             # Disable an agent entirely (boolean)
+-    # model: sonnet             # Preferred model hint (string: haiku, sonnet, opus, inherit)
++    # model: sonnet             # Preferred model hint (string: haiku, sonnet, opus, fable, inherit)
+     # extra_context: ""         # Appended to the agent's prompt (string)
+     # extra_rules: []           # Additional behavioral rules (string[])
+   # researcher: { ... }
+@@ -427,6 +427,10 @@ output:
+ 
+ </details>
+ 
++### Model tiers
++
++Valid model values (for `defaults.model`, `agents.{name}.model`, `team.specializations[].model`, and `team.fallback.model`): `haiku`, `sonnet`, `opus`, `fable`, `inherit`. The framework default is `opus`. `fable` maps to Claude Fable 5 — the tier above opus with the highest intelligence ceiling and a 1M context window, at **2× opus cost** ($10/MTok input, $50/MTok output vs opus's $5/$25). Reserve it for deep-reasoning, low-token-volume roles (architect, strategist, security) or complexity ≥ 12 work; token-heavy roles (developer, reviewer) are usually better served by the opus default.
++
+ ## Examples
+ 
+ ```bash
+diff --git a/agents/developer.md b/agents/developer.md
+index 3fc37fb..c1b397c 100644
+--- a/agents/developer.md
++++ b/agents/developer.md
+@@ -69,4 +69,6 @@ Before marking a story complete, verify:
+ 
+ **Escalate when uncertain.** If you encounter something the story doesn't cover — an ambiguous requirement, a missing API, a case the architecture didn't address — halt and escalate to the orchestrator. Do not classify the decision or try to resolve it yourself. Just stop and report what you need.
+ 
++**Autonomy calibration.** For minor implementation choices — naming, file placement, picking between equivalent approaches — pick a reasonable option and note it in your completion message rather than escalating. Escalation stays mandatory for architectural decisions, story ambiguity, and blockers; the rules above are unchanged.
++
+ **Documentation is part of the story.** If the story mentions documentation (README update, CHANGELOG entry, API reference), treat it as a story task and implement it with the same rigor as code. Do not wait for a separate documentation pass.
+diff --git a/agents/orchestrator.md b/agents/orchestrator.md
+index 88f349c..075d4c1 100644
+--- a/agents/orchestrator.md
++++ b/agents/orchestrator.md
+@@ -26,6 +26,8 @@ On a new session, invoke `/identity-orchestrator` as your first action to load t
+ 
+     The `domain:` sub-field on a `team[]` entry is optional in dynamic mode and **required** for specialized `developer` / `reviewer` entries in fixed mode (see `## Team mode` below). The required top-level keys (`entry_point`, `complexity`, `autonomy`, `team`, `rationale`) are unchanged — `teamcreate-gate` Pass 1 still enforces them.
+ 
++    Immediately before each `TeamCreate` call, ALSO append the same assembly block (under a dated heading, e.g. `## 2026-06-09 — bug-fix`) to `artifacts/context/team-assembly-log.md` — this is an allowed orchestrator write path. The `teamcreate-gate` hook reads the tail of this log as a fallback accept path when the transcript misses the block (HARN-2: under Fable 5, thinking blocks persist with empty content and long text blocks may not be flushed before the gate fires). The log entry must be fresh (written < 15 minutes before the call).
++
+ 2. **Never edit code or artifacts.** Writes allowed ONLY to `artifacts/context/`, `artifacts/design/decisions/`, and `project.yaml`. The `orchestrator-write-gate` hook blocks anything else.
+ 3. **Never use `Task` for project delegation.** `Task` is removed from the permission list; teammates are created via `TeamCreate`. Use `Task` only for your own internal lookups (read a file, quick grep).
+ 4. **Delegate analysis.** Researcher and reviewer read and scan code. You do not.
+@@ -190,4 +192,11 @@ This is an orchestrator process step — same category as the epic retrospective
+ 
+ ## Model selection
+ 
+-Default: opus for every teammate. Configured via `swarm.yaml:defaults.model`. Override per-agent via `swarm.yaml:agents.{name}.model`. Valid values: `haiku | sonnet | opus | inherit`.
++Default: opus for every teammate. Configured via `swarm.yaml:defaults.model`. Override per-agent via `swarm.yaml:agents.{name}.model`. Valid values: `haiku | sonnet | opus | fable | inherit`.
++
++`fable` (Claude Fable 5) is the tier above opus — highest intelligence ceiling, 2× opus cost ($10/$50 per MTok). Promotion heuristics:
++
++- Promote a teammate to `fable` when complexity ≥ 12.
++- Use `fable` for architect / strategist / security on full-lifecycle work — deep-reasoning, low-token-volume roles where the intelligence ceiling matters most.
++- Use `fable` for adversarial review of security-critical changes.
++- Token-heavy roles (developer, reviewer) default to `opus` — fable's 2× cost compounds fastest there.
+diff --git a/agents/reviewer.md b/agents/reviewer.md
+index 4aab2fb..c98c50c 100644
+--- a/agents/reviewer.md
++++ b/agents/reviewer.md
+@@ -79,6 +79,8 @@ Before marking a review complete, verify:
+ 
+ **Separate blocking from non-blocking feedback.** Be clear in your review about what must be fixed before the story can be considered complete (high-severity findings) versus what would be nice to fix but does not block progress (medium and low findings). The developer and orchestrator need to make efficient decisions about how to proceed.
+ 
++**Report every finding — do not self-filter for importance.** Include findings you are uncertain about or consider low-severity; tag each with a severity and a confidence level. Your job at the finding stage is coverage, not filtering — categorize blocking vs advisory and let the orchestrator and the quality gate filter downstream. It is better to surface a finding that later gets filtered out than to silently drop a defect.
++
+ **Audit the decision log.** As part of each review, check `artifacts/context/decision-log.md` for tactical decisions auto-resolved by the implementing agent. Verify these were reasonable -- that they were genuinely tactical (implementation-level, reversible, low blast radius) and not strategic decisions that should have been escalated to the orchestrator. Flag any misclassified decisions as a medium-severity finding. See `methodology/decision-classification.md` for the classification framework.
+ 
+ **Check the findings register before writing findings.** Read `artifacts/context/findings-register.md` at the start of every review. If an issue you are about to flag already has an entry (same claim, same location), re-use its existing ID rather than inventing a new one. Append a `YYYY-MM-DD — by reviewer — reconfirm — <why>` line to the entry's `decision_trail`. Never duplicate finding IDs for the same issue across audits — this is how the register stays coherent across time.
+diff --git a/artifacts/context/decision-log.md b/artifacts/context/decision-log.md
+index 99b072d..7610160 100644
+--- a/artifacts/context/decision-log.md
++++ b/artifacts/context/decision-log.md
+@@ -254,3 +254,27 @@ Sequential D-IDs for all decisions that affect product direction, architecture,
+ - **Rationale:** (1) Sibling placement keeps WT-7's manual-procedure prose intact and lets the reader compare manual-vs-tooling paths at the same heading level; nesting under "Retrofit procedure" would imply tooling supersedes the manual path, which is false (manual editing still works and is sometimes preferred). (2) Two-bullet CHANGELOG matches the two-story implementation split (RT-2 + RT-3) — granular enough that a future reader scanning for `scaffold-team` finds it; the Docs subsection is conventional CHANGELOG style and matches 2.0.2's structure. (3) "Two opt-in tools" wording reuses the architecture doc's own framing — the architecture is the source of truth for how the feature is named and described; copying that framing keeps doc surfaces consistent. Per Story RT-4 "Decision-log discipline" anticipating tactical D-IDs starting from D-022 for this exact kind of judgment call.
+ - **Referenced by:** `README.md` §"Retrofit tooling for existing projects", `CHANGELOG.md` `[Unreleased]`, `agents/architect.md` §"Retrofit entry path"
+ - **Status:** verified (2026-04-29, reviewer — Story RT-4 reviewer-approved; all three bundled doc-shape choices landed faithfully: (1) sibling `###` subsection at `README.md:291` parallel to WT-7's "Retrofit procedure" and "Worked example" — confirmed by structural read; (2) two `### New` bullets per tool plus `### Docs` subsection at `CHANGELOG.md:9-17`; (3) "Two opt-in tools remove the manual edits…" wording at `README.md:293`. Bundle approved over split per the shared upstream `architecture-retrofit.md` §1.1 "two-tool" framing — splitting would have produced three D-IDs with identical rationale, fragmentation rather than granularity. L-1 advisory noted on entry-clarity ordering — non-blocking, see review report)
++
++## D-023 — Add `fable` (Claude Fable 5) model tier support; keep `opus` framework default; targeted fable overrides in this repo
++
++- **Date:** 2026-06-09
++- **Classification:** Strategic (model-tier policy affects all generated projects and cost profile)
++- **Source:** human request ("take advantage of fable 5 while it's out") + orchestrator
++- **Decision:** (1) Add `fable` to `VALID_MODELS` in `utils/validator.js` — it maps to Claude Fable 5 (`claude-fable-5`), the new tier above opus: 1M context, $10/$50 per MTok (2× opus), same API surface as Opus 4.8. Claude Code's agent-spawn model enum already accepts `fable`. (2) The framework-wide default stays `opus` — fable is 2× opus cost and most teammate roles (developer, reviewer) are token-heavy; making fable the silent default would double cost for all downstream users. (3) This repo opts in via per-agent overrides in `swarm.yaml` (`agents.architect.model: fable`, `agents.strategist.model: fable`, `agents.security.model: fable`) — deep-reasoning, low-token-volume roles where the intelligence ceiling matters most. (4) Orchestrator identity gains explicit model-selection heuristics (when to promote a teammate to fable). (5) Agent identity templates gain Fable-5-class prompt tuning per Anthropic's migration guidance (delegation triggers, micro-decision autonomy, report-everything review posture).
++- **Rationale:** Backward compatible (existing projects unchanged), opt-in cost escalation, and centralizing the duplicated default-model literal (`cli/init.js:279`, `utils/config.js:104`) removes a known DRY hazard while we touch the surface.
++- **Referenced by:** (pending implementation) `utils/validator.js`, `utils/config.js`, `utils/cost-estimator.js`, `generators/commands-generator.js`, `agents/orchestrator.md`, `swarm.yaml`, `README.md`, `CHANGELOG.md`
++- **Status:** accepted (auto mode; human-initiated)
++
++## D-024 — `DEFAULT_MODEL` constant lives in `utils/validator.js`
++
++- 2026-06-09 — Tactical (developer, D-023 implementation) — Exported alongside `DOMAIN_SLUG_RE`, matching the repo's single-source-of-truth export convention (D-019); imported by `utils/config.js`, `cli/init.js`, `utils/cost-estimator.js`, `generators/commands-generator.js`.
++
++## D-025 — Cost estimator prices per-agent resolved model; only fable pricing added
++
++- 2026-06-09 — Tactical (developer, D-023 implementation) — `utils/cost-estimator.js` resolves each agent's model (`agents.{name}.model` → `defaults.model` → `DEFAULT_MODEL`) and prices per agent. Fable is $10/$50 per MTok per spec; all non-fable tiers keep the file's pre-existing flat opus baseline ($15/$75) — correcting that baseline or adding haiku/sonnet tiers was out of scope.
++
++## D-026 — `teamcreate-gate` Pass 3 reads the whole assembly log, slices the last 4096 chars, and accepts the LAST fenced block in that tail
++
++- 2026-06-09 — Tactical (developer, HARN-2 fix) — Whole-read+slice is simpler than fd/offset reads inside the generated CJS template and the log is small in practice; the log is append-only so the last block is the one written for the imminent TeamCreate. Any error in Pass 3 falls through to the transcript-based deny (the pass only widens acceptance). Hook tests now default to an isolated cwd so the real repo's `team-assembly-log.md` cannot leak into cwd-relative reads.
++
++## D-027 — 2026-06-09 — This repo sets `defaults.model: fable` (all roles) — human directive: on Max subscription, quota not dollars; go all-in on Fable 5 while available. Supersedes D-023's tiered per-agent overrides for this repo only (framework default remains opus). F-006 fix declined for now (stays logged); no release cut.
+diff --git a/cli/init.js b/cli/init.js
+index a0826e4..f34780e 100644
+--- a/cli/init.js
++++ b/cli/init.js
+@@ -12,6 +12,7 @@ import { generateSettings } from '../generators/settings-generator.js';
+ import { generateRules } from '../generators/rules-generator.js';
+ import { generateCommands } from '../generators/commands-generator.js';
+ import { loadSwarmConfig } from '../utils/config.js';
++import { DEFAULT_MODEL } from '../utils/validator.js';
+ import { runScan } from './scan.js';
+ import { generateGitHubWorkflow } from '../generators/github-actions-generator.js';
+ 
+@@ -276,7 +277,7 @@ function buildSwarmYaml(answers) {
+       },
+     },
+     defaults: {
+-      model: 'opus',
++      model: DEFAULT_MODEL,
+     },
+     output: {
+       artifacts_dir: './artifacts',
+diff --git a/generators/commands-generator.js b/generators/commands-generator.js
+index 04668df..62c66cc 100644
+--- a/generators/commands-generator.js
++++ b/generators/commands-generator.js
+@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
+ import { join } from 'node:path';
+ import { writeGeneratedFile, isFileManuallyModified, ensureDir } from '../utils/fs-helpers.js';
+ import { getAgentNames } from '../utils/config.js';
++import { DEFAULT_MODEL } from '../utils/validator.js';
+ 
+ /**
+  * Generate .claude/commands/ files.
+@@ -41,18 +42,21 @@ export function generateCommands(config, projectPaths, options = {}) {
+     generated.push(`identity-${name}.md`);
+   }
+ 
+-  // 2. Workflow commands — hardcoded list
++  // 2. Workflow commands — hardcoded list. Assembly blocks emit the
++  // project's defaults.model at generation time (D-023), falling back to
++  // the framework default.
++  const model = config.defaults?.model || DEFAULT_MODEL;
+   const WORKFLOWS = [
+-    { name: 'bug', description: 'Start a bug fix with developer + reviewer', body: buildBugBody() },
+-    { name: 'feature', description: 'Start a feature with architect + developer + reviewer', body: buildFeatureBody() },
+-    { name: 'research', description: 'Research-only task with researcher', body: buildResearchBody() },
+-    { name: 'audit', description: 'Audit with researcher + reviewer + security', body: buildAuditBody() },
++    { name: 'bug', description: 'Start a bug fix with developer + reviewer', body: buildBugBody(model) },
++    { name: 'feature', description: 'Start a feature with architect + developer + reviewer', body: buildFeatureBody(model) },
++    { name: 'research', description: 'Research-only task with researcher', body: buildResearchBody(model) },
++    { name: 'audit', description: 'Audit with researcher + reviewer + security', body: buildAuditBody(model) },
+     { name: 'brainstorm', description: 'Brainstorm with ideator overlay (Mode A — orchestrator process step)', body: buildBrainstormBody() },
+-    { name: 'explore-idea', description: 'Explore an idea (Mode B — ideator overlay + researcher parallel spawn)', body: buildExploreIdeaBody() },
+-    { name: 'migrate', description: 'Migration with architect + developer + reviewer', body: buildMigrateBody() },
+-    { name: 'review', description: 'Review an artifact with lens selection', body: buildReviewBody() },
++    { name: 'explore-idea', description: 'Explore an idea (Mode B — ideator overlay + researcher parallel spawn)', body: buildExploreIdeaBody(model) },
++    { name: 'migrate', description: 'Migration with architect + developer + reviewer', body: buildMigrateBody(model) },
++    { name: 'review', description: 'Review an artifact with lens selection', body: buildReviewBody(model) },
+     { name: 'plan', description: 'Plan mode: produce assembly block only, do not spawn', body: buildPlanBody() },
+-    { name: 'retrofit-team', description: 'Propose a Domain Map for an existing architecture (orchestrator-overlay; spawns one architect for the file edit)', body: buildRetrofitTeamBody() },
++    { name: 'retrofit-team', description: 'Propose a Domain Map for an existing architecture (orchestrator-overlay; spawns one architect for the file edit)', body: buildRetrofitTeamBody(model) },
+   ];
+ 
+   for (const wf of WORKFLOWS) {
+@@ -68,7 +72,7 @@ export function generateCommands(config, projectPaths, options = {}) {
+   return { generated, modified };
+ }
+ 
+-function buildBugBody() {
++function buildBugBody(model) {
+   return `Acknowledge the user's bug report. Then emit this assembly block and call TeamCreate:
+ 
+ \`\`\`bmad-assembly
+@@ -77,17 +81,17 @@ complexity: 6
+ autonomy: auto
+ team:
+   - role: developer
+-    model: opus
++    model: ${model}
+   - role: reviewer
+     lenses: [code-quality]
+-    model: opus
++    model: ${model}
+ rationale: Bug fix — developer implements, reviewer verifies.
+ \`\`\`
+ 
+ Spawn both teammates with a curated brief including the bug description and affected files. Relay developer completion + reviewer approval back to the user.`;
+ }
+ 
+-function buildFeatureBody() {
++function buildFeatureBody(model) {
+   return `Score complexity (5-15). If 5-7 use small-feature; if ≥8 use full-lifecycle. Emit the assembly block and call TeamCreate. Default team for small-feature:
+ 
+ \`\`\`bmad-assembly
+@@ -96,17 +100,17 @@ complexity: 7
+ autonomy: auto
+ team:
+   - role: architect
+-    model: opus
++    model: ${model}
+   - role: developer
+-    model: opus
++    model: ${model}
+   - role: reviewer
+     lenses: [code-quality]
+-    model: opus
++    model: ${model}
+ rationale: Small feature — architect designs, developer implements, reviewer verifies.
+ \`\`\``;
+ }
+ 
+-function buildResearchBody() {
++function buildResearchBody(model) {
+   return `Emit:
+ 
+ \`\`\`bmad-assembly
+@@ -115,14 +119,14 @@ complexity: 6
+ autonomy: auto
+ team:
+   - role: researcher
+-    model: opus
++    model: ${model}
+ rationale: Research-only exploration, no build.
+ \`\`\`
+ 
+ Spawn researcher with the user's question. Relay findings.`;
+ }
+ 
+-function buildAuditBody() {
++function buildAuditBody(model) {
+   return `Emit:
+ 
+ \`\`\`bmad-assembly
+@@ -131,19 +135,19 @@ complexity: 9
+ autonomy: auto
+ team:
+   - role: researcher
+-    model: opus
++    model: ${model}
+   - role: reviewer
+     lenses: [code-quality, security, test-coverage]
+-    model: opus
++    model: ${model}
+   - role: security
+-    model: opus
++    model: ${model}
+ rationale: Multi-lens audit — researcher collects evidence, reviewer + security produce findings.
+ \`\`\`
+ 
+ After all three agents report, update \`artifacts/context/findings-register.md\`: add a new entry for each novel finding, or append a \`YYYY-MM-DD — by <agent> — reconfirm — <why>\` line to the \`decision_trail\` of any finding already in the register (same claim + location = same ID, do not invent new IDs for carried-forward issues).`;
+ }
+ 
+-function buildExploreIdeaBody() {
++function buildExploreIdeaBody(model) {
+   return `Enter explore-idea mode (Mode B — ideator overlay in your session + researcher spawned in parallel).
+ 
+ Step 1 (in your session): Read \`agents/ideator.md\` in full. Overlay the ideator persona onto your own session for the conversation with the user. Apply the Four Lenses, brainstorming techniques, elicitation methods invisibly. Check the exit condition at every turn.
+@@ -156,7 +160,7 @@ complexity: 7
+ autonomy: auto
+ team:
+   - role: researcher
+-    model: opus
++    model: ${model}
+ rationale: Mode B — ideator overlay on orchestrator + parallel researcher for evidence gathering.
+ \`\`\`
+ 
+@@ -182,7 +186,7 @@ function buildBrainstormBody() {
+ 7. If the conversation reveals the idea needs substantial external research before it can be shaped further, suggest the user run \`/explore-idea\` (Mode B — ideator overlay + researcher in parallel). Do NOT silently spawn a researcher yourself mid-brainstorm.`;
+ }
+ 
+-function buildMigrateBody() {
++function buildMigrateBody(model) {
+   return `Emit:
+ 
+ \`\`\`bmad-assembly
+@@ -191,17 +195,17 @@ complexity: 9
+ autonomy: guided
+ team:
+   - role: architect
+-    model: opus
++    model: ${model}
+   - role: developer
+-    model: opus
++    model: ${model}
+   - role: reviewer
+     lenses: [code-quality, test-coverage]
+-    model: opus
++    model: ${model}
+ rationale: Migration — architect plans, developer executes, reviewer validates coverage.
+ \`\`\``;
+ }
+ 
+-function buildReviewBody() {
++function buildReviewBody(model) {
+   return `Inspect the artifact the user referenced. Select lenses from the signal table in /identity-orchestrator (api, data, ui, perf, auth, test, docs). Emit the assembly block with those lenses:
+ 
+ \`\`\`bmad-assembly
+@@ -211,7 +215,7 @@ autonomy: auto
+ team:
+   - role: reviewer
+     lenses: [<selected>]
+-    model: opus
++    model: ${model}
+ rationale: Lens-based review of <artifact>.
+ \`\`\``;
+ }
+@@ -220,7 +224,7 @@ function buildPlanBody() {
+   return `Plan mode: assess the request, emit a bmad-assembly block, then STOP and wait for the user to approve. Do NOT call TeamCreate yet. After user says "go" or equivalent, execute the block.`;
+ }
+ 
+-function buildRetrofitTeamBody() {
++function buildRetrofitTeamBody(model) {
+   return `Enter retrofit-team mode (orchestrator-overlay pattern, hybrid: overlay for design + architect spawn for the file edit). Per ADR-010, this command proposes a Domain Map for an existing project's architecture, walks the user through iteration, gates the edit on explicit human approval (per the CLAUDE.md \`architecture\` human-approval invariant), and then spawns ONE architect teammate to perform the single Edit call that inserts the approved Domain Map into \`artifacts/design/architecture.md\`.
+ 
+ Walk these steps in order. Refuse cleanly at any gate that fails — do not improvise around a refused state.
+@@ -268,7 +272,7 @@ complexity: 5
+ autonomy: auto
+ team:
+   - role: architect
+-    model: opus
++    model: ${model}
+ rationale: Insert approved Domain Map verbatim into architecture.md (one Edit, no design work; spawn brief constrains scope).
+ \`\`\`
+ 
+diff --git a/generators/hooks-generator.js b/generators/hooks-generator.js
+index ce382b3..2f6e5ba 100644
+--- a/generators/hooks-generator.js
++++ b/generators/hooks-generator.js
+@@ -152,6 +152,20 @@ function generateTeamCreateGateHook(config) {
+ // scans the raw transcript text for the fence. Both passes enforce the same
+ // 5-key requirement; only denies if NEITHER finds a valid block.
+ //
++// Pass 3 (HARN-2): team-assembly-log fallback. Under Fable 5, thinking
++// blocks persist to the transcript with EMPTY content (display: omitted)
++// and long assistant text blocks are not flushed to the transcript before
++// PreToolUse fires — so both transcript passes can miss a block the
++// orchestrator genuinely produced and TeamCreate would be permanently
++// blocked. The orchestrator also appends each assembly block to
++// artifacts/context/team-assembly-log.md immediately before TeamCreate
++// (agents/orchestrator.md Invariant 1). Before denying, Pass 3 reads that
++// log (cwd-relative); if its tail (last ~4KB) contains a fenced
++// bmad-assembly block with all 5 required keys AND the file mtime is fresh
++// (< 15 minutes), the block is accepted — and still goes through Pass 2
++// routing. Errors in this pass fall through to the transcript-based deny;
++// it only ever widens acceptance.
++//
+ // Pass 2 (ADR-008, D-009): fixed-mode routing enforcement. After Pass 1
+ // accepts the bmad-assembly envelope shape, Pass 2 reads swarm.yaml from
+ // CWD. When team.mode === 'fixed', it validates each team[].entry against
+@@ -265,6 +279,31 @@ process.stdin.on('end', () => {
+     }
+   }
+ 
++  // Pass 3 (HARN-2): team-assembly-log fallback — see header comment. Only
++  // consulted when both transcript passes came up empty; any error here
++  // falls through to the transcript-based deny.
++  if (acceptedBlock === null) {
++    try {
++      const logPath = path.join(process.cwd(), 'artifacts', 'context', 'team-assembly-log.md');
++      const FRESH_MS = 15 * 60 * 1000;
++      const TAIL_BYTES = 4096;
++      const st = fs.statSync(logPath);
++      if (Date.now() - st.mtimeMs < FRESH_MS) {
++        const logRaw = fs.readFileSync(logPath, 'utf8');
++        const tail = logRaw.length > TAIL_BYTES ? logRaw.slice(logRaw.length - TAIL_BYTES) : logRaw;
++        // The log is append-only, so the LAST fenced block in the tail is
++        // the one the orchestrator just wrote for this TeamCreate call.
++        const fenceAll = new RegExp(FENCE_RE.source, 'g');
++        let m;
++        let lastBlock = null;
++        while ((m = fenceAll.exec(tail)) !== null) { lastBlock = m[1]; }
++        if (lastBlock !== null && missingKeys(lastBlock).length === 0) {
++          acceptedBlock = lastBlock;
++        }
++      }
++    } catch {}
++  }
++
+   if (acceptedBlock === null) {
+     denyMissing(structuredMissing);
+     process.exit(0);
+diff --git a/swarm.yaml b/swarm.yaml
+index 2aa3952..af77c6d 100644
+--- a/swarm.yaml
++++ b/swarm.yaml
+@@ -27,7 +27,10 @@ methodology:
+       - prd
+       - architecture
+ defaults:
+-  model: opus
++  # D-027 (supersedes D-023's tiered overrides for this repo): everything on
++  # fable while Claude Fable 5 is available — human directive 2026-06-09; this
++  # account is on a subscription plan, so the 2× API cost does not apply.
++  model: fable
+ output:
+   artifacts_dir: ./artifacts
+   code_dir: .
+diff --git a/test/config.test.js b/test/config.test.js
+index 4ec5f3b..24eb978 100644
+--- a/test/config.test.js
++++ b/test/config.test.js
+@@ -4,6 +4,7 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+ import { join } from 'node:path';
+ import { tmpdir } from 'node:os';
+ import { loadSwarmConfig, getAgentNames, getTeamConfig } from '../utils/config.js';
++import { DEFAULT_MODEL } from '../utils/validator.js';
+ 
+ describe('Config System', () => {
+   const tmpDir = join(tmpdir(), 'bmad-test-config-' + Date.now());
+@@ -294,6 +295,29 @@ team:
+     });
+   });
+ 
++  describe('DEFAULT_MODEL (D-023 centralization)', () => {
++    it('exports opus as the single default-model constant', () => {
++      assert.equal(DEFAULT_MODEL, 'opus');
++    });
++
++    it('applyDefaults fills defaults.model from DEFAULT_MODEL', () => {
++      const configPath = join(tmpDir, 'default-model.yaml');
++      writeFileSync(configPath, 'project:\n  name: test\n');
++
++      const config = loadSwarmConfig(configPath);
++      assert.equal(config.defaults.model, DEFAULT_MODEL);
++    });
++
++    it('accepts fable as defaults.model end-to-end through loadSwarmConfig', () => {
++      const configPath = join(tmpDir, 'fable-default.yaml');
++      writeFileSync(configPath, 'project:\n  name: test\ndefaults:\n  model: fable\n');
++
++      const config = loadSwarmConfig(configPath);
++      assert.equal(config.defaults.model, 'fable');
++      assert.equal(config.team.fallback.model, 'fable');
++    });
++  });
++
+   after(() => {
+     rmSync(tmpDir, { recursive: true, force: true });
+   });
+diff --git a/test/cost-estimator.test.js b/test/cost-estimator.test.js
+index 9e07899..ce2452d 100644
+--- a/test/cost-estimator.test.js
++++ b/test/cost-estimator.test.js
+@@ -101,5 +101,25 @@ describe('Cost Estimator', () => {
+       const minCost = parseFloat(result.estimatedCostMin.slice(1));
+       assert.ok(minCost >= 0.05, 'Min cost for brainstorm should reflect Opus pricing');
+     });
++
++    it('applies fable pricing ($10/$50 per 1M) when defaults.model is fable', () => {
++      // A single ideator (min 10000 tokens) at 60/40 input/output split:
++      // input: 6000 tokens = $0.06, output: 4000 tokens = $0.20 => total $0.26
++      const config = { ...baseConfig, defaults: { model: 'fable' } };
++      const result = estimateCost(config, 'brainstorm');
++      assert.equal(result.estimatedCostMin, '$0.26');
++    });
++
++    it('applies fable pricing only to fable-overridden agents', () => {
++      // bug-fix = developer + reviewer. Developer on fable, reviewer on the
++      // opus baseline. Min tokens: developer 30000, reviewer 15000.
++      // developer: (18000/1M)*10 + (12000/1M)*50 = 0.18 + 0.60 = $0.78
++      // reviewer:  (9000/1M)*15  + (6000/1M)*75  = 0.135 + 0.45 = $0.585
++      // total = $1.365 => "$1.36" (binary float stores 1.365 as 1.3649…,
++      // so toFixed(2) rounds down)
++      const config = { ...baseConfig, agents: { developer: { model: 'fable' } } };
++      const result = estimateCost(config, 'bug-fix');
++      assert.equal(result.estimatedCostMin, '$1.36');
++    });
+   });
+ });
+diff --git a/test/generators.test.js b/test/generators.test.js
+index cf6d9c3..dbf520d 100644
+--- a/test/generators.test.js
++++ b/test/generators.test.js
+@@ -789,6 +789,38 @@ methodology:
+       }
+     });
+ 
++    it('workflow command assembly blocks emit defaults.model (fable) instead of hardcoded opus', () => {
++      const projectDir = join(tmpDir, 'cmd-test-model-param');
++      mkdirSync(projectDir, { recursive: true });
++      const configPath = join(projectDir, 'swarm.yaml');
++      writeFileSync(configPath, 'project:\n  name: cmd-test\nstack:\n  language: JS\ndefaults:\n  model: fable\n');
++      const config = loadSwarmConfig(configPath);
++      const paths = getProjectPaths(projectDir);
++      generateAgents(config, paths);
++      generateCommands(config, paths);
++
++      const commandsDir = join(paths.claudeDir, 'commands');
++      for (const wf of ['bug', 'feature', 'research', 'audit', 'explore-idea', 'migrate', 'review', 'retrofit-team']) {
++        const content = readFileSync(join(commandsDir, `${wf}.md`), 'utf8');
++        assert.ok(content.includes('model: fable'), `${wf}.md should emit defaults.model (fable)`);
++        assert.ok(!content.includes('model: opus'), `${wf}.md should not hardcode model: opus`);
++      }
++    });
++
++    it('workflow command assembly blocks fall back to opus when defaults.model is absent', () => {
++      const projectDir = join(tmpDir, 'cmd-test-model-fallback');
++      mkdirSync(projectDir, { recursive: true });
++      const configPath = join(projectDir, 'swarm.yaml');
++      writeFileSync(configPath, 'project:\n  name: cmd-test\nstack:\n  language: JS\n');
++      const config = loadSwarmConfig(configPath);
++      const paths = getProjectPaths(projectDir);
++      generateAgents(config, paths);
++      generateCommands(config, paths);
++
++      const content = readFileSync(join(paths.claudeDir, 'commands', 'bug.md'), 'utf8');
++      assert.ok(content.includes('model: opus'), 'bug.md should fall back to opus');
++    });
++
+     it('brainstorm command uses overlay pattern (no assembly block, reads ideator.md)', () => {
+       const projectDir = join(tmpDir, 'cmd-test-brainstorm-overlay');
+       mkdirSync(projectDir, { recursive: true });
+diff --git a/test/hooks.test.js b/test/hooks.test.js
+index daaabd9..6ccd648 100644
+--- a/test/hooks.test.js
++++ b/test/hooks.test.js
+@@ -1,7 +1,7 @@
+ import { describe, it, before, after } from 'node:test';
+ import assert from 'node:assert/strict';
+ import { spawnSync } from 'node:child_process';
+-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
++import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync, utimesSync } from 'node:fs';
+ import { join } from 'node:path';
+ import { tmpdir } from 'node:os';
+ import { generateHooks } from '../generators/hooks-generator.js';
+@@ -34,12 +34,16 @@ describe('Hooks (process-spawn contract)', () => {
+     rmSync(tmpDir, { recursive: true, force: true });
+   });
+ 
+-  function runHook(hookName, { stdin = '{}', env = {} } = {}) {
++  // cwd defaults to the bare tmpDir so cwd-relative reads (swarm.yaml,
++  // artifacts/context/team-assembly-log.md) never leak in from the real
++  // repo checkout the tests happen to run in.
++  function runHook(hookName, { stdin = '{}', env = {}, cwd = tmpDir } = {}) {
+     const hookPath = join(hooksDir, hookName);
+     const result = spawnSync('node', [hookPath], {
+       input: stdin,
+       encoding: 'utf8',
+       env: { ...process.env, ...env },
++      cwd,
+     });
+     let decision = null;
+     if (result.stdout && result.stdout.trim()) {
+@@ -513,6 +517,150 @@ describe('Hooks (process-spawn contract)', () => {
+       assert.match(reason, /developer domain=payments-api/,
+         'deny reason must name the specific invalid entry');
+     });
++
++    // -------------------------------------------------------------------
++    // Pass 3 (HARN-2): team-assembly-log fallback. Under Fable 5, thinking
++    // blocks persist to the transcript with EMPTY content and long assistant
++    // text blocks are not flushed before PreToolUse fires — both transcript
++    // passes miss the block. Pass 3 accepts when the tail of
++    // artifacts/context/team-assembly-log.md (cwd-relative) holds a complete
++    // block AND the file mtime is fresh (< 15 minutes).
++    // -------------------------------------------------------------------
++
++    function writeAssemblyLog(projectDir, contents, { ageMinutes = 0 } = {}) {
++      const contextDir = join(projectDir, 'artifacts', 'context');
++      mkdirSync(contextDir, { recursive: true });
++      const logPath = join(contextDir, 'team-assembly-log.md');
++      writeFileSync(logPath, contents);
++      if (ageMinutes > 0) {
++        const old = new Date(Date.now() - ageMinutes * 60 * 1000);
++        utimesSync(logPath, old, old);
++      }
++      return logPath;
++    }
++
++    // Fable 5 transcript shape: thinking block persisted with empty content,
++    // no text block flushed yet.
++    function fableTranscript() {
++      return writeTranscript([
++        assistantEntry('msg_1', [{ type: 'thinking', thinking: '' }]),
++      ]);
++    }
++
++    it('HARN-2 AC1: accepts via fresh team-assembly-log when transcript passes find nothing', () => {
++      const projectDir = makeProject('project:\n  name: harn2-ac1\n');
++      writeAssemblyLog(projectDir, '## 2026-06-09 — bug fix\n\n' + validAssemblyBlock + '\n');
++      const event = { transcript_path: fableTranscript() };
++      const result = runHookInCwd('teamcreate-gate.cjs', {
++        stdin: JSON.stringify(event), cwd: projectDir,
++      });
++      assert.equal(result.decision, null, 'fresh log with valid block → accept');
++      assert.equal(result.status, 0);
++    });
++
++    it('HARN-2 AC2: denies when the assembly log is stale (mtime ≥ 15 minutes)', () => {
++      const projectDir = makeProject('project:\n  name: harn2-ac2\n');
++      writeAssemblyLog(projectDir, validAssemblyBlock + '\n', { ageMinutes: 16 });
++      const event = { transcript_path: fableTranscript() };
++      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
++        stdin: JSON.stringify(event), cwd: projectDir,
++      });
++      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
++        'stale log must not satisfy the gate');
++    });
++
++    it('HARN-2 AC3: denies when the fresh log block is missing required keys', () => {
++      const projectDir = makeProject('project:\n  name: harn2-ac3\n');
++      const partialBlock = [
++        '```bmad-assembly',
++        'entry_point: bug-fix',
++        'complexity: 6',
++        'team:',
++        '  - role: developer',
++        '```',
++      ].join('\n');
++      writeAssemblyLog(projectDir, partialBlock + '\n');
++      const event = { transcript_path: fableTranscript() };
++      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
++        stdin: JSON.stringify(event), cwd: projectDir,
++      });
++      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
++    });
++
++    it('HARN-2 AC4: Pass 2 routing still runs on the log-accepted block', () => {
++      const projectDir = makeProject([
++        'project:',
++        '  name: harn2-ac4',
++        'team:',
++        '  mode: fixed',
++        '  specializations:',
++        '    - role: developer',
++        '      domain: backend-auth',
++        '  fallback:',
++        '    enabled: false',
++        '',
++      ].join('\n'));
++      const block = assemblyBlockFor('  - role: developer\n    domain: payments-api');
++      writeAssemblyLog(projectDir, block + '\n');
++      const event = { transcript_path: fableTranscript() };
++      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
++        stdin: JSON.stringify(event), cwd: projectDir,
++      });
++      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
++        'log-accepted block must still go through Pass 2 routing');
++      assert.match(decision.hookSpecificOutput.permissionDecisionReason,
++        /developer domain=payments-api/);
++    });
++
++    it('HARN-2 AC5: uses the LAST block in the log tail (append-only log)', () => {
++      const projectDir = makeProject('project:\n  name: harn2-ac5\n');
++      const staleIncomplete = [
++        '```bmad-assembly',
++        'entry_point: bug-fix',
++        '```',
++      ].join('\n');
++      writeAssemblyLog(projectDir, staleIncomplete + '\n\n' + validAssemblyBlock + '\n');
++      const event = { transcript_path: fableTranscript() };
++      const result = runHookInCwd('teamcreate-gate.cjs', {
++        stdin: JSON.stringify(event), cwd: projectDir,
++      });
++      assert.equal(result.decision, null,
++        'last (most recent) block in the tail decides, not the first');
++    });
++
++    it('HARN-2 AC6: only the last ~4KB tail is scanned — block buried earlier is invisible', () => {
++      const projectDir = makeProject('project:\n  name: harn2-ac6\n');
++      const padding = ('x'.repeat(80) + '\n').repeat(64); // > 4KB after the block
++      writeAssemblyLog(projectDir, validAssemblyBlock + '\n\n' + padding);
++      const event = { transcript_path: fableTranscript() };
++      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
++        stdin: JSON.stringify(event), cwd: projectDir,
++      });
++      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
++        'block outside the 4KB tail window must not be found');
++    });
++
++    it('HARN-2 AC7: missing log file falls through to transcript-based deny', () => {
++      const projectDir = makeProject('project:\n  name: harn2-ac7\n');
++      const event = { transcript_path: fableTranscript() };
++      const { decision } = runHookInCwd('teamcreate-gate.cjs', {
++        stdin: JSON.stringify(event), cwd: projectDir,
++      });
++      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
++      assert.match(decision.hookSpecificOutput.permissionDecisionReason, /Missing: entry_point/);
++    });
++
++    it('HARN-2 AC8: transcript acceptance is unaffected when the log is absent (regression guard)', () => {
++      const projectDir = makeProject('project:\n  name: harn2-ac8\n');
++      const transcriptPath = writeTranscript([
++        assistantEntry('msg_1', [textBlock(validAssemblyBlock)]),
++      ]);
++      const event = { transcript_path: transcriptPath };
++      const result = runHookInCwd('teamcreate-gate.cjs', {
++        stdin: JSON.stringify(event), cwd: projectDir,
++      });
++      assert.equal(result.decision, null, 'Pass 1 acceptance must be untouched');
++    });
+   });
+ 
+   // -----------------------------------------------------------------------
+diff --git a/test/validator.test.js b/test/validator.test.js
+index 891cf8b..91a88e7 100644
+--- a/test/validator.test.js
++++ b/test/validator.test.js
+@@ -252,7 +252,7 @@ describe('Config Validator', () => {
+           specializations: [{ role: 'developer', domain: 'backend-auth', model: 'gpt-4' }],
+         },
+       });
+-      assert.ok(errors.some(e => e.includes('model "gpt-4"') && e.includes('haiku, sonnet, opus, inherit')));
++      assert.ok(errors.some(e => e.includes('model "gpt-4"') && e.includes('haiku, sonnet, opus, fable, inherit')));
+     });
+ 
+     it('rejects invalid fallback.model', () => {
+@@ -262,5 +262,42 @@ describe('Config Validator', () => {
+       });
+       assert.ok(errors.some(e => e.includes('team.fallback.model') && e.includes('gpt-4')));
+     });
++
++    it('accepts fable as a per-specialization model', () => {
++      const errors = validateConfig({
++        project: { name: 'test' },
++        team: {
++          mode: 'fixed',
++          specializations: [{ role: 'developer', domain: 'backend-auth', model: 'fable' }],
++        },
++      });
++      assert.equal(errors.length, 0);
++    });
++
++    it('accepts fable as fallback.model', () => {
++      const errors = validateConfig({
++        project: { name: 'test' },
++        team: { mode: 'dynamic', specializations: [], fallback: { enabled: true, model: 'fable' } },
++      });
++      assert.equal(errors.length, 0);
++    });
++  });
++
++  describe('fable model acceptance (D-023)', () => {
++    it('accepts fable in defaults.model', () => {
++      const errors = validateConfig({
++        project: { name: 'test' },
++        defaults: { model: 'fable' },
++      });
++      assert.equal(errors.length, 0);
++    });
++
++    it('accepts fable in agents.*.model', () => {
++      const errors = validateConfig({
++        project: { name: 'test' },
++        agents: { architect: { model: 'fable' } },
++      });
++      assert.equal(errors.length, 0);
++    });
+   });
+ });
+diff --git a/utils/config.js b/utils/config.js
+index da55774..26c87fd 100644
+--- a/utils/config.js
++++ b/utils/config.js
+@@ -2,7 +2,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
+ import { join, dirname } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import yaml from 'js-yaml';
+-import { validateConfig } from './validator.js';
++import { validateConfig, DEFAULT_MODEL } from './validator.js';
+ 
+ /**
+  * Load and parse a YAML file. Returns null if file doesn't exist.
+@@ -101,7 +101,7 @@ function applyDefaults(raw) {
+ 
+   // Default model: opus for every teammate unless overridden per-agent
+   config.defaults = config.defaults || {};
+-  if (!config.defaults.model) config.defaults.model = 'opus';
++  if (!config.defaults.model) config.defaults.model = DEFAULT_MODEL;
+ 
+   // Team block defaults (wide-team specialization — D-005, ADR-004)
+   config.team = config.team || {};
+diff --git a/utils/cost-estimator.js b/utils/cost-estimator.js
+index eb8cfa8..2400424 100644
+--- a/utils/cost-estimator.js
++++ b/utils/cost-estimator.js
+@@ -1,3 +1,5 @@
++import { DEFAULT_MODEL } from './validator.js';
++
+ // Token estimates per agent role based on typical usage patterns
+ const TOKENS_PER_AGENT = {
+   orchestrator: { min: 15000, max: 40000 },
+@@ -11,9 +13,13 @@ const TOKENS_PER_AGENT = {
+   security: { min: 15000, max: 45000 },
+ };
+ 
+-// Claude Opus pricing (per 1M tokens)
+-const PRICE_PER_1M_INPUT = 15.00;
+-const PRICE_PER_1M_OUTPUT = 75.00;
++// Pricing per 1M tokens, keyed by model tier. opus is the long-standing
++// baseline; fable (Claude Fable 5, the tier above opus — D-023) is $10/$50.
++// Tiers without an entry fall back to the opus baseline.
++const MODEL_PRICING = {
++  opus: { input: 15.00, output: 75.00 },
++  fable: { input: 10.00, output: 50.00 },
++};
+ const INPUT_OUTPUT_RATIO = 0.6; // ~60% input, 40% output
+ 
+ /**
+@@ -28,21 +34,25 @@ export function estimateCost(config, entryPoint = 'full-lifecycle') {
+ 
+   let tokensMin = 0;
+   let tokensMax = 0;
++  let costMin = 0;
++  let costMax = 0;
+ 
+   for (const agent of agents) {
+     const estimate = TOKENS_PER_AGENT[agent] || { min: 10000, max: 30000 };
+-    tokensMin += estimate.min;
+-    tokensMax += estimate.max;
++    let agentTokensMin = estimate.min;
++    let agentTokensMax = estimate.max;
+     // Extra developers multiply developer tokens
+     if (agent === 'developer' && parallelDevs > 1) {
+-      tokensMin += estimate.min * (parallelDevs - 1);
+-      tokensMax += estimate.max * (parallelDevs - 1);
++      agentTokensMin += estimate.min * (parallelDevs - 1);
++      agentTokensMax += estimate.max * (parallelDevs - 1);
+     }
++    tokensMin += agentTokensMin;
++    tokensMax += agentTokensMax;
++    const model = resolveModel(config, agent);
++    costMin += calculateCost(agentTokensMin, model);
++    costMax += calculateCost(agentTokensMax, model);
+   }
+ 
+-  const costMin = calculateCost(tokensMin);
+-  const costMax = calculateCost(tokensMax);
+-
+   return {
+     agents,
+     estimatedTokensMin: tokensMin,
+@@ -77,8 +87,13 @@ function determineAgents(config, entryPoint) {
+   });
+ }
+ 
+-function calculateCost(totalTokens) {
++function resolveModel(config, agent) {
++  return config.agents?.[agent]?.model || config.defaults?.model || DEFAULT_MODEL;
++}
++
++function calculateCost(totalTokens, model) {
++  const pricing = MODEL_PRICING[model] || MODEL_PRICING[DEFAULT_MODEL];
+   const inputTokens = totalTokens * INPUT_OUTPUT_RATIO;
+   const outputTokens = totalTokens * (1 - INPUT_OUTPUT_RATIO);
+-  return (inputTokens / 1_000_000) * PRICE_PER_1M_INPUT + (outputTokens / 1_000_000) * PRICE_PER_1M_OUTPUT;
++  return (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output;
+ }
+diff --git a/utils/validator.js b/utils/validator.js
+index bd8716e..42d77dd 100644
+--- a/utils/validator.js
++++ b/utils/validator.js
+@@ -5,7 +5,11 @@ const VALID_AUTONOMY_LEVELS = ['auto', 'guided', 'collaborative'];
+ const VALID_ISOLATION_VALUES = ['worktree', 'none'];
+ const VALID_TEAM_MODES = ['dynamic', 'fixed'];
+ const VALID_SPECIALIST_ROLES = ['developer', 'reviewer'];
+-const VALID_MODELS = ['haiku', 'sonnet', 'opus', 'inherit'];
++const VALID_MODELS = ['haiku', 'sonnet', 'opus', 'fable', 'inherit'];
++// Single source of truth for the framework default model (D-023). Consumed by
++// utils/config.js (applyDefaults), cli/init.js (init template), and
++// generators/commands-generator.js (workflow command bodies).
++export const DEFAULT_MODEL = 'opus';
+ // Single source of truth for domain slug shape. Also consumed by
+ // utils/domain-map.js (RT-1) so the parser and the validator agree.
+ export const DOMAIN_SLUG_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;

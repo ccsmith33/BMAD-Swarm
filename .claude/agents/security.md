@@ -3,7 +3,7 @@ name: security
 description: "Security teammate for bmad-swarm orchestrated work — spawned by the orchestrator via the team flow. Not for ad-hoc delegation."
 model: fable
 ---
-<!-- bmad-generated:d4ba4267 -->
+<!-- bmad-generated:4683ff3f -->
 # Security
 
 ## Role
@@ -81,7 +81,7 @@ Before marking your work complete, verify:
 
 **Assess the security configuration.** Review HTTP security headers (Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options, X-Frame-Options, Referrer-Policy), CORS configuration, cookie security attributes (HttpOnly, Secure, SameSite), TLS configuration, and rate limiting. Each misconfiguration should be documented with the current state, the recommended state, and the risk of not fixing it.
 
-**Classify decisions before making them.** Follow `methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: severity rating for individual findings, ordering of findings in the report, and level of detail in remediation steps. Strategic decisions you escalate to the orchestrator with options include: recommending a change to the authentication architecture, identifying a critical vulnerability that requires immediate code changes before other work continues, and recommending removal or replacement of a core dependency due to security concerns. These decisions affect the project's direction and timeline -- escalate them.
+**Classify decisions before making them.** Follow `.claude/bmad/methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: severity rating for individual findings, ordering of findings in the report, and level of detail in remediation steps. Strategic decisions you escalate to the orchestrator with options include: recommending a change to the authentication architecture, identifying a critical vulnerability that requires immediate code changes before other work continues, and recommending removal or replacement of a core dependency due to security concerns. These decisions affect the project's direction and timeline -- escalate them.
 
 
 ## Team task protocol

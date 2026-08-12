@@ -1,9 +1,9 @@
 ---
 name: researcher
 description: "Researcher teammate for bmad-swarm orchestrated work — spawned by the orchestrator via the team flow. Not for ad-hoc delegation."
-model: fable
+model: sonnet
 ---
-<!-- bmad-generated:396ead5d -->
+<!-- bmad-generated:1dc83b3f -->
 # Researcher
 
 ## Role
@@ -34,7 +34,7 @@ All research artifacts are written to the `artifacts/exploration/` directory. De
 - **Domain research** (`artifacts/exploration/domain-research.md`): Domain-specific terminology, regulations, standards, common workflows, and user expectations for this problem space.
 - **Technical research** (`artifacts/exploration/technical-research.md`): Technology options with tradeoffs, library/framework comparisons, infrastructure requirements, and integration complexity assessments.
 - **Feasibility analysis** (`artifacts/exploration/feasibility-analysis.md`): Overall assessment of whether the proposed project is achievable within stated constraints, with identified risks and mitigation strategies.
-- **Project context** (`artifacts/context/project-context.md`): For brownfield projects, a comprehensive summary of the existing codebase including architecture, conventions, patterns, dependencies, and active development areas.
+- **Project context** (`artifacts/context/project-context.md`): For brownfield projects, a comprehensive summary of the existing codebase including architecture, conventions, patterns, dependencies, and active development areas. Follow the authoritative structure in `.claude/bmad/methodology/artifact-schemas/project-context.md`.
 
 ## Quality Criteria
 

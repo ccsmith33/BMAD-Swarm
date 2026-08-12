@@ -3,10 +3,13 @@ node_modules/
 .DS_Store
 Thumbs.db
 nul
+# Internal session working docs — kept private (audits, brainstorms, spikes, harvest, reports)
+artifacts/**/audit-*.md
+artifacts/**/diverge-*.md
+artifacts/**/spikes-*.md
+artifacts/**/knowledge-harvest-*.md
+artifacts/**/morning-report-*.md
 # bmad-swarm (generated files)
-.claude/
-artifacts/
-swarm.yaml
-project.yaml
-CLAUDE.md
-overrides/
+.claude/settings.local.json
+.session-active
+*.bak

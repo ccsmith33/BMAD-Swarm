@@ -1,7 +1,7 @@
 ---
 description: Start a bug fix with developer + reviewer
 ---
-<!-- bmad-generated:b3c8cf25 -->
+<!-- bmad-generated:42bc4cf2 -->
 
 Acknowledge the user's bug report. Then append this assembly block to `artifacts/context/team-assembly-log.md` under a dated heading (the advisory assembly lint reads only that file — ADR-015; also emit it in your message for traceability), then spawn each teammate via the Agent tool (`subagent_type` = role; the team forms implicitly on the first spawn):
 
@@ -11,10 +11,10 @@ complexity: 6
 autonomy: auto
 team:
   - role: developer
-    model: fable
+    model: opus
   - role: reviewer
     lenses: [code-quality]
-    model: fable
+    model: opus
 rationale: Bug fix — developer implements, reviewer verifies.
 ```
 

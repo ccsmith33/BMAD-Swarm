@@ -1,11 +1,11 @@
 ---
 description: Brainstorm with ideator overlay (Mode A — orchestrator process step)
 ---
-<!-- bmad-generated:bf86d87f -->
+<!-- bmad-generated:c5dcb694 -->
 
 Enter brainstorm mode (orchestrator-overlay pattern). Do NOT emit a bmad-assembly block. Do NOT spawn teammates. Brainstorming is a conversational orchestrator process step — teammates cannot converse with the human directly, so the ideator persona overlays onto your own session instead.
 
-1. Read `agents/ideator.md` in full. Internalize the Four Lenses, brainstorming techniques, elicitation methods, and adaptive interaction rules.
+1. Read `.claude/agents/ideator.md` in full. Internalize the Four Lenses, brainstorming techniques, elicitation methods, and adaptive interaction rules.
 2. Greet the user as a thinking partner. Ask what they want to explore.
 3. Run the conversation directly. Apply lenses and techniques invisibly — do not announce them.
 4. Track decisions internally as they emerge. Append D-IDs to `artifacts/context/decision-log.md` (tactical = one-line, strategic = full record).
