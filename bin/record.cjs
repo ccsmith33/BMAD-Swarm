@@ -954,26 +954,35 @@ function parseFrontmatterLite(text) {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text || ''));
   if (!m) return {};
   const fm = {};
-  let curKey = null;
+  // Indent stack: each frame is a map that keys indented deeper than `indent`
+  // attach to. The root (indent -1) holds top-level keys; a key whose value is
+  // empty opens a nested map and pushes a frame. This nests block maps at any
+  // depth, so a 2-level block `gates:\n  prd:\n    status: …` correctly lands
+  // status under gates.prd. (F-INT-1: the old single-parent reader flattened the
+  // deeper line onto `gates`, so reconcile saw no gate.status and SILENTLY missed
+  // the awaiting-human pause — defeating RES-4. Flow-map entries like
+  // `gates:\n  prd: {status: …}` were unaffected and still parse the same way.)
+  const stack = [{ indent: -1, container: fm }];
   for (const raw of m[1].split('\n')) {
     const line = raw.replace(/\r$/, '');
     if (!line.trim() || /^\s*#/.test(line)) continue;
-    if (/^\S/.test(line)) {
-      const tm = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-      if (!tm) { curKey = null; continue; }
-      const k = tm[1];
-      const v = tm[2].replace(/\s+#.*$/, '');
-      if (v.trim() === '') { fm[k] = {}; curKey = k; }
-      else if (v.trim()[0] === '{') { fm[k] = _liteFlowMap(v); curKey = null; }
-      else { fm[k] = _liteScalar(v); curKey = null; }
-    } else if (curKey) {
-      const cm = /^\s+([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-      if (!cm) continue;
-      const ck = cm[1];
-      const cv = cm[2].replace(/\s+#.*$/, '');
-      if (cv.trim() === '') fm[curKey][ck] = {};
-      else if (cv.trim()[0] === '{') fm[curKey][ck] = _liteFlowMap(cv);
-      else fm[curKey][ck] = _liteScalar(cv);
+    const km = /^(\s*)([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (!km) continue;
+    const indent = km[1].length;
+    const key = km[2];
+    const val = km[3].replace(/\s+#.*$/, '');
+    // The parent is the nearest open map strictly less indented than this key;
+    // pop sibling/deeper frames until it is on top.
+    while (stack.length > 1 && indent <= stack[stack.length - 1].indent) stack.pop();
+    const parent = stack[stack.length - 1].container;
+    if (val.trim() === '') {
+      const child = {};
+      parent[key] = child;
+      stack.push({ indent, container: child });
+    } else if (val.trim()[0] === '{') {
+      parent[key] = _liteFlowMap(val);
+    } else {
+      parent[key] = _liteScalar(val);
     }
   }
   return fm;

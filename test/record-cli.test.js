@@ -301,3 +301,62 @@ describe('record.cjs: reconcile subcommand (SE-3 / T7)', () => {
     rmSync(clean.proj, { recursive: true, force: true });
   });
 });
+
+// F-INT-1: a BLOCK-nested gate (`gates:\n  prd:\n    status: awaiting-human`)
+// passes validate/doctor but the old parseFrontmatterLite flattened the deeper
+// `status:` onto `gates` instead of `gates.prd`, so reconcile returned
+// awaitingHuman=[] and the warm boot SILENTLY skipped the human-approval pause
+// (RES-4). This locks in that the 2-level block form surfaces the gate — the
+// exact shape that failed — alongside the flow-map form that already worked.
+describe('record.cjs: reconcile surfaces a BLOCK-nested awaiting-human gate (F-INT-1)', () => {
+  let proj, ctx;
+  before(() => {
+    ({ proj, ctx } = mkproj());
+    run(['task-event', '--task', '1', '--event', 'created', '--owner', 'dev-a'], { ctx, proj });
+    run(['task-event', '--task', '1', '--event', 'in_progress', '--owner', 'dev-a'], { ctx, proj });
+    // Deep 2-level block form (NOT the single-line flow-map): status/d_id sit on
+    // their own indented lines under gates.prd.
+    writeFileSync(join(ctx, 'project-brain.md'), [
+      '---',
+      'schema: project-brain/1',
+      'updated: 2026-08-13T10:00:00Z',
+      'checkpoint: 7',
+      'phase: implementation',
+      'gates:',
+      '  prd:',
+      '    status: awaiting-human',
+      '    d_id: D-9',
+      '    at: 2026-08-13T09:00:00Z',
+      '  architecture:',
+      '    status: passed',
+      'staleness: {ledger-events-since-checkpoint: 0}',
+      '---',
+      '',
+      '## What this is (and why)',
+      'A test.',
+      '',
+    ].join('\n'));
+  });
+  after(() => { rmSync(proj, { recursive: true, force: true }); });
+
+  const TASKLIST = JSON.stringify({ tasks: [{ id: '1', status: 'in_progress', owner: 'dev-a' }] });
+
+  it('--json surfaces the block-form awaiting-human gate (not silently dropped)', () => {
+    const r = run(['reconcile', '--tasklist', '-', '--json'], { stdin: TASKLIST, ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.awaitingHuman.map((x) => x.gate), ['prd']);
+    assert.equal(out.awaitingHuman[0].dId, 'D-9');
+    // The passed gate must NOT be surfaced, and the deeper keys must not have
+    // leaked up onto `gates` (the old flattening bug).
+    assert.equal(out.awaitingHuman.length, 1);
+    assert.equal(out.staleness.brainCheckpoint, 7);
+  });
+
+  it('human-readable mode names the awaiting-human gate', () => {
+    const r = run(['reconcile', '--tasklist', '-'], { stdin: TASKLIST, ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /AWAITING HUMAN/);
+    assert.match(r.stdout, /prd/);
+  });
+});

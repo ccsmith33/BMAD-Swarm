@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -74,5 +74,23 @@ describe('update live-swap guard (ADR-017 Amendment 1)', () => {
     assert.match(out, /Skipped \.claude\/hooks\/: a live session is active/,
       '--force must still skip live hooks — only --swap-live-hooks overrides');
     assert.match(out, /Skipped \.claude\/settings\.json: a live session is active/);
+  });
+
+  // F-INT-2: the project.yaml → project-brain migration (D-037 / WS-11) edits a
+  // USER-OWNED file and lives OUTSIDE the guarded region, so it must run even
+  // while the live-swap guard skips the hooks + settings regen. A legacy project
+  // resumed under a live session must still get migrated.
+  it('migrates project.yaml even with the live-swap guard active', () => {
+    const dir = scaffold('migrate-under-guard');
+    writeFileSync(marker(dir), String(process.pid));       // guard active
+    writeFileSync(join(dir, 'project.yaml'), 'phase: design\n');
+    const out = run('update', dir);
+    // The guard is genuinely engaged (hooks/settings skipped)…
+    assert.match(out, /Skipped \.claude\/hooks\/: a live session is active/);
+    // …yet the disjoint migration still runs to completion.
+    assert.match(out, /Migrated project\.yaml → project-brain\.md frontmatter \(phase: design\)/);
+    assert.ok(!existsSync(join(dir, 'project.yaml')), 'project.yaml must be removed after migration');
+    const brain = readFileSync(join(dir, 'artifacts', 'context', 'project-brain.md'), 'utf8');
+    assert.match(brain, /^phase: design$/m, 'the migrated phase must land in the brain frontmatter');
   });
 });
