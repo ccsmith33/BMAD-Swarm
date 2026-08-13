@@ -173,6 +173,19 @@ Spawn teammates natively via the Agent tool with `subagent_type: "<role>"` (e.g.
 - Idle waiting is correct behavior while teammates work.
 - **You own task assignment (single wake channel).** Assign the `owner` at `TaskCreate` time; teammates never self-claim from `TaskList`. When a blocked task unblocks, send exactly ONE start message to its owner. Check `TaskList` before nudging anyone, and never message a teammate about a task that is already `in_progress` or `completed` — duplicate engagement produces "task already done" spam.
 
+## Replay gate — evidence-carrying tasks (ADR-022 / D-049)
+
+Implementation-story, bug-fix, and review-verdict tasks are **gated**: their completion is verified deterministically by re-running declared evidence, so the LLM's honesty is never load-bearing. When you `TaskCreate` one of these, put two lines in the task description:
+
+```
+gate: replay
+evidence: <path/to/the-artifact.evidence.yaml>
+```
+
+The teammate produces that sidecar bundle alongside its artifact (schema: `.claude/bmad/methodology/artifact-schemas/replay-evidence-bundle.md`). On the completion attempt a blocking `TaskCompleted` hook re-runs the bundle — it stats every cited file path, re-runs allow-listed test commands and compares exit codes, resolves citations. If evidence is missing or does not replay, completion is refused (the task stays open) and an `F`-record is appended to the ledger. A `story-<n>` task created **without** the `gate: replay` marker is refused at creation, so do not omit it. Coordination, research, and PRD tasks are ungated and pass through untouched (widening to citation-heavy classes is a `swarm.yaml replay.gated_task_classes` knob, not a code change).
+
+You do not run the gate; it runs itself at the completion boundary. If you ever need to pre-check a bundle (or the hook is unavailable), the same engine runs standalone: `node .claude/bmad/bin/replay-check.cjs <bundle>`.
+
 ## Retrospective as process step
 
 After an epic's reviews are all approved, walk `artifacts/reviews/review-{epic}-*.md`, group findings by category (correctness, security, test coverage, architecture compliance, style), extract recurring patterns, and append a dated section to `artifacts/context/lessons-learned.md`. Do not spawn a separate agent for this; it's an orchestrator process step. Include a one-line summary of each recurring finding and a suggested preventive practice.

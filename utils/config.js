@@ -103,6 +103,21 @@ function applyDefaults(raw) {
   config.defaults = config.defaults || {};
   if (!config.defaults.model) config.defaults.model = DEFAULT_MODEL;
 
+  // Replay gate defaults (ADR-022 / D-049). Safe-by-default: an absent block or
+  // empty allow-list means NO command ever runs — the gate still stats paths and
+  // resolves citations, but refuses (never executes) any command. The pinned
+  // engine bin/replay-check.cjs reads swarm.yaml directly and carries the same
+  // defaults; these mirror it so package-side consumers see one shape (D-036).
+  config.replay = config.replay || {};
+  if (!Array.isArray(config.replay.allowed_commands)) {
+    config.replay.allowed_commands = ['npm test', 'npm run test'];
+  }
+  if (config.replay.timeout_seconds === undefined) config.replay.timeout_seconds = 300;
+  if (!config.replay.url_citations) config.replay.url_citations = 'advisory';
+  if (!Array.isArray(config.replay.gated_task_classes)) {
+    config.replay.gated_task_classes = ['story', 'bug-fix', 'review'];
+  }
+
   // Team block defaults (wide-team specialization — D-005, ADR-004)
   config.team = config.team || {};
   config.team.mode = config.team.mode || 'dynamic';

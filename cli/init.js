@@ -316,6 +316,15 @@ function buildSwarmYaml(answers) {
       artifacts_dir: './artifacts',
       code_dir: './src',
     },
+    // Replay gate (ADR-022 / D-049): the deterministic evidence engine re-runs
+    // ONLY these command shapes (prefix match) — no agent-invented command is
+    // ever executed. Widen allowed_commands to your test runner.
+    replay: {
+      allowed_commands: ['npm test', 'npm run test'],
+      timeout_seconds: 300,
+      url_citations: 'advisory',
+      gated_task_classes: ['story', 'bug-fix', 'review'],
+    },
   };
 
   if (answers.framework) config.stack.framework = answers.framework;

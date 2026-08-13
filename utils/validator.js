@@ -59,6 +59,23 @@ export function validateConfig(config) {
     }
   }
 
+  // Replay gate validation (ADR-022 / D-049)
+  if (config.replay !== undefined) {
+    const r = config.replay;
+    if (r.allowed_commands !== undefined && !Array.isArray(r.allowed_commands)) {
+      errors.push(`replay.allowed_commands must be an array of command prefixes, got: ${typeof r.allowed_commands}`);
+    }
+    if (r.timeout_seconds !== undefined && (!Number.isFinite(r.timeout_seconds) || r.timeout_seconds <= 0)) {
+      errors.push(`replay.timeout_seconds must be a positive number, got: ${r.timeout_seconds}`);
+    }
+    if (r.url_citations !== undefined && !['advisory', 'blocking', 'skip'].includes(r.url_citations)) {
+      errors.push(`replay.url_citations "${r.url_citations}" is invalid. Valid options: advisory, blocking, skip`);
+    }
+    if (r.gated_task_classes !== undefined && !Array.isArray(r.gated_task_classes)) {
+      errors.push(`replay.gated_task_classes must be an array, got: ${typeof r.gated_task_classes}`);
+    }
+  }
+
   // Agent validation
   if (config.agents) {
     for (const [name, agentConfig] of Object.entries(config.agents)) {

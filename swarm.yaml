@@ -48,3 +48,20 @@ agents:
 output:
   artifacts_dir: ./artifacts
   code_dir: .
+# Replay gate (ADR-022 / D-049). The deterministic Tier-0 evidence engine
+# (.claude/bmad/bin/replay-check.cjs) re-runs a gated task's declared evidence
+# before its completion is accepted. It executes ONLY commands whose text
+# prefix-matches allowed_commands — no agent-invented command is ever run (the
+# L-2 answer). Everything else (stat'ing cited paths, resolving file citations,
+# fixture-provenance) needs no allow-list. Widen allowed_commands to your runner.
+replay:
+  allowed_commands:
+    - npm test
+    - npm run test
+    - node --test
+  timeout_seconds: 300
+  url_citations: advisory        # advisory | blocking | skip
+  gated_task_classes:
+    - story
+    - bug-fix
+    - review

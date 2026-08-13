@@ -65,6 +65,7 @@ export function generateHooks(config, projectPaths, options = {}) {
     'team-assembly-lint.cjs',
     'orchestrator-write-gate.cjs',
     'ledger-write-guard.cjs',
+    'replay-gate.cjs',
   ];
 
   for (const name of hooks) {
@@ -110,6 +111,19 @@ export function getHooksConfig() {
       // all writes through node .claude/bmad/bin/record.cjs (RES-6 fix). Bash is
       // deliberately absent from this matcher so the pinned CLI still runs.
       { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-write-guard.cjs"' }] },
+    ],
+    // ADR-022 / D-040 / D-049: the replay gate. TaskCompleted is the blocking
+    // trigger (exit 2 re-runs declared evidence before "done" lands); TaskCreated
+    // enforces the `gate: replay` marker on story/bug-fix tasks so coverage is
+    // deterministic. Both events resolve to one source file (replay-gate.cjs),
+    // which branches on hook_event_name. Requires the agent-teams config
+    // (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1) under which these events fire
+    // (spike 2026-08-11, v2.1.221).
+    TaskCompleted: [
+      { hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/replay-gate.cjs"' }] },
+    ],
+    TaskCreated: [
+      { hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/replay-gate.cjs"' }] },
     ],
   };
 }

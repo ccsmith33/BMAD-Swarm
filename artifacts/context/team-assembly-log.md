@@ -380,3 +380,16 @@ team:
     model: opus
 rationale: SE-1 track T2 (sequential, on committed T1 base). Unified record envelope (D-036/ADR-021) + serialized record.cjs pinned helper (the one T1 just allow-listed) + ledger-write-guard hook (RES-6 fix) + findings-register/lessons migration to ledger.md. Opus per tier mix.
 ```
+
+## 2026-08-13 — bug-fix (Phase 2 SE-1 / T3: replay gate)
+
+```bmad-assembly
+entry_point: bug-fix
+complexity: 11
+autonomy: auto
+team:
+  - role: developer
+    domain: replay-gate
+    model: opus
+rationale: SE-1 track T3 (sequential, on committed T2 base). Blocking TaskCompleted exit-2 replay gate (ADR-022, spike-verified) — deterministic evidence-bundle re-run before task completion; appends rejection F-records via T2's record.cjs; Tier-0 engine utils/evidence.js + replay-check degradation script + gated classes story/bug-fix/review (D-049). Supersede D-002. Opus per tier mix.
+```

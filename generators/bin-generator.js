@@ -28,7 +28,7 @@ export function generateBin(config, projectPaths, options = {}) {
   const generated = [];
   const skipped = [];
 
-  const scripts = ['record.cjs'];
+  const scripts = ['record.cjs', 'replay-check.cjs'];
   for (const name of scripts) {
     const sourcePath = join(PACKAGE_ROOT, 'bin', name);
     if (!existsSync(sourcePath)) {

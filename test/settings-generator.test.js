@@ -49,7 +49,11 @@ describe('Settings Generator', () => {
     assert.ok(content.hooks.UserPromptSubmit, 'Should have UserPromptSubmit hooks');
     assert.ok(content.hooks.SessionStart, 'Should have SessionStart hooks');
     assert.ok(content.hooks.PreToolUse, 'Should have PreToolUse hooks (Agent assembly lint + Edit/Write gate)');
-    assert.ok(!content.hooks.TaskCompleted, 'Should NOT have TaskCompleted hooks (removed per ADR-002)');
+    // ADR-022 supersedes D-002/ADR-002: the TaskCompleted hook returns as the
+    // replay gate's blocking trigger (spike-verified on v2.1.221), and
+    // TaskCreated enforces the `gate: replay` marker on story tasks.
+    assert.ok(content.hooks.TaskCompleted, 'Should have the TaskCompleted replay-gate hook (ADR-022)');
+    assert.ok(content.hooks.TaskCreated, 'Should have the TaskCreated marker-enforcement hook (ADR-022)');
     assert.ok(!content.hooks.PostToolUse, 'Should NOT have PostToolUse hooks (task-tool-warning removed)');
     assert.ok(!content.hooks.TeammateIdle, 'Should NOT have TeammateIdle hooks (dead capability removed)');
   });
