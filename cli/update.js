@@ -13,6 +13,7 @@ import { generateSettings } from '../generators/settings-generator.js';
 import { generateRules } from '../generators/rules-generator.js';
 import { collectEarnedLessons, renderEarnedRulesReview } from '../utils/earned-rules.js';
 import { generateCommands } from '../generators/commands-generator.js';
+import { generateWorkflows } from '../generators/workflows-generator.js';
 import { migrateProjectYamlToBrain } from '../utils/phase-machine.js';
 
 /**
@@ -278,6 +279,20 @@ async function runUpdate(options) {
     console.log(`  \u2713 Regenerated .claude/commands/ (${commandResult.generated.length} commands)`);
     if (commandResult.modified.length > 0) {
       console.log(`    Skipped (manually modified): ${commandResult.modified.join(', ')}`);
+    }
+  }
+
+  // 4.6. Regenerate named workflows (the regime router's deterministic tier).
+  // These are inert files until the orchestrator invokes them by name, so they
+  // ship uniformly (no live-session guard, unlike hooks/settings).
+  if (options.dryRun) {
+    console.log('  Would regenerate .claude/workflows/');
+  } else {
+    const workflowResult = generateWorkflows(config, paths, genOptions);
+    console.log(`  ✓ Regenerated .claude/workflows/ (${workflowResult.generated.length} workflows)`);
+    if (workflowResult.modified.length > 0) {
+      console.log(`    Skipped (manually modified): ${workflowResult.modified.join(', ')}`);
+      console.log(`    Use --force to overwrite.`);
     }
   }
 
