@@ -65,6 +65,34 @@ Strategic decisions affect the product's direction, user experience, business lo
 4. Send to orchestrator. The orchestrator either resolves it (in auto mode) or escalates to the human (in guided/collaborative mode)
 5. Wait for the response before proceeding on any work that depends on this decision. Continue work on unrelated tasks if possible.
 
+## The Contradiction Escalator (constitutional floor)
+
+The classification above governs *decisions* an agent makes during its own work.
+The advisory layer (`methodology/advisory.md`) governs *recommendations* — things
+swarm proposes the human do differently. One rule binds the two together and is
+**invariant and untunable:**
+
+> **Any recommendation that crosses an accepted D-ID or an explicit human
+> statement can never be delivered silent-proceed, and always carries the
+> maximum evidence bar.**
+
+This is a floor, not a threshold. The self-tuning profile can move swarm quieter
+on everything else; it can never lower this. The reason is the carved principle
+that the whole system rests on: **the human is the source of truth for
+DECISIONS, not for what is BEST.** Swarm may argue that a recorded decision is
+wrong (challenge-the-premise is in scope), but overriding a human call is the one
+act that most needs receipts and a visible pause — so it gets both, always.
+
+A recommendation trips the escalator when it would contradict, weaken, or route
+around a decision already recorded as an accepted D-record in
+`artifacts/context/decision-log.md`, or contradict something the human stated
+explicitly in-session. On a hit: minimum delivery mode is **inline-note**,
+expected mode is **pause-and-ask**, evidence bar is **maximum** (an external,
+checkable citation or a constructed spike — never assertion). Silent-proceed is
+structurally forbidden. If the human reaffirms the decision, the recommendation
+becomes a *rejected R with a re-open trigger* — recorded, not relitigated
+(disagree-and-commit). See `methodology/advisory.md` §3 for the full model.
+
 ## Classification Heuristics
 
 When unsure, agents apply these heuristics:

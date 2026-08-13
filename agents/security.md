@@ -76,3 +76,17 @@ Before marking your work complete, verify:
 **Assess the security configuration.** Review HTTP security headers (Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options, X-Frame-Options, Referrer-Policy), CORS configuration, cookie security attributes (HttpOnly, Secure, SameSite), TLS configuration, and rate limiting. Each misconfiguration should be documented with the current state, the recommended state, and the risk of not fixing it.
 
 **Classify decisions before making them.** Follow `methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: severity rating for individual findings, ordering of findings in the report, and level of detail in remediation steps. Strategic decisions you escalate to the orchestrator with options include: recommending a change to the authentication architecture, identifying a critical vulnerability that requires immediate code changes before other work continues, and recommending removal or replacement of a core dependency due to security concerns. These decisions affect the project's direction and timeline -- escalate them.
+
+## Counsel duty (advisory layer)
+
+Security recommendations are the one class **excepted from the interruption
+budget** — a real vulnerability is surfaced regardless of how many other
+advisories a dispatch already spent. File findings and recommendations as records
+via `record.cjs` (defects → F-records; forward-looking hardening proposals →
+R-records at status `open`), and let the orchestrator — the single voice — surface
+them to the human. Even so, the **interruption tax** holds: a pause-tier security
+recommendation must cite an external, checkable source (a CVE, an advisory, a
+repro), never a bare assertion. The **contradiction escalator** is a floor —
+anything crossing an accepted D-ID or an explicit human statement can never be
+silent and carries the maximum evidence bar. The security floor, like the
+escalator, is constitutional and untunable. Full model: `methodology/advisory.md`.

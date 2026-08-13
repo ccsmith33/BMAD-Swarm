@@ -181,6 +181,50 @@ describe('Hooks (process-spawn contract)', () => {
       assert.equal(result.status, 0);
     });
 
+    it('accepts a block carrying an optional advisories: slot (declared-intent, never enforced)', () => {
+      // Advisory layer (methodology/advisory.md §6): the bmad-assembly block may
+      // carry an optional `advisories:` list of open R-IDs. It is a declared-
+      // intent slot only — the lint must never read or enforce it. A block WITH
+      // advisories must pass Pass 1 exactly as one without it.
+      const projectDir = makeProject('project:\n  name: gate-advisories\n');
+      const blockWithAdvisories = [
+        '```bmad-assembly',
+        'entry_point: bug-fix',
+        'complexity: 6',
+        'autonomy: auto',
+        'team:',
+        '  - role: developer',
+        'rationale: test fix',
+        'advisories: [R-007, R-012]',
+        '```',
+      ].join('\n');
+      writeAssemblyLog(projectDir, blockWithAdvisories + '\n');
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
+      assert.equal(result.decision, null, 'advisories slot must not trigger a deny');
+      assert.equal(result.status, 0);
+    });
+
+    it('accepts a block whose advisories: slot is malformed (never enforced)', () => {
+      // Even a garbage advisories value can never fail a spawn — the slot is
+      // never validated (never-enforcement guarantee).
+      const projectDir = makeProject('project:\n  name: gate-advisories-bad\n');
+      const blockBadAdvisories = [
+        '```bmad-assembly',
+        'entry_point: bug-fix',
+        'complexity: 6',
+        'autonomy: auto',
+        'team:',
+        '  - role: developer',
+        'rationale: test fix',
+        'advisories: not-a-list-of-ids',
+        '```',
+      ].join('\n');
+      writeAssemblyLog(projectDir, blockBadAdvisories + '\n');
+      const result = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });
+      assert.equal(result.decision, null, 'malformed advisories slot must not trigger a deny');
+      assert.equal(result.status, 0);
+    });
+
     it('denies when the log file is missing, with the append instruction', () => {
       const projectDir = makeProject('project:\n  name: gate-missing\n');
       const { decision } = runHookInCwd('team-assembly-lint.cjs', { stdin: SPAWN_STDIN, cwd: projectDir });

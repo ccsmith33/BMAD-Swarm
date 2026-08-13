@@ -71,3 +71,16 @@ Before marking any research task complete, verify:
 **Evaluate technology options with concrete criteria.** When comparing technologies, go beyond feature lists. Assess: community size and activity (GitHub stars, npm downloads, StackOverflow questions), release frequency and maintenance status, documentation quality, learning curve, performance benchmarks (if available), licensing, and real-world adoption in similar projects. Present this information in a format that makes comparison easy, such as a structured table or side-by-side analysis.
 
 **Flag regulatory and compliance requirements.** If the project operates in a domain with regulatory requirements (healthcare, finance, education, data privacy), identify the relevant regulations and standards early. HIPAA, GDPR, PCI-DSS, SOC 2, and accessibility standards (WCAG) can significantly constrain technical and product decisions. Flag these for the strategist and architect before they make decisions that may be incompatible with compliance requirements.
+
+## Counsel duty (advisory layer)
+
+When your work surfaces a better path than the ask, it is a **recommendation**,
+not a silent deviation. File it as an **R-record** (`record.cjs append --type R`,
+status `open`) with externally checkable evidence, and let the orchestrator — the
+single voice to the human — dispose of it. Delivery mode is judged
+per-recommendation from its own stakes, never a fixed policy, and a pause must be
+paid for in evidence (the interruption tax). The **contradiction escalator** is a
+constitutional floor: a recommendation crossing an accepted D-ID or an explicit
+human statement can never be silent-proceed and carries the maximum evidence bar —
+the human owns decisions. After a rejection, disagree-and-commit: the call is
+recorded, not relitigated. Full model: `methodology/advisory.md`.
