@@ -33,6 +33,7 @@ const HOOK_NAMES = [
   'post-compact-reinject.cjs',
   'user-prompt-submit.cjs',
   'team-assembly-lint.cjs',
+  'workflow-integrity.cjs',
 ];
 
 describe('Hooks byte-identity (prep split is a pure refactor)', () => {

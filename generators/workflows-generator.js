@@ -1,6 +1,19 @@
 import { join } from 'node:path';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { writeFileSafe, ensureDir, contentHash } from '../utils/fs-helpers.js';
+
+// The committed integrity manifest the runtime guard (workflow-integrity.cjs)
+// verifies each named workflow against before the Workflow runtime executes it.
+// WF-1 (§10.2): a tampered/injected .claude/workflows/*.js is refused fail-closed
+// on a hash mismatch or an unknown/unpinned name.
+export const WORKFLOW_MANIFEST_FILE = 'integrity.json';
+
+// Full sha256 (not the 8-char update-marker slice) over CRLF-normalized bytes —
+// the guard normalizes identically so a Windows checkout does not flip hashes.
+function workflowSha256(content) {
+  return createHash('sha256').update(content.replace(/\r\n/g, '\n')).digest('hex');
+}
 
 /**
  * Generate .claude/workflows/ named-workflow scripts — the regime router's
@@ -40,15 +53,25 @@ export function generateWorkflows(config, projectPaths, options = {}) {
     { name: 'bug-fix', body: buildBugFixWorkflow() },
   ];
 
+  // The manifest always records the CANONICAL generator output hash (even for a
+  // workflow we skip because it was manually modified) — so the runtime guard
+  // denies a tampered on-disk file rather than trusting whatever bytes are there.
+  const manifest = {};
   for (const wf of WORKFLOWS) {
-    const filePath = join(workflowsDir, `${wf.name}.js`);
+    const fileName = `${wf.name}.js`;
+    const filePath = join(workflowsDir, fileName);
+    const canonical = workflowFileContent(wf.body);
+    manifest[fileName] = workflowSha256(canonical);
     if (!options.force && isWorkflowManuallyModified(filePath)) {
-      modified.push(`${wf.name}.js`);
+      modified.push(fileName);
       continue;
     }
-    writeWorkflowFile(filePath, wf.body);
-    generated.push(`${wf.name}.js`);
+    writeFileSafe(filePath, canonical);
+    generated.push(fileName);
   }
+
+  // The manifest is derived state — always (re)written, never manual-edit-skipped.
+  writeFileSafe(join(workflowsDir, WORKFLOW_MANIFEST_FILE), JSON.stringify(manifest, null, 2) + '\n');
 
   return { generated, modified };
 }
@@ -58,15 +81,15 @@ export function generateWorkflows(config, projectPaths, options = {}) {
 const TRAILING_MARKER_RE = /\n\/\/ bmad-generated:([a-f0-9]+)\n?$/;
 
 /**
- * Write a workflow file whose FIRST bytes are its `export const meta` block,
- * with the bmad-generated hash appended as a trailing comment.
- * @param {string} filePath
+ * Build the exact shipped content of a workflow file: the body (beginning with
+ * `export const meta`) plus the trailing bmad-generated marker. Pure — the same
+ * string is written to disk AND hashed into the integrity manifest.
  * @param {string} body - the workflow script, beginning with `export const meta`
+ * @returns {string} the full file content
  */
-function writeWorkflowFile(filePath, body) {
+function workflowFileContent(body) {
   const normalized = body.replace(/\r\n/g, '\n').replace(/\n*$/, '\n');
-  const output = `${normalized}// bmad-generated:${contentHash(normalized)}\n`;
-  writeFileSafe(filePath, output);
+  return `${normalized}// bmad-generated:${contentHash(normalized)}\n`;
 }
 
 /**
@@ -155,7 +178,13 @@ function buildBugFixWorkflow() {
 // where the last expression is the result). The final line \`await run()\` is
 // that last expression — the regime-invariant summary.
 
-const taskId = (args && args.taskId) || 'unknown';
+// WF-2 (security): taskId flows into a record.cjs command an escalation agent may
+// run in a shell (the sandboxed-runtime fallback). Validate it against a strict
+// id shape so it can never carry shell/command metacharacters; fall back to a
+// safe literal on anything unexpected. (The deterministic emitter below already
+// uses array-arg spawnSync — no shell — but this defends the fallback path too.)
+const rawTaskId = (args && args.taskId) || 'unknown';
+const taskId = /^[A-Za-z0-9._-]{1,128}$/.test(String(rawTaskId)) ? String(rawTaskId) : 'unpinned';
 const report = (args && args.report) || 'No bug report supplied in args.report.';
 
 // Deterministic router-miss emission — SCRIPT LOGIC, not an agent prompt. The
@@ -187,7 +216,10 @@ async function escalateToTeam(reason) {
   const telemetryEmitted = await emitRouterMiss(reason);
   const telemetryLine = telemetryEmitted
     ? 'The router-miss calibration event has ALREADY been logged deterministically by the workflow — do NOT log it again. '
-    : 'The workflow could not log the router-miss itself (sandboxed runtime); as a fallback, FIRST run from the repo root: node .claude/bmad/bin/record.cjs task-event --task ' + taskId + ' --event router-miss --detail ' + JSON.stringify(reason) + ' — then ';
+    // WF-2: the fallback command uses only the sanitized taskId and a fixed
+    // literal detail — no unsanitized node output is interpolated into a shell
+    // command the agent is told to run.
+    : 'The workflow could not log the router-miss itself (sandboxed runtime); as a fallback, FIRST run from the repo root: node .claude/bmad/bin/record.cjs task-event --task ' + taskId + ' --event router-miss --detail router-miss — then ';
   return await agent({
     agentType: 'developer',
     prompt:

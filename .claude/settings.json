@@ -1,5 +1,5 @@
 {
-  "_bmadGenerated": "79cedeeb",
+  "_bmadGenerated": "da3f3893",
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
@@ -128,6 +128,15 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-write-guard.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/workflow-integrity.cjs\""
           }
         ]
       }

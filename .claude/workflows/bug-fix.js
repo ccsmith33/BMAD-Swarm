@@ -20,7 +20,13 @@ export const meta = {
 // where the last expression is the result). The final line `await run()` is
 // that last expression — the regime-invariant summary.
 
-const taskId = (args && args.taskId) || 'unknown';
+// WF-2 (security): taskId flows into a record.cjs command an escalation agent may
+// run in a shell (the sandboxed-runtime fallback). Validate it against a strict
+// id shape so it can never carry shell/command metacharacters; fall back to a
+// safe literal on anything unexpected. (The deterministic emitter below already
+// uses array-arg spawnSync — no shell — but this defends the fallback path too.)
+const rawTaskId = (args && args.taskId) || 'unknown';
+const taskId = /^[A-Za-z0-9._-]{1,128}$/.test(String(rawTaskId)) ? String(rawTaskId) : 'unpinned';
 const report = (args && args.report) || 'No bug report supplied in args.report.';
 
 // Deterministic router-miss emission — SCRIPT LOGIC, not an agent prompt. The
@@ -52,7 +58,10 @@ async function escalateToTeam(reason) {
   const telemetryEmitted = await emitRouterMiss(reason);
   const telemetryLine = telemetryEmitted
     ? 'The router-miss calibration event has ALREADY been logged deterministically by the workflow — do NOT log it again. '
-    : 'The workflow could not log the router-miss itself (sandboxed runtime); as a fallback, FIRST run from the repo root: node .claude/bmad/bin/record.cjs task-event --task ' + taskId + ' --event router-miss --detail ' + JSON.stringify(reason) + ' — then ';
+    // WF-2: the fallback command uses only the sanitized taskId and a fixed
+    // literal detail — no unsanitized node output is interpolated into a shell
+    // command the agent is told to run.
+    : 'The workflow could not log the router-miss itself (sandboxed runtime); as a fallback, FIRST run from the repo root: node .claude/bmad/bin/record.cjs task-event --task ' + taskId + ' --event router-miss --detail router-miss — then ';
   return await agent({
     agentType: 'developer',
     prompt:
@@ -220,4 +229,4 @@ return {
 }
 
 await run();
-// bmad-generated:f8310619
+// bmad-generated:85a637a1

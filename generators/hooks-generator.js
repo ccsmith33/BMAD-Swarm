@@ -69,6 +69,7 @@ export function generateHooks(config, projectPaths, options = {}) {
     'ledger-write-guard.cjs',
     'replay-gate.cjs',
     'task-ledger-writer.cjs',
+    'workflow-integrity.cjs',
   ];
 
   for (const name of hooks) {
@@ -132,6 +133,12 @@ export function getHooksConfig() {
       // guard denies only WRITE/redirect shapes onto the protected files, so the
       // pinned CLI (which never names those basenames in argv) still runs.
       { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-write-guard.cjs"' }] },
+      // WF-1 / §10.2 (Stream R): before the Workflow runtime executes a named
+      // regime-router workflow (.claude/workflows/*.js), verify its bytes against
+      // the committed sha256 manifest and DENY fail-closed on a tampered/unknown/
+      // unpinned workflow. This is the one runtime point that fires BEFORE the
+      // workflow's in-process JS runs; built-in workflows are left alone.
+      { matcher: 'Workflow', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/workflow-integrity.cjs"' }] },
     ],
     // ADR-022 / D-040 / D-049: the replay gate. TaskCompleted is the blocking
     // trigger (exit 2 re-runs declared evidence before "done" lands); TaskCreated

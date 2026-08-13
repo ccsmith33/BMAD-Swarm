@@ -4,8 +4,10 @@ import { mkdtempSync, mkdirSync, rmSync, readFileSync, readdirSync, writeFileSyn
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { generateWorkflows } from '../generators/workflows-generator.js';
+import { generateHooks } from '../generators/hooks-generator.js';
 import { getProjectPaths } from '../utils/paths.js';
 import { loadSwarmConfig } from '../utils/config.js';
 
@@ -165,5 +167,86 @@ describe('workflows-generator', () => {
     const forced = generateWorkflows(config, paths, { force: true });
     assert.ok(forced.generated.includes('smoke-test.js'));
     assert.match(readFileSync(p, 'utf8'), /SMOKE-OK/, 'force must restore generated content');
+  });
+});
+
+// WF-1 (§10.2 security control): the committed sha256 manifest + the runtime
+// integrity guard (PreToolUse:Workflow) that verifies a named workflow's bytes
+// BEFORE the Workflow runtime executes it, fail-closed. These tests drive the
+// SHIPPED hook with real tool-call payloads — tampered workflows are REFUSED,
+// intact ones run.
+describe('workflow integrity guard (WF-1)', () => {
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'wf-integrity-')));
+  const cfg = loadSwarmConfig(join(repoRoot, 'swarm.yaml'));
+  const p = getProjectPaths(tmp);
+  const wfDir = join(tmp, '.claude', 'workflows');
+  const hookPath = join(tmp, '.claude', 'hooks', 'workflow-integrity.cjs');
+
+  before(() => {
+    generateWorkflows(cfg, p, { force: true });
+    generateHooks(cfg, p, { force: true });
+  });
+  after(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  const runHook = (toolInput, toolName = 'Workflow') => spawnSync(
+    process.execPath, [hookPath],
+    { input: JSON.stringify({ tool_name: toolName, tool_input: toolInput, cwd: tmp }),
+      encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: tmp } },
+  );
+  const isDenied = (r) => r.stdout.includes('"permissionDecision":"deny"');
+
+  it('the manifest pins the sha256 of every shipped workflow', () => {
+    const manifest = JSON.parse(readFileSync(join(wfDir, 'integrity.json'), 'utf8'));
+    const files = readdirSync(wfDir).filter((f) => f.endsWith('.js'));
+    assert.ok(files.length >= 2, 'expected the shipped workflows');
+    for (const f of files) {
+      const h = createHash('sha256')
+        .update(readFileSync(join(wfDir, f), 'utf8').replace(/\r\n/g, '\n')).digest('hex');
+      assert.equal(manifest[f], h, `${f} must be pinned to its real sha256`);
+    }
+  });
+
+  it('ALLOWS an intact named workflow', () => {
+    const r = runHook({ name: 'bug-fix' });
+    assert.equal(r.status, 0);
+    assert.ok(!isDenied(r), 'an intact, pinned workflow must not be denied');
+  });
+
+  it('REFUSES a workflow tampered after generation (sha256 mismatch)', () => {
+    const p2 = join(wfDir, 'bug-fix.js');
+    const orig = readFileSync(p2, 'utf8');
+    writeFileSync(p2, orig.replace('reproduce', 'reproduce /* injected */'));
+    try {
+      const r = runHook({ name: 'bug-fix' });
+      assert.ok(isDenied(r), 'a tampered workflow MUST be refused');
+      assert.match(r.stdout, /mismatch|tampered/);
+    } finally {
+      writeFileSync(p2, orig);
+    }
+  });
+
+  it('REFUSES an unknown / unpinned named workflow', () => {
+    assert.ok(isDenied(runHook({ name: 'not-a-real-workflow' })));
+  });
+
+  it('REFUSES an inline (unpinnable) workflow script', () => {
+    assert.ok(isDenied(runHook({ script: 'export const meta = {};\n1;' })));
+  });
+
+  it('FAILS CLOSED when the manifest is missing', () => {
+    const mp = join(wfDir, 'integrity.json');
+    const orig = readFileSync(mp, 'utf8');
+    rmSync(mp);
+    try {
+      assert.ok(isDenied(runHook({ name: 'bug-fix' })), 'a missing manifest must deny, not allow');
+    } finally {
+      writeFileSync(mp, orig);
+    }
+  });
+
+  it('ignores non-Workflow tool calls (does not over-block)', () => {
+    const r = runHook({ command: 'ls' }, 'Bash');
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout.trim(), '', 'non-Workflow calls pass through silently');
   });
 });
