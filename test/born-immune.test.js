@@ -17,6 +17,7 @@ import { collectEarnedLessons } from '../utils/earned-rules.js';
 // is built through record.cjs, then fed to the generators.
 
 const RECORD = fileURLToPath(new URL('../bin/record.cjs', import.meta.url));
+const BMAD = fileURLToPath(new URL('../bin/bmad-swarm.js', import.meta.url));
 
 function makeProject(tmpDir, name) {
   const projectDir = join(tmpDir, name);
@@ -119,6 +120,35 @@ describe('born-immune: promoted L-records compile into the scaffold', () => {
     writeFileSync(join(ctx, 'decision-log.md'), '# Decision Log\n'); // D-9999 absent
     const lessons = collectEarnedLessons(config, paths, { knowledgeLedgerPath: join(ctx, 'ledger.md') });
     assert.equal(lessons.length, 0, 'a forged promoted L with no real ratifying D must not compile');
+  });
+
+  it('K-2 control: `update` surfaces a newly-promoted earned rule for human review', () => {
+    const dir = join(tmpDir, 'review');
+    mkdirSync(dir, { recursive: true });
+    const env0 = { ...process.env };
+    // Init a real project, then seed a promoted-and-ratified L in ITS ledger.
+    spawnSync('node', [BMAD, 'init', '-y'], { cwd: dir, encoding: 'utf8', env: env0 });
+    const ctx = join(dir, 'artifacts', 'context');
+    mkdirSync(ctx, { recursive: true });
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+    const rr = (args, input) => spawnSync('node', [RECORD, ...args, '--context-dir', ctx], { encoding: 'utf8', env, input });
+    const prov = (p, b) => JSON.stringify({ provenance: { role: 'reviewer', project: p, date: '2026-08-13', occurrences: [] }, body: b });
+    rr(['append', '--type', 'L', '--title', 'Fixture provenance required', '--fingerprint', 'synthetic-fixture-masks-real-data', '--json', prov('Vantage', 'External-data paths need a real captured fixture.')]);
+    rr(['append', '--type', 'L', '--title', 'Fixture provenance required', '--fingerprint', 'synthetic-fixture-masks-real-data', '--json', prov('Quinn', 'again')]);
+    const dId = rr(['append', '--type', 'D'], JSON.stringify({ title: 'ratify', body: 'promote L-1' })).stdout.trim();
+    rr(['set-status', 'L-1', 'candidate']);
+    rr(['set-status', 'L-1', 'promoted', '--human-approved', dId, '--enforcement-tier', 'reviewer-lens']);
+
+    // update must PROMINENTLY surface the compiled earned rule for review.
+    const out = spawnSync('node', [BMAD, 'update'], { cwd: dir, encoding: 'utf8', env: env0 }).stdout;
+    assert.match(out, /REVIEW THESE EARNED RULES/);
+    assert.match(out, /L-1 Fixture provenance required/);
+    assert.match(out, new RegExp(`ratified by ${dId}`));
+
+    // ...and --skip-earned-rules both suppresses the review and drops the clause.
+    const skipped = spawnSync('node', [BMAD, 'update', '--skip-earned-rules'], { cwd: dir, encoding: 'utf8', env: env0 }).stdout;
+    assert.doesNotMatch(skipped, /REVIEW THESE EARNED RULES/);
+    assert.doesNotMatch(readFileSync(join(dir, '.claude', 'rules', 'quality-standards.md'), 'utf8'), /Learned Standards/);
   });
 
   it('default scaffold (no promoted lessons) is unchanged', () => {

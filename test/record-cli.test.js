@@ -166,7 +166,7 @@ describe('record.cjs: set-status state machine', () => {
   it('enforces the L -> promoted human gate via set-status', () => {
     const blocked = run(['set-status', 'L-1', 'promoted'], { ctx, proj });
     assert.equal(blocked.status, 1);
-    assert.match(blocked.stderr, /human gate/);
+    assert.match(blocked.stderr, /ratification marker/);
     // K-2: --human-approved must resolve to a REAL decision, so ratify with one.
     const dId = run(['append', '--type', 'D'], { stdin: JSON.stringify({ title: 'ratify L-1', body: 'promote it' }), ctx, proj }).stdout.trim();
     const ok = run(['set-status', 'L-1', 'promoted', '--human-approved', dId, '--enforcement-tier', 'reviewer-lens'], { ctx, proj });
@@ -190,7 +190,7 @@ describe('record.cjs: append human gate (F-27 / F2-H3)', () => {
   it('refuses append --type L --status promoted with no --human-approved', () => {
     const r = run(['append', '--type', 'L', '--title', 't', '--fingerprint', 'fp', '--status', 'promoted'], { stdin: provBody('x'), ctx, proj });
     assert.equal(r.status, 1, 'the append door must honor the constitutional gate');
-    assert.match(r.stderr, /human gate/);
+    assert.match(r.stderr, /ratification marker/);
     assert.ok(!existsSync(join(ctx, 'ledger.md')), 'no record should be written');
   });
 
@@ -198,7 +198,7 @@ describe('record.cjs: append human gate (F-27 / F2-H3)', () => {
     const stdin = JSON.stringify({ provenance: { role: 'r', project: 'p', date: '2026-08-13' }, body: 'x', status: 'promoted' });
     const r = run(['append', '--type', 'L', '--title', 't', '--fingerprint', 'fp'], { stdin, ctx, proj });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /human gate/);
+    assert.match(r.stderr, /ratification marker/);
   });
 
   it('allows the migration entry points observed and recurring, and promoted WITH approval', () => {

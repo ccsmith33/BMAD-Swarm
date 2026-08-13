@@ -12,6 +12,7 @@ import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
 import { generateRules } from '../generators/rules-generator.js';
+import { renderEarnedRulesReview } from '../utils/earned-rules.js';
 import { generateCommands } from '../generators/commands-generator.js';
 import { loadSwarmConfig } from '../utils/config.js';
 import { DEFAULT_MODEL } from '../utils/validator.js';
@@ -30,6 +31,7 @@ export function registerInitCommand(program) {
     .option('--template <name>', 'Use a predefined stack template (next-app, express-api, react-app, node-cli, python-api)')
     .option('-y, --yes', 'Accept all defaults without interactive prompts')
     .option('--github', 'Generate GitHub Actions workflow for artifact validation')
+    .option('--skip-earned-rules', 'Do not compile promoted cross-project lessons into the scaffold')
     .addHelpText('after', `
 Examples:
   $ bmad-swarm init                       Interactive setup with prompts
@@ -136,8 +138,13 @@ async function runInit(options) {
   console.log(`  \u2713 Generated .claude/hooks/ (${hookResult.generated.length} hooks)`);
 
   // 6. Generate .claude/rules/
-  const rulesResult = generateRules(config, paths);
+  const rulesResult = generateRules(config, paths, { skipEarnedRules: !!options.skipEarnedRules });
   console.log(`  \u2713 Generated .claude/rules/ (${rulesResult.generated.length} rules)`);
+
+  // 6.1. Born-immune human review (K-2 compensating control): surface any earned
+  // rules compiled into the scaffold so a self-promoted rule can't ship silently.
+  const earnedReview = renderEarnedRulesReview(rulesResult.earnedLessons, 'init');
+  if (earnedReview) console.log(earnedReview);
 
   // 6.5. Generate .claude/commands/
   const commandResult = generateCommands(config, paths);

@@ -57,7 +57,9 @@ export function generateRules(config, projectPaths, options = {}) {
     generated.push(templateFile);
   }
 
-  return { generated, modified };
+  // Surface the compiled earned rules so init/update can present them for human
+  // review before they ship (K-2 compensating control).
+  return { generated, modified, earnedLessons };
 }
 
 /**

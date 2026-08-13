@@ -34,6 +34,7 @@ import { extractPromotedLessons } from './record-envelope.js';
  * @returns {Array<{id,title,fingerprint,enforcementTier,rule,contexts,occurrenceCount}>}
  */
 export function collectEarnedLessons(config, projectPaths, options = {}) {
+  if (options.skipEarnedRules) return []; // human declined the compiled earned rules
   let lessons;
   let ratifyingDIds = null; // set of D-IDs that exist in the sibling decision-log
   if (Array.isArray(options.earnedLessons)) {
@@ -164,4 +165,35 @@ export function renderEarnedMethodology(lessons) {
 function firstSentences(rule) {
   const lines = String(rule || '').split('\n').map((l) => l.trim()).filter(Boolean);
   return lines.slice(0, 2);
+}
+
+/**
+ * Render the human-review notice printed at `init`/`update` when born-immune
+ * compiles earned rules into the scaffold (K-2 compensating control, security
+ * re-verify 2026-08-13). The `--human-approved` marker is auditable, not
+ * agent-proof, so the human MUST see any newly-compiled earned rule at the
+ * moment it would ship — a self-promoted / forged rule cannot reach a scaffold
+ * silently. Returns '' when there are no earned rules.
+ *
+ * @param {Array} lessons  earned lessons about to compile
+ * @param {'init'|'update'} [phase]
+ */
+export function renderEarnedRulesReview(lessons, phase = 'update') {
+  if (!lessons || lessons.length === 0) return '';
+  const out = [];
+  out.push('');
+  out.push('⚠  REVIEW THESE EARNED RULES — compiled into your scaffold from promoted lessons');
+  out.push(`   (${phase}). A promotion marker is AUDITABLE, not agent-proof: confirm each rule`);
+  out.push('   below was ratified by you, not self-promoted. Re-run with --skip-earned-rules to decline.');
+  out.push('');
+  for (const l of lessons) {
+    const tier = l.enforcementTier ? ` [tier: ${l.enforcementTier}]` : '';
+    const prov = l.contexts && l.contexts.length ? ` — earned in ${l.contexts.join(', ')}` : '';
+    const ratifiedBy = l.dIds && l.dIds.length ? ` — ratified by ${l.dIds.join(', ')}` : ' — NO RATIFYING DECISION';
+    out.push(`   • ${l.id} ${l.title}${tier}${prov}${ratifiedBy}`);
+    const first = firstSentences(l.rule)[0];
+    if (first) out.push(`       ${first}`);
+  }
+  out.push('');
+  return out.join('\n');
 }

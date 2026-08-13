@@ -117,7 +117,7 @@ describe('record.cjs: F-27 append gate holds at all later L stages', () => {
       const r = run(['append', '--type', 'L', '--title', 't', '--fingerprint', `fp-${stage}`, '--status', stage,
         '--json', rec('L', 't', `fp-${stage}`, 'p', 'x')], { ctx, proj });
       assert.equal(r.status, 1, `${stage} must require the human gate on the append door`);
-      assert.match(r.stderr, /human gate/);
+      assert.match(r.stderr, /ratification marker/);
     });
   }
 
@@ -170,7 +170,7 @@ describe('record.cjs: promote-propose emits retro-catch evidence', () => {
     assert.match(r.stdout, /PROMOTION PROPOSAL/);
     assert.match(r.stdout, /RETRO-CATCH/);
     assert.match(r.stdout, /FALSE-POSITIVE CHECK/);
-    assert.match(r.stdout, /human gate/i);
+    assert.match(r.stdout, /ratification marker/i);
   });
 
   it('retro-catch matches whole words, not substrings (no over-count)', () => {
@@ -340,6 +340,22 @@ describe('record.cjs: security — forgery and read-confinement (K-1..K-4)', () 
     assert.ok(!/^## D-4242 — FORGED/m.test(log), 'forged D heading must be defanged');
     // nextId('D') must be D-2 (only D-1 graduated), not poisoned to D-4243.
     assert.equal(run(['next-id', 'D'], p).stdout.trim(), 'D-2');
+    rmSync(p.proj, { recursive: true, force: true });
+  });
+
+  it('K-6: id-looking text in a body/field cannot inflate the ID counter', () => {
+    const p = mkproj();
+    // A record whose BODY contains a line "id: L-999" (id-looking text) must not
+    // move the L counter — maxIdNum counts headings, not body/field text.
+    run(['append', '--type', 'C', '--json', JSON.stringify({
+      title: 'benign claim id: L-777', provenance: { role: 'r', project: 'p', date: '2026-08-13' },
+      body: 'first line\nid: L-999\nmore',
+    })], p);
+    // The first real L must be L-1, not L-1000.
+    assert.equal(run(['next-id', 'L'], p).stdout.trim(), 'L-1');
+    const first = run(['append', '--type', 'L', '--title', 't', '--fingerprint', 'k6',
+      '--json', rec('L', 't', 'k6', 'p', 'x')], p);
+    assert.equal(first.stdout.trim(), 'L-1');
     rmSync(p.proj, { recursive: true, force: true });
   });
 

@@ -82,7 +82,7 @@ const TRANSITIONS = {
     rejected: ['reopened'],
     reopened: ['accepted', 'rejected'],
   },
-  // L: observed -> recurring -> candidate -> promoted(HUMAN GATE) -> retired.
+  // L: observed -> recurring -> candidate -> promoted(RATIFICATION MARKER) -> retired.
   L: {
     observed: ['recurring', 'retired'],
     recurring: ['candidate', 'retired'],
@@ -336,9 +336,13 @@ function serializeRecord(rec) {
 // Lightweight text scanning (no YAML parse): ID allocation + status edits.
 // ---------------------------------------------------------------------------
 
-// Highest allocated integer for `type` across all `id: <TYPE>-<n>` lines.
+// Highest allocated integer for `type`, counted from the record HEADINGS
+// (`## <TYPE>-<n> — …`). Headings are column-0 and single-line (titles are
+// sanitized, bodies indented 2 spaces), so escaped or body-embedded
+// `id: <TYPE>-N` text can NOT inflate the counter (K-6). This mirrors the
+// line-anchored discipline maxDecisionNum already had for D-IDs.
 function maxIdNum(content, type) {
-  const re = new RegExp(`\\bid:\\s*${type}-(\\d+)`, 'g');
+  const re = new RegExp(`^##\\s+${type}-(\\d+)\\b`, 'gm');
   let max = 0;
   let m;
   while ((m = re.exec(content)) !== null) {
@@ -781,11 +785,22 @@ function ledgerPath(contextDir) { return path.join(contextDir, 'ledger.md'); }
 function decisionLogPath(contextDir) { return path.join(contextDir, 'decision-log.md'); }
 function taskLedgerPath(contextDir) { return path.join(contextDir, 'task-ledger.md'); }
 
-// Does a D-record with this ID exist as a real heading in decision-log.md? The
-// L->promoted human gate (K-2) must verify its --human-approved <D-ID> resolves
-// to an actual decision, not merely be a non-empty string — otherwise an agent
-// passes any token and satisfies the "human gate". Given decision-log D-records
-// are prose (no machine status field, SE-1 scope), existence is the check.
+// --human-approved is an AUDITABLE RATIFICATION MARKER, not an agent-proof gate
+// (K-2, security re-verify 2026-08-13). It records — in the git ledger, with
+// provenance — WHICH decision ratified a promotion, so a self-promotion leaves a
+// visible D-record trail. It does NOT prove a *human* acted: an agent that can
+// invoke record.cjs can `append --type D` and cite its own D. A CLI run by
+// humans and agents at identical OS privilege cannot cryptographically tell them
+// apart; the durable fix is operational (keep `append --type D` and
+// `set-status … promoted` off the agent allow-list) or cryptographic (a signed
+// marker) — a cross-stream decision escalated to the human, not a Stream-K patch.
+// The compensating control is the human review of newly-compiled earned rules at
+// init/update (born-immune never ships a promotion silently).
+//
+// decisionExists is the marker's integrity floor: the cited D-ID must resolve to
+// a real D-record heading (not merely be a non-empty token). Decision-log
+// D-records are prose (no machine status field, SE-1 scope), so existence — not
+// accepted/verified status — is what is checkable here.
 function decisionExists(contextDir, dId) {
   if (!dId || !/^D-\d+$/.test(String(dId))) return false;
   const f = decisionLogPath(contextDir);
@@ -849,16 +864,18 @@ function cmdAppend(flags) {
   }
   if (flags.body != null) input.body = flags.body;
 
-  // The append door must honor the SAME constitutional gate as set-status
-  // (F-27 / F2-H3): otherwise `append --type L --status promoted` mints a
-  // promoted lesson with no human ratification. An L-record may only ENTER at
-  // observed or recurring (the migration needs recurring); any later stage on
-  // the append door requires --human-approved <D-ID>, and promoted stays the
-  // non-negotiable human gate (ADR-021).
+  // The append door applies the SAME ratification-marker discipline as
+  // set-status (F-27 / F2-H3): `append --type L --status promoted` without the
+  // marker would mint a promoted lesson with no ratification trail. An L-record
+  // may only ENTER at observed or recurring (the migration needs recurring); any
+  // later stage on the append door requires the --human-approved <D-ID> auditable
+  // marker (ADR-021). NOTE: the marker is auditable, not agent-proof (see
+  // decisionExists) — the compensating control is the init/update earned-rules
+  // review, not this check.
   if (type === 'L') {
     const requested = flags.status != null ? flags.status : (input.status != null ? input.status : INITIAL_STATUS.L);
     if (!['observed', 'recurring'].includes(requested) && !flags.humanApproved) {
-      die(`append --type L may only enter at observed|recurring; status ${JSON.stringify(requested)} requires --human-approved <D-ID> (ADR-021 human gate)`);
+      die(`append --type L may only enter at observed|recurring; status ${JSON.stringify(requested)} requires the --human-approved <D-ID> ratification marker (ADR-021)`);
     }
   }
 
@@ -922,7 +939,7 @@ function cmdAppend(flags) {
 // Returns {id, recurrence|null, errors|null}. Shared by cmdAppend and cmdHarvest
 // so harvested lessons get the SAME dedup + auto-recurring behavior as manual
 // appends (the flagship demo: two projects' synthetic-fixture lessons fold into
-// one L at recurring). The F-27 human gate is enforced by the callers on the
+// one L at recurring). The F-27 ratification marker is enforced by the callers on the
 // APPEND door (harvest only mints at observed, so it never needs the gate).
 function appendEnvelopeRecord(contextDir, type, input, flags) {
   const target = ledgerPath(contextDir);
@@ -961,13 +978,14 @@ function cmdSetStatus(argv, flags) {
   const contextDir = contextDirFrom(flags);
   const target = ledgerPath(contextDir);
 
-  // K-2: the L->promoted human gate is a real second factor — the supplied
-  // --human-approved D-ID must resolve to an existing decision, not just be
-  // truthy. Checked here (pre-lock; no lock needed to read decision-log.md).
+  // K-2: L->promoted requires the --human-approved <D-ID> ratification marker,
+  // and that D-ID must resolve to an existing decision (not just be truthy). This
+  // is an auditable marker, not an agent-proof gate — see decisionExists.
+  // Checked pre-lock (no lock needed to read decision-log.md).
   if (type === 'L' && newStatus === 'promoted') {
-    if (!flags.humanApproved) die('L -> promoted is the human gate: pass --human-approved <D-ID> (ADR-021)');
+    if (!flags.humanApproved) die('L -> promoted requires the --human-approved <D-ID> ratification marker (ADR-021)');
     if (!decisionExists(contextDir, flags.humanApproved)) {
-      die(`--human-approved D-ID ${JSON.stringify(flags.humanApproved)} does not resolve to an existing D-record in decision-log.md; the human gate requires a real ratifying decision (K-2)`);
+      die(`--human-approved D-ID ${JSON.stringify(flags.humanApproved)} does not resolve to an existing D-record in decision-log.md; the ratification marker must cite a real decision (K-2)`);
     }
   }
 
@@ -984,9 +1002,10 @@ function cmdSetStatus(argv, flags) {
       err = `illegal ${type} transition ${from} -> ${newStatus} (allowed: ${allowed.join(', ') || 'none'})`;
       return null;
     }
-    // Constitutional gate: L -> promoted requires a human ratification D-ID.
+    // Ratification marker (defense-in-depth; the pre-lock K-2 check already
+    // verified existence): L -> promoted requires --human-approved <D-ID>.
     if (type === 'L' && newStatus === 'promoted' && !flags.humanApproved) {
-      err = 'L -> promoted is the human gate: pass --human-approved <D-ID> (ADR-021)';
+      err = 'L -> promoted requires the --human-approved <D-ID> ratification marker (ADR-021)';
       return null;
     }
     // A rejected R must record a reopen trigger.
@@ -1569,7 +1588,8 @@ function cmdPromotePropose(argv, flags) {
   for (const c of retro.falsePositives.slice(0, 10)) out.push('      ? ' + c);
   if (retro.falsePositives.length > 10) out.push(`      … +${retro.falsePositives.length - 10} more`);
   out.push('');
-  out.push('  This is a PROPOSAL. Promotion is the human gate (ADR-021). To ratify:');
+  out.push('  This is a PROPOSAL. Promotion records an auditable ratification marker (ADR-021),');
+  out.push('  and newly-compiled rules are surfaced for human review at init/update. To ratify:');
   if (status === 'recurring') out.push(`    record.cjs set-status ${id} candidate`);
   out.push(`    record.cjs set-status ${id} promoted --human-approved <D-ID> --enforcement-tier ${tier}`);
   process.stdout.write(out.join('\n') + '\n');

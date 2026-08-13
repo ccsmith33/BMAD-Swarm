@@ -11,6 +11,7 @@ import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
 import { generateRules } from '../generators/rules-generator.js';
+import { collectEarnedLessons, renderEarnedRulesReview } from '../utils/earned-rules.js';
 import { generateCommands } from '../generators/commands-generator.js';
 import { migrateProjectYamlToBrain } from '../utils/phase-machine.js';
 
@@ -25,6 +26,7 @@ export function registerUpdateCommand(program) {
     .option('--dry-run', 'Preview what would be regenerated without writing any files')
     .option('--force', 'Overwrite files even if they have been manually modified')
     .option('--swap-live-hooks', 'Regenerate .claude/hooks/ + settings.json even while a live session is active (hot-swaps the running enforcement — off by default)')
+    .option('--skip-earned-rules', 'Do not compile promoted cross-project lessons into the scaffold')
     .addHelpText('after', `
 Examples:
   $ bmad-swarm update              Regenerate all managed files
@@ -161,13 +163,20 @@ async function runUpdate(options) {
   // 4. Regenerate rules
   if (options.dryRun) {
     console.log('  Would regenerate .claude/rules/');
+    // Even in dry-run, show which earned rules WOULD compile (K-2 review).
+    const preview = collectEarnedLessons(config, paths, { skipEarnedRules: !!options.skipEarnedRules });
+    const previewReview = renderEarnedRulesReview(preview, 'update');
+    if (previewReview) console.log(previewReview);
   } else {
-    const rulesResult = generateRules(config, paths, genOptions);
+    const rulesResult = generateRules(config, paths, { ...genOptions, skipEarnedRules: !!options.skipEarnedRules });
     console.log(`  \u2713 Regenerated .claude/rules/ (${rulesResult.generated.length} rules)`);
     if (rulesResult.modified.length > 0) {
       console.log(`    Skipped (manually modified): ${rulesResult.modified.join(', ')}`);
       console.log(`    Use --force to overwrite.`);
     }
+    // Born-immune human review (K-2 compensating control).
+    const earnedReview = renderEarnedRulesReview(rulesResult.earnedLessons, 'update');
+    if (earnedReview) console.log(earnedReview);
   }
 
   // 4.1. Clean up stale generated files from older versions
