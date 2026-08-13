@@ -172,6 +172,24 @@ describe('record.cjs: promote-propose emits retro-catch evidence', () => {
     assert.match(r.stdout, /FALSE-POSITIVE CHECK/);
     assert.match(r.stdout, /human gate/i);
   });
+
+  it('retro-catch matches whole words, not substrings (no over-count)', () => {
+    const p = mkproj();
+    run(['append', '--type', 'L', '--title', 'race cond', '--fingerprint', 'race-condition', '--status', 'recurring',
+      '--json', rec('L', 'x', 'race-condition', 'Vantage', 'guard shared state against concurrent access')], p);
+    run(['set-status', 'L-1', 'candidate'], p);
+    const arts = join(p.proj, 'artifacts', 'reviews');
+    mkdirSync(arts, { recursive: true });
+    // Decoy: contains "race" only as a substring of unrelated words.
+    writeFileSync(join(arts, 'decoy.md'), 'The traceability interface improves embrace of the codebase.\n');
+    // Real hit: the exact words as a bounded phrase.
+    writeFileSync(join(arts, 'real.md'), 'We hit a race condition under load.\n');
+    const out = JSON.parse(run(['promote-propose', 'L-1', '--json'], p).stdout);
+    assert.ok(out.retroCatch.catches.some((c) => c.includes('real.md')), 'the genuine phrase is a catch');
+    assert.ok(!out.retroCatch.catches.some((c) => c.includes('decoy.md')), 'a substring-only file is NOT a catch');
+    assert.ok(!out.falsePositives.files.some((c) => c.includes('decoy.md')), 'and not even a partial match');
+    rmSync(p.proj, { recursive: true, force: true });
+  });
 });
 
 // --- recall --------------------------------------------------------------------

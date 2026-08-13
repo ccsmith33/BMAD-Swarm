@@ -1453,14 +1453,23 @@ function stemWord(w) {
   return String(w).toLowerCase().replace(/(ings|ing|ed|es|s)$/, '');
 }
 
-// Which of `kws` appear (verbatim or by stem) in `text`.
+// Which of `kws` appear in `text` — matched at WORD granularity (a keyword must
+// be a whole word or a stem-equal word), never an unbounded substring. Without
+// this, the slug "race" matched inside "traceability"/"trace" and inflated the
+// retro-catch evidence a promotion proposal shows the human (correctness review,
+// advisory). Stemming still folds inflections (regresses/regressed) together.
 function keywordHits(text, kws) {
-  const t = String(text).toLowerCase();
-  return kws.filter((k) => {
-    if (t.includes(k)) return true;
-    const s = stemWord(k);
-    return s.length >= 4 && t.includes(s);
-  });
+  const words = String(text).toLowerCase().match(/[a-z0-9]+/g) || [];
+  const wordSet = new Set(words);
+  const stemSet = new Set(words.map(stemWord));
+  return kws.filter((k) => wordSet.has(k) || stemSet.has(stemWord(k)));
+}
+
+// Does the fingerprint slug appear as a bounded token in text (not a substring
+// of a longer word)? Same evidence-honesty fix as keywordHits.
+function slugMatches(text, slug) {
+  const esc = String(slug).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('\\b' + esc + '\\b', 'i').test(String(text));
 }
 
 /**
@@ -1490,7 +1499,7 @@ function retroCatch(root, fp, opts) {
       if (st.size > SCAN_MAX_BYTES) continue;
       text = fs.readFileSync(f, 'utf8').toLowerCase();
     } catch { continue; }
-    const hasSlug = text.includes(slug);
+    const hasSlug = slugMatches(text, slug);
     const present = keywordHits(text, kws);
     // A strong contextual match is a majority of the fingerprint's keywords
     // (never fewer than two, so a lone generic word like "data" is not a catch).
