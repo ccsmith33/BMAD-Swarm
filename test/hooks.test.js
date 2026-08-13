@@ -2,8 +2,25 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync, utimesSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
+
+// Resolve the nearest ANCESTOR node_modules that exists, starting at startDir
+// and walking up to the filesystem root. Returns null if none is found. Used
+// to keep the spawned-hook harness hermetic in worktree checkouts that were
+// never `npm ci`'d (no node_modules of their own) — a nested worktree resolves
+// up to the main repo's node_modules.
+function nearestNodeModules(startDir) {
+  let dir = startDir;
+  while (dir) {
+    const candidate = join(dir, 'node_modules');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
 import { generateHooks } from '../generators/hooks-generator.js';
 import { getProjectPaths } from '../utils/paths.js';
 import { loadSwarmConfig } from '../utils/config.js';
@@ -100,16 +117,23 @@ describe('Hooks (process-spawn contract)', () => {
 
     function runHookInCwd(hookName, { stdin = '{}', env = {}, cwd } = {}) {
       const hookPath = join(hooksDir, hookName);
-      // The hook does require('js-yaml'); in real installations the package
-      // is resolvable from the project's node_modules (transitive dep of
-      // bmad-swarm). The test fixture project doesn't have node_modules of
-      // its own, so we point NODE_PATH at the repo's node_modules to make
-      // the require succeed — same effect as a real installed dependency.
-      const repoNodeModules = join(import.meta.dirname || '', '..', 'node_modules');
+      // The generated hooks are node-only (team-assembly-lint no longer needs
+      // js-yaml — it parses with built-ins), so this NODE_PATH is not required
+      // for the current hooks. It is kept HERMETIC-ROBUST for any future hook
+      // that does load a bmad-swarm dependency: point NODE_PATH at the nearest
+      // ANCESTOR node_modules that actually exists rather than pinning to the
+      // checkout's own node_modules. A worktree run WITHOUT `npm ci` has no
+      // node_modules of its own; walking ancestors finds the repo's (a nested
+      // .claude/worktrees checkout resolves up to the main repo), so the spawn
+      // is hermetic instead of false-failing. If none is found we omit
+      // NODE_PATH entirely (never point it at a non-existent dir).
+      const nodeModules = nearestNodeModules(import.meta.dirname || cwd || process.cwd());
+      const childEnv = { ...process.env, ...env };
+      if (nodeModules) childEnv.NODE_PATH = nodeModules;
       const result = spawnSync('node', [hookPath], {
         input: stdin,
         encoding: 'utf8',
-        env: { ...process.env, NODE_PATH: repoNodeModules, ...env },
+        env: childEnv,
         cwd,
       });
       let decision = null;
@@ -600,6 +624,72 @@ describe('Hooks (process-spawn contract)', () => {
         'handshake-accepted block must still go through Pass 2 routing');
       assert.match(decision.hookSpecificOutput.permissionDecisionReason,
         /developer domain=payments-api/);
+    });
+
+    // -------------------------------------------------------------------
+    // Self-containment regression (F-team-assembly-lint-requires-js-yaml-
+    // fails-open): the lint must ENFORCE in a scaffolded project that has no
+    // node_modules — i.e. with js-yaml entirely unresolvable. The prior
+    // `try { require('js-yaml') } catch { exit 0 }` fail-open silently
+    // no-opped Pass 2 in every real project. These tests spawn the hook with
+    // NODE_PATH stripped; because the generated hook lives under a mkdtemp dir
+    // (no ancestor node_modules), js-yaml is genuinely unresolvable — the true
+    // scaffolded-project condition.
+    // -------------------------------------------------------------------
+
+    function runHookNoJsYaml(cwd, stdin) {
+      const hookPath = join(hooksDir, 'team-assembly-lint.cjs');
+      const env = { ...process.env };
+      delete env.NODE_PATH; // guarantee js-yaml cannot be resolved via NODE_PATH
+      const result = spawnSync('node', [hookPath], { input: stdin, encoding: 'utf8', env, cwd });
+      let decision = null;
+      if (result.stdout && result.stdout.trim()) {
+        try { decision = JSON.parse(result.stdout); } catch {}
+      }
+      return { ...result, decision };
+    }
+
+    it('regression: the generated hook carries no js-yaml dependency', () => {
+      const src = readFileSync(join(hooksDir, 'team-assembly-lint.cjs'), 'utf8');
+      assert.ok(!/require\(\s*['"]js-yaml['"]\s*\)/.test(src),
+        'team-assembly-lint must not require js-yaml (self-contained, node built-ins only)');
+    });
+
+    it('regression: js-yaml unresolvable — Pass 1 still DENIES a missing declaration', () => {
+      const projectDir = makeProject('project:\n  name: nojsyaml-missing\n');
+      const { decision, status } = runHookNoJsYaml(projectDir, SPAWN_STDIN);
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
+        'Pass 1 must enforce even with js-yaml unresolvable (no fail-open no-op)');
+      assert.equal(status, 0);
+    });
+
+    it('regression: js-yaml unresolvable — Pass 2 fixed-mode routing still DENIES', () => {
+      const projectDir = makeProject([
+        'project:',
+        '  name: nojsyaml-routing',
+        'team:',
+        '  mode: fixed',
+        '  specializations:',
+        '    - role: developer',
+        '      domain: backend-auth',
+        '  fallback:',
+        '    enabled: false',
+        '',
+      ].join('\n'));
+      writeAssemblyLog(projectDir, assemblyBlockFor('  - role: developer\n    domain: payments-api') + '\n');
+      const { decision } = runHookNoJsYaml(projectDir, SPAWN_STDIN);
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
+        'Pass 2 routing must enforce without js-yaml (this is the regression the fix closes)');
+      assert.match(decision.hookSpecificOutput.permissionDecisionReason,
+        /developer domain=payments-api/);
+    });
+
+    it('regression: js-yaml unresolvable — a valid dynamic-mode block still ACCEPTS', () => {
+      const projectDir = makeProject('project:\n  name: nojsyaml-accept\n');
+      writeAssemblyLog(projectDir, assemblyBlockFor('  - role: developer\n    domain: anything') + '\n');
+      const { decision, status } = runHookNoJsYaml(projectDir, SPAWN_STDIN);
+      assert.equal(decision, null, 'dynamic mode + valid fresh block → accept, even without js-yaml');
+      assert.equal(status, 0);
     });
   });
 
