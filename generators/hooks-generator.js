@@ -69,6 +69,7 @@ export function generateHooks(config, projectPaths, options = {}) {
     'ledger-write-guard.cjs',
     'replay-gate.cjs',
     'task-ledger-writer.cjs',
+    'night-floor.cjs',
   ];
 
   for (const name of hooks) {
@@ -132,6 +133,14 @@ export function getHooksConfig() {
       // guard denies only WRITE/redirect shapes onto the protected files, so the
       // pinned CLI (which never names those basenames in argv) still runs.
       { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-write-guard.cjs"' }] },
+      // D-034 / phase5 Stream S: the NIGHT FLOOR. Charter-activated constitutional
+      // deny of the destructive/irreversible set (push/publish/deploy/real-data
+      // migration/out-of-tree writes/interpreter escapes/self-legislation/never-
+      // merge) for EVERY agent while a /sleep charter is open. Dormant by day
+      // (no charter → exit 0), fail-closed on a corrupt/dangling charter. Matches
+      // Bash + all file-writing tools so neither a shell escape nor a direct Edit
+      // reaches the set. Every deny writes a red-banner row to the task-ledger.
+      { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/night-floor.cjs"' }] },
     ],
     // ADR-022 / D-040 / D-049: the replay gate. TaskCompleted is the blocking
     // trigger (exit 2 re-runs declared evidence before "done" lands); TaskCreated

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bmad-generated:077c0e4d
+// bmad-generated:058c83f7
 // BMAD Swarm - record.cjs: the pinned, serialized-write channel for the unified
 // record ledger (ADR-021 / D-036 / D-049; phase2 design §3.2, §4.1).
 //
@@ -786,6 +786,205 @@ function ledgerPath(contextDir) { return path.join(contextDir, 'ledger.md'); }
 function decisionLogPath(contextDir) { return path.join(contextDir, 'decision-log.md'); }
 function taskLedgerPath(contextDir) { return path.join(contextDir, 'task-ledger.md'); }
 
+// The night charter lives in artifacts/delivery/ (D-036: date-stamped delivery
+// artifact, not a sixth context file). Same confinement discipline as
+// contextDirFrom: default and explicit paths alike must live under artifacts/,
+// symlink escapes caught by realpath-anchoring both candidate and boundary.
+function deliveryDirFrom(opts) {
+  const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const artifactsRoot = realpathAnchored(path.join(root, 'artifacts'));
+  const candidate = opts.deliveryDir
+    ? realpathAnchored(opts.deliveryDir)
+    : path.join(artifactsRoot, 'delivery');
+  if (candidate !== artifactsRoot && !candidate.startsWith(artifactsRoot + path.sep)) {
+    die(`--delivery-dir must be under ${artifactsRoot} (got ${candidate}); refusing to write the charter outside artifacts/`);
+  }
+  return candidate;
+}
+
+function nightCharterFile(deliveryDir, date) { return path.join(deliveryDir, `night-charter-${date}.md`); }
+// The pointer the night-floor hook reads: presence = a night is open; content =
+// the active charter's basename (deterministic path, indirection-free resolution).
+function nightCharterPointer(deliveryDir) { return path.join(deliveryDir, '.night-charter-current'); }
+
+// The human-wake marker. Written ONLY by the UserPromptSubmit hook (an agent
+// cannot fire that event, so the marker is human-authenticated by construction);
+// lives under .claude/** which the night floor write-denies for every agent, so
+// it cannot be forged by Edit/Write or a shell redirect during a night either.
+function humanWakeMarkerPath() {
+  const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  return path.join(root, '.claude', 'hooks', '.human-wake');
+}
+
+const INITIATIVE_MODES = ['unrestrained', 'queue-only', 'proposals-only'];
+const DEFAULT_GRACE_MS = 2 * 60 * 60 * 1000; // H5-2(d): ends+2h grace.
+
+// Lightweight, dependency-free scan of the project's swarm.yaml for the top-level
+// `sleep:` block (record.cjs carries no YAML parser). Returns {enabled, initiative}.
+// H5-5: sleep is off-by-default — absence of `sleep.enabled: true` means /sleep
+// does not arm on a scaffold until the human opts in.
+function readSleepConfig(root) {
+  const cfg = { enabled: false, initiative: null };
+  let text;
+  try { text = fs.readFileSync(path.join(root, 'swarm.yaml'), 'utf8'); }
+  catch { return cfg; }
+  let inSleep = false;
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    if (/^[A-Za-z0-9_-]+:/.test(line)) { inSleep = /^sleep:/.test(line); continue; }
+    if (!inSleep) continue;
+    const m = /^\s+([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const val = m[2].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
+    if (m[1] === 'enabled') cfg.enabled = /^(true|yes|on)$/i.test(val);
+    else if (m[1] === 'initiative') cfg.initiative = val || null;
+  }
+  return cfg;
+}
+
+// Parse a charter file's frontmatter into the night_charter map (or null).
+function readCharter(charterFile) {
+  if (!fs.existsSync(charterFile)) return null;
+  let text;
+  try { text = fs.readFileSync(charterFile, 'utf8'); } catch { return null; }
+  const fm = parseFrontmatterLite(text);
+  return fm && fm.night_charter && typeof fm.night_charter === 'object' ? fm.night_charter : null;
+}
+
+function cmdNightCharter(argv, flags) {
+  const sub = argv[0];
+  const deliveryDir = deliveryDirFrom(flags);
+  const pointer = nightCharterPointer(deliveryDir);
+  const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+
+  if (sub === 'open') {
+    const sleepCfg = readSleepConfig(root);
+    if (!sleepCfg.enabled) {
+      die('sleep is not enabled for this project (H5-5). Set `sleep:\\n  enabled: true` in swarm.yaml to arm /sleep. '
+        + 'Off-by-default is deliberate: the night floor changes every agent\'s behavior — opt in once you have run a supervised night.');
+    }
+    if (!flags.ends) die('night-charter open requires --ends <iso> (the wake clock is the only hard resource)');
+    const endsEpoch = Date.parse(flags.ends);
+    if (!Number.isFinite(endsEpoch)) die(`--ends ${JSON.stringify(flags.ends)} is not a parseable timestamp (use ISO 8601 with an offset or Z)`);
+    const now = Date.now();
+    if (endsEpoch <= now) die(`--ends ${flags.ends} is in the past; the night has no runway`);
+
+    const initiative = flags.initiative || sleepCfg.initiative || 'unrestrained';
+    if (!INITIATIVE_MODES.includes(initiative)) die(`--initiative must be one of ${INITIATIVE_MODES.join('|')}; got ${JSON.stringify(initiative)}`);
+    const escalation = flags.escalation || 'none';
+    const graceMs = flags.graceMs != null ? parseInt(flags.graceMs, 10) : DEFAULT_GRACE_MS;
+    if (!Number.isFinite(graceMs) || graceMs < 0) die('--grace-ms must be a non-negative integer');
+    const queue = flags.queue ? flags.queue.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const extraDeny = flags.extraDeny ? flags.extraDeny.split(',').map((s) => s.trim()).filter(Boolean) : [];
+
+    const date = todayISO();
+    const openedIso = new Date(now).toISOString();
+    const target = nightCharterFile(deliveryDir, date);
+
+    const body = renderCharter({ date, openedIso, ends: flags.ends, endsEpoch, graceMs, queue, initiative, extraDeny, escalation });
+
+    fs.mkdirSync(deliveryDir, { recursive: true });
+    withFileLock(deliveryDir, target, () => body);
+    // Point the floor at the fresh charter and clear any stale wake marker so the
+    // night starts clean (a marker forged before `open` cannot legitimize a close).
+    atomicWrite(pointer, `night-charter-${date}.md\n`);
+    try { fs.rmSync(humanWakeMarkerPath(), { force: true }); } catch { /* best-effort */ }
+    process.stdout.write(target + '\n');
+    return;
+  }
+
+  if (sub === 'status') {
+    if (!fs.existsSync(pointer)) { process.stdout.write('no active night charter (floor dormant)\n'); return; }
+    const base = fs.readFileSync(pointer, 'utf8').trim();
+    const charterFile = path.join(deliveryDir, base);
+    const ch = readCharter(charterFile);
+    if (!ch) {
+      process.stdout.write(`FAIL-CLOSED: pointer names ${base} but it is missing or unparseable — the floor stays ARMED (fix or close the charter)\n`);
+      return;
+    }
+    const now = Date.now();
+    const endsEpoch = Number.isFinite(ch.ends_epoch_ms) ? ch.ends_epoch_ms : Date.parse(ch.ends);
+    const graceMs = Number.isFinite(ch.grace_ms) ? ch.grace_ms : DEFAULT_GRACE_MS;
+    const woke = fs.existsSync(humanWakeMarkerPath());
+    const armed = !woke && (!Number.isFinite(endsEpoch) || now <= endsEpoch + graceMs);
+    const remainMs = Number.isFinite(endsEpoch) ? endsEpoch - now : null;
+    process.stdout.write(
+      `night charter: ${base}\n`
+      + `  ends: ${ch.ends || '?'}\n`
+      + `  runway: ${remainMs == null ? 'unknown (corrupt clock — floor fails closed)' : (remainMs > 0 ? Math.round(remainMs / 60000) + ' min remaining' : 'past ends (' + Math.round(-remainMs / 60000) + ' min ago; grace ' + Math.round(graceMs / 60000) + ' min)')}\n`
+      + `  human-wake marker: ${woke ? 'PRESENT (night is over — early wake)' : 'absent'}\n`
+      + `  floor: ${armed ? 'ARMED (destructive set denied)' : 'lifted'}\n`,
+    );
+    return;
+  }
+
+  if (sub === 'close') {
+    if (!fs.existsSync(pointer)) die('no active night charter to close');
+    const base = fs.readFileSync(pointer, 'utf8').trim();
+    const charterFile = path.join(deliveryDir, base);
+    const ch = readCharter(charterFile);
+    const now = Date.now();
+    const endsEpoch = ch && Number.isFinite(ch.ends_epoch_ms) ? ch.ends_epoch_ms : (ch ? Date.parse(ch.ends) : NaN);
+    const woke = fs.existsSync(humanWakeMarkerPath());
+    // Refuse an early close while the clock still runs UNLESS a human is awake
+    // (the marker). This is the mechanical half of "the night never closes itself":
+    // an agent cannot forge the marker (.claude/** is write-denied at night), so an
+    // agent-driven `close` at 3am is refused here.
+    if (Number.isFinite(endsEpoch) && now < endsEpoch && !woke) {
+      die(`the night is still running (wake clock ${ch.ends}); close is human-gated. A human prompt — or /wake — sets the wake marker that legitimizes an early close.`);
+    }
+    // Flip status: open -> closed in the dated file (best-effort; the pointer
+    // removal is what actually disarms the floor).
+    if (fs.existsSync(charterFile)) {
+      withFileLock(deliveryDir, charterFile, (cur) => cur.replace(/^(\s*status:\s*)open\b/m, '$1closed'));
+    }
+    fs.rmSync(pointer, { force: true });
+    try { fs.rmSync(humanWakeMarkerPath(), { force: true }); } catch { /* best-effort */ }
+    process.stdout.write(`closed ${base}\n`);
+    return;
+  }
+
+  die('usage: night-charter <open|status|close> [--ends <iso>] [--queue a,b] [--initiative <mode>] [--extra-deny a,b] [--escalation none] [--grace-ms <n>] [--delivery-dir <dir>]');
+}
+
+// Render the charter markdown (frontmatter + human confirmation block). The
+// frontmatter is the S->GM interface (runway.js parses ends / ends_epoch_ms).
+function renderCharter(c) {
+  const q = c.queue.length ? '[' + c.queue.join(', ') + ']' : '[]';
+  const xd = c.extraDeny.length ? '[' + c.extraDeny.map((s) => JSON.stringify(s)).join(', ') + ']' : '[]';
+  const remainMin = Math.round((c.endsEpoch - Date.parse(c.openedIso)) / 60000);
+  return [
+    '---',
+    'night_charter:',
+    '  schema: night-charter/1',
+    `  date: ${c.date}`,
+    `  opened_at: ${c.openedIso}`,
+    `  ends: ${emitScalar(c.ends)}`,
+    `  ends_epoch_ms: ${c.endsEpoch}`,
+    `  grace_ms: ${c.graceMs}`,
+    `  queue: ${q}`,
+    `  initiative: ${c.initiative}`,
+    `  extra_deny: ${xd}`,
+    `  escalation: ${c.escalation}`,
+    '  status: open',
+    '---',
+    '',
+    `# Night charter — ${c.date}`,
+    '',
+    `Wake at **${c.ends}** (in ~${remainMin} min). Queue: ${c.queue.length ? c.queue.join(', ') : '(none — initiative from hour zero)'}.`,
+    `Initiative: ${c.initiative}. Extra denies tonight: ${c.extraDeny.length ? c.extraDeny.join(', ') : 'none'}.`,
+    '',
+    '> Tonight draws the **same subscription quota** as tomorrow\'s day work — the',
+    '> clock is the only hard resource; there is no separate night budget (D-038).',
+    '',
+    'The destructive-action floor is armed for the duration of this charter',
+    '(push / publish / deploy / real-data migration / out-of-tree writes /',
+    'interpreter escapes / self-legislation / never-merge). It can only be',
+    'narrowed further by `extra_deny`, never widened (D-034).',
+    '',
+  ].join('\n');
+}
 // --human-approved is an AUDITABLE RATIFICATION MARKER, not an agent-proof gate
 // (K-2, security re-verify 2026-08-13). It records — in the git ledger, with
 // provenance — WHICH decision ratified a promotion, so a self-promotion leaves a
@@ -1919,6 +2118,7 @@ function main(argv) {
     case 'set-status': return cmdSetStatus(positionals, flags);
     case 'next-id': return cmdNextId(positionals, flags);
     case 'task-event': return cmdTaskEvent(flags);
+    case 'night-charter': return cmdNightCharter(positionals, flags);
     case 'reconcile': return cmdReconcile(flags);
     case 'validate': return cmdValidate(flags);
     case 'promote-propose': return cmdPromotePropose(positionals, flags);
@@ -1946,6 +2146,10 @@ Usage:
                     [--enforcement-tier <t>] [--human-approved <D-ID>] [--context-dir <dir>]
   record.cjs next-id <D|R|L|C|F> [--context-dir <dir>]
   record.cjs task-event --task <id> --event <e> [--owner <n>] [--session <s>] [--detail "…"]
+  record.cjs night-charter open --ends <iso> [--queue a,b] [--initiative unrestrained|queue-only|proposals-only]
+                    [--extra-deny a,b] [--escalation none] [--grace-ms <n>] [--delivery-dir <dir>]
+  record.cjs night-charter status [--delivery-dir <dir>]
+  record.cjs night-charter close [--delivery-dir <dir>]
   record.cjs reconcile --tasklist <-|file> [--json] [--context-dir <dir>]
   record.cjs validate [--file <ledger.md>] [--context-dir <dir>]
   record.cjs promote-propose <L-ID> [--artifacts-root <dir>] [--json]

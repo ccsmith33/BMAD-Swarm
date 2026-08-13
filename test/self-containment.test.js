@@ -36,8 +36,17 @@ const SCAFFOLD_PREFIX_RE = /^(\.claude|methodology|agents|overrides)\//;
 // Tokens exempt from the on-disk existence check: metavariable placeholders
 // (`<domain>`), and the user-owned local settings file (git-ignored, created on
 // demand — see the D-042 minimal ignore set).
+// Runtime markers are written DURING a session, not shipped in the scaffold, so
+// docs may name their path without the file existing at init time (same class as
+// settings.local.json): .session-active (UserPromptSubmit) and .human-wake (the
+// night-floor early-wake marker, phase5 Stream S).
+const RUNTIME_MARKERS = new Set([
+  '.claude/settings.local.json',
+  '.claude/hooks/.human-wake',
+  '.claude/hooks/.session-active',
+]);
 function isExemptFromExistence(token) {
-  return token.includes('<') || token.includes('>') || token === '.claude/settings.local.json';
+  return token.includes('<') || token.includes('>') || RUNTIME_MARKERS.has(token);
 }
 
 // Collect scaffold path tokens, stripping trailing punctuation that abuts a
