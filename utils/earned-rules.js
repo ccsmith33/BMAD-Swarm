@@ -11,7 +11,7 @@
 // text. It NEVER auto-promotes — promotion is the record.cjs human gate.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { extractPromotedLessons } from './record-envelope.js';
 
@@ -35,6 +35,7 @@ import { extractPromotedLessons } from './record-envelope.js';
  */
 export function collectEarnedLessons(config, projectPaths, options = {}) {
   let lessons;
+  let ratifyingDIds = null; // set of D-IDs that exist in the sibling decision-log
   if (Array.isArray(options.earnedLessons)) {
     lessons = options.earnedLessons;
   } else {
@@ -42,9 +43,34 @@ export function collectEarnedLessons(config, projectPaths, options = {}) {
     lessons = source && existsSync(source)
       ? extractPromotedLessons(readFileSync(source, 'utf8'))
       : [];
+    ratifyingDIds = source ? readDecisionIds(join(dirname(source), 'decision-log.md')) : new Set();
   }
   const stack = normalizeStack(config && config.stack);
-  return lessons.filter((l) => matchesStack(l, stack));
+  return lessons.filter((l) => matchesStack(l, stack) && ratifiedByRealDecision(l, ratifyingDIds, options));
+}
+
+// Read the set of D-IDs that actually exist as headings in a decision-log.md.
+function readDecisionIds(decisionLogPath) {
+  const ids = new Set();
+  if (!decisionLogPath || !existsSync(decisionLogPath)) return ids;
+  const content = readFileSync(decisionLogPath, 'utf8');
+  const re = /^##\s+(D-\d+)\s+—/gm;
+  let m;
+  while ((m = re.exec(content)) !== null) ids.add(m[1]);
+  return ids;
+}
+
+// A promoted lesson only compiles into a scaffold if it is ratified by a REAL
+// decision (K-1 #4 / K-2): the L must carry links.d_ids and at least one of them
+// must exist in the decision-log. This defeats a forged `status: promoted` block
+// (it has no genuine ratifying D). When lessons are injected directly for tests
+// (options.earnedLessons) or no decision-log is resolvable, the caller owns
+// trust and the check is skipped — but the default init/update path enforces it.
+function ratifiedByRealDecision(lesson, ratifyingDIds, options) {
+  if (ratifyingDIds === null) return true;         // direct injection: caller trusts
+  if (options && options.skipRatificationCheck) return true;
+  const dIds = Array.isArray(lesson.dIds) ? lesson.dIds : [];
+  return dIds.some((d) => ratifyingDIds.has(d));
 }
 
 function resolveLedgerSource(config, projectPaths, options) {

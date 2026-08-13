@@ -234,7 +234,36 @@ function emitScalar(v) {
   if (/^[A-Za-z0-9][A-Za-z0-9_./+-]*$/.test(s) && !/^(true|false|null|yes|no|on|off)$/i.test(s)) {
     return s;
   }
-  return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  // Escape backslash/quote AND every newline/control char (K-1): an unescaped
+  // newline in a field value would close its line and let attacker text inject a
+  // new record heading or a forged `status: promoted` block into ledger.md. A
+  // scalar is single-line by construction; block bodies use emitBlockBody, not
+  // this path, so escaping control chars here never truncates legitimate data.
+  return '"' + s
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, (c) => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0'))
+    + '"';
+}
+
+// Collapse a value to a safe SINGLE LINE for a markdown heading / prose field
+// (K-1/K-3): newlines and control chars become spaces, so an interpolated title
+// can never open a second heading line. Returns '' for empty input.
+function sanitizeInline(s) {
+  return String(s == null ? '' : s).replace(/[\r\n\t\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Defang a MULTI-LINE prose body written to decision-log.md (K-3): escape any
+// ATX-heading line-start (`#`…) so a body line can never masquerade as a
+// `## D-NNNN` record heading (which would forge decisions AND poison nextId).
+function defangProse(s) {
+  return String(s == null ? '' : s)
+    .split('\n')
+    .map((line) => line.replace(/^(\s*)(#{1,6})(\s)/, '$1\\$2$3'))
+    .join('\n');
 }
 
 // Emit a value in YAML flow style (used inside {} maps and [] seqs).
@@ -267,7 +296,9 @@ function emitBlockBody(body, indent) {
  */
 function serializeRecord(rec) {
   const type = TYPES.includes(rec.type) ? rec.type : NAME_TYPE[rec.type];
-  const title = (rec.title || '').trim() || '(untitled)';
+  // Heading title is forced single-line (K-1): a newline here would inject a
+  // sibling `## L-N … status: promoted` block the born-immune compiler trusts.
+  const title = sanitizeInline(rec.title) || '(untitled)';
   const prov = rec.provenance || {};
   const provOut = {
     role: prov.role,
@@ -502,6 +533,17 @@ function linkField(sectionText, key) {
   return m ? unquoteScalar(m[1]) : null;
 }
 
+// Read an inline ARRAY link field (e.g. `d_ids: [D-1, D-2]`) from a section.
+function linkArray(sectionText, key) {
+  const ki = sectionText.indexOf(`${key}:`);
+  if (ki === -1) return [];
+  const lb = sectionText.indexOf('[', ki);
+  if (lb === -1 || lb > ki + key.length + 3) return [];
+  const rb = matchBracket(sectionText, lb);
+  if (rb === -1) return [];
+  return sectionText.slice(lb + 1, rb).split(',').map((s) => unquoteScalar(s)).filter(Boolean);
+}
+
 // Append a D-ID into a record's `links.d_ids: [...]` array (creating the array
 // or the whole links map when absent), returning the new full ledger content.
 // Used to plant the R -> D forward pointer on graduation (the D carries the
@@ -711,6 +753,19 @@ function contextDirFrom(opts) {
   return candidate;
 }
 
+// Confine a READ path (harvest/promote-propose/reopen-scan/validate) under the
+// project tree (K-4): an allow-listed command must not read arbitrary files
+// outside the repo unless the human explicitly opts in with --allow-external
+// (the H-2 field-harvest case). Symlink escapes are caught by realpath-anchoring
+// both the candidate and the boundary, mirroring contextDirFrom.
+function confineReadPath(p, opts) {
+  const root = realpathAnchored(process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  const resolved = realpathAnchored(p);
+  if (resolved === root || resolved.startsWith(root + path.sep)) return resolved;
+  if (opts && opts.allowExternal) return resolved;
+  die(`refusing to read ${resolved} outside the project tree ${root}; pass --allow-external to override (K-4 read confinement)`);
+}
+
 const LEDGER_HEADER = `# Ledger
 
 The unified R/L/C/F record ledger (ADR-021 / D-036). One fenced-YAML \`record:\`
@@ -725,6 +780,19 @@ place — git history is the transition audit log.
 function ledgerPath(contextDir) { return path.join(contextDir, 'ledger.md'); }
 function decisionLogPath(contextDir) { return path.join(contextDir, 'decision-log.md'); }
 function taskLedgerPath(contextDir) { return path.join(contextDir, 'task-ledger.md'); }
+
+// Does a D-record with this ID exist as a real heading in decision-log.md? The
+// L->promoted human gate (K-2) must verify its --human-approved <D-ID> resolves
+// to an actual decision, not merely be a non-empty string — otherwise an agent
+// passes any token and satisfies the "human gate". Given decision-log D-records
+// are prose (no machine status field, SE-1 scope), existence is the check.
+function decisionExists(contextDir, dId) {
+  if (!dId || !/^D-\d+$/.test(String(dId))) return false;
+  const f = decisionLogPath(contextDir);
+  if (!fs.existsSync(f)) return false;
+  const content = fs.readFileSync(f, 'utf8');
+  return new RegExp('^##\\s+' + String(dId).replace(/[-]/g, '\\-') + '\\s+—', 'm').test(content);
+}
 
 // ---------------------------------------------------------------------------
 // Subcommands
@@ -806,6 +874,20 @@ function cmdAppend(flags) {
 
   const contextDir = contextDirFrom(flags);
 
+  // K-2 on the append door: a promoted-L entry via --human-approved must resolve
+  // to a real ratifying decision too, and records the link so born-immune trusts it.
+  if (type === 'L') {
+    const requested = flags.status != null ? flags.status : (input.status != null ? input.status : INITIAL_STATUS.L);
+    if (requested === 'promoted' && flags.humanApproved) {
+      if (!decisionExists(contextDir, flags.humanApproved)) {
+        die(`--human-approved D-ID ${JSON.stringify(flags.humanApproved)} does not resolve to an existing D-record in decision-log.md (K-2)`);
+      }
+      input.links = Object.assign({}, input.links);
+      const existing = Array.isArray(input.links.d_ids) ? input.links.d_ids : [];
+      if (!existing.includes(flags.humanApproved)) input.links.d_ids = existing.concat(flags.humanApproved);
+    }
+  }
+
   if (type === 'D') {
     // D records live in decision-log.md as human-readable prose. The body is
     // caller-supplied free-form markdown (§3.1: D entries gain nothing new).
@@ -814,10 +896,13 @@ function cmdAppend(flags) {
     withFileLock(contextDir, target, (cur) => {
       const id = nextId(cur, 'D');
       allocated = id;
-      const title = (input.title || flags.title || '').trim() || '(untitled)';
-      const date = (input.provenance && input.provenance.date) || flags.date || todayISO();
-      const cls = input.classification || flags.classification || 'Tactical';
-      const body = (input.body || '').trim();
+      // Sanitize every interpolated field (K-3): title/date/classification are
+      // single-line; the decision body is defanged so a `## D-NNNN` line inside
+      // it cannot forge a record heading or poison nextId('D').
+      const title = sanitizeInline(input.title || flags.title) || '(untitled)';
+      const date = sanitizeInline((input.provenance && input.provenance.date) || flags.date || todayISO());
+      const cls = sanitizeInline(input.classification || flags.classification || 'Tactical');
+      const body = defangProse((input.body || '').trim());
       const block = `\n## ${id} — ${title}\n\n- **Date:** ${date}\n- **Classification:** ${cls}\n- **Decision:** ${body}\n`;
       const base = cur && cur.trim() ? cur.replace(/\s*$/, '\n') : cur;
       return base + block;
@@ -876,6 +961,16 @@ function cmdSetStatus(argv, flags) {
   const contextDir = contextDirFrom(flags);
   const target = ledgerPath(contextDir);
 
+  // K-2: the L->promoted human gate is a real second factor — the supplied
+  // --human-approved D-ID must resolve to an existing decision, not just be
+  // truthy. Checked here (pre-lock; no lock needed to read decision-log.md).
+  if (type === 'L' && newStatus === 'promoted') {
+    if (!flags.humanApproved) die('L -> promoted is the human gate: pass --human-approved <D-ID> (ADR-021)');
+    if (!decisionExists(contextDir, flags.humanApproved)) {
+      die(`--human-approved D-ID ${JSON.stringify(flags.humanApproved)} does not resolve to an existing D-record in decision-log.md; the human gate requires a real ratifying decision (K-2)`);
+    }
+  }
+
   let err = null;
   let graduate = null; // {title, body} captured when an R is accepted
   withFileLock(contextDir, target, (cur) => {
@@ -920,16 +1015,25 @@ function cmdSetStatus(argv, flags) {
     withFileLock(contextDir, dTarget, (cur) => {
       const did = nextId(cur, 'D');
       graduatedD = did;
-      const title = flags.title || graduate.title || `(graduated from ${id})`;
-      const date = flags.date || todayISO();
-      const cls = flags.classification || 'Tactical';
-      const rationale = flags.decision || graduate.body || `Accepted recommendation ${id}.`;
+      // Same K-3 sanitation on the graduation writer: title single-line, the
+      // rationale (which may carry the R's multi-line body or --decision) defanged.
+      const title = sanitizeInline(flags.title || graduate.title) || `(graduated from ${id})`;
+      const date = sanitizeInline(flags.date || todayISO());
+      const cls = sanitizeInline(flags.classification || 'Tactical');
+      const rationale = defangProse(flags.decision || graduate.body || `Accepted recommendation ${id}.`);
       const block = `\n## ${did} — ${title}\n\n- **Date:** ${date}\n- **Classification:** ${cls}\n- **Source:** swarm-advisory (ref: ${id})\n- **Decision:** ${rationale}\n`;
       const base = cur && cur.trim() ? cur.replace(/\s*$/, '\n') : cur;
       return base + block;
     });
     // Plant the R -> D forward pointer (links.d_ids) so the pair is bidirectional.
     withFileLock(contextDir, target, (cur) => addLinkDId(cur, id, graduatedD));
+  }
+
+  // Record the ratifying D-ID into the promoted L's links (K-1 #4): born-immune
+  // compiles a promoted L only when it carries a link to a D that EXISTS, so a
+  // forged `status: promoted` block with no real ratifying decision never ships.
+  if (type === 'L' && newStatus === 'promoted' && !err) {
+    withFileLock(contextDir, target, (cur) => addLinkDId(cur, id, flags.humanApproved));
   }
 
   process.stdout.write(`${id} -> ${newStatus}\n`);
@@ -968,7 +1072,7 @@ function cmdTaskEvent(flags) {
 // record block with id/type/status matching the ID and a body.
 function cmdValidate(flags) {
   const contextDir = contextDirFrom(flags);
-  const target = flags.file ? path.resolve(flags.file) : ledgerPath(contextDir);
+  const target = flags.file ? confineReadPath(flags.file, { allowExternal: flags.allowExternal }) : ledgerPath(contextDir);
   if (!fs.existsSync(target)) { process.stdout.write('ledger.md does not exist yet; nothing to validate\n'); return; }
   const content = fs.readFileSync(target, 'utf8');
   const problems = [];
@@ -1419,8 +1523,9 @@ function cmdPromotePropose(argv, flags) {
   const contexts = flow ? [...projectsInProvenance(flow.flow)] : [];
 
   // Retro-catch over the artifacts tree (default: the project's artifacts/ dir).
+  // The root is read-confined under the project tree (K-4).
   const root = flags.artifactsRoot
-    ? path.resolve(flags.artifactsRoot)
+    ? confineReadPath(flags.artifactsRoot, { allowExternal: flags.allowExternal })
     : path.dirname(contextDir); // .../artifacts
   const retro = retroCatch(root, fingerprint);
 
@@ -1535,7 +1640,12 @@ function cmdReopenScan(flags) {
   // phase4 §3.2) — we only HIGHLIGHT likely fires by keyword overlap.
   let against = null;
   if (flags.against) {
-    against = (fs.existsSync(flags.against) ? fs.readFileSync(flags.against, 'utf8') : String(flags.against)).toLowerCase();
+    // --against is either inline text or a file; a file read is confined (K-4).
+    if (fs.existsSync(flags.against)) {
+      against = fs.readFileSync(confineReadPath(flags.against, { allowExternal: flags.allowExternal }), 'utf8').toLowerCase();
+    } else {
+      against = String(flags.against).toLowerCase();
+    }
   }
   for (const r of rejected) {
     if (against) {
@@ -1600,8 +1710,10 @@ function parseHarvestLessons(text) {
 }
 
 function cmdHarvest(flags) {
-  if (!flags.from) die('usage: harvest --from <dir|file> [--project <name>] [--dry-run] [--json]');
-  const src = path.resolve(flags.from);
+  if (!flags.from) die('usage: harvest --from <dir|file> [--project <name>] [--dry-run] [--json] [--allow-external]');
+  // Read-confined under the project tree unless --allow-external (K-4); the
+  // real 10-field-project harvest is a human-present run that passes it.
+  const src = confineReadPath(flags.from, { allowExternal: flags.allowExternal });
   if (!fs.existsSync(src)) die(`--from path does not exist: ${src}`);
   const isDir = fs.statSync(src).isDirectory();
   const files = isDir ? walkTextFiles(src) : [src];
@@ -1678,6 +1790,13 @@ function extractPromotedLessons(ledgerContent) {
     if (!b) continue;
     const section = content.slice(b.start, b.end);
     if (currentStatus(section) !== 'promoted') continue;
+    // K-1 defense-in-depth: the fenced-block `id:` must match this heading's ID
+    // AND the heading must directly open a ```yaml record: fence, so a block
+    // embedded inside another record's field cannot masquerade as a top-level
+    // promoted record. A structurally-inconsistent "promoted" section is dropped.
+    const idM = /^\s*id:\s*(\S+)/m.exec(section);
+    if (!idM || unquoteScalar(idM[1]) !== id) continue;
+    if (!/^##\s+L-\d+\s+—\s+.*\n\s*```yaml\s*\n\s*record:/m.test(section)) continue;
     const fpM = /^\s*fingerprint:\s*(\S+)/m.exec(section);
     const flow = provenanceLine(section);
     const contexts = flow ? [...projectsInProvenance(flow.flow)] : [];
@@ -1689,6 +1808,7 @@ function extractPromotedLessons(ledgerContent) {
       rule: extractBody(section),
       contexts,
       occurrenceCount: contexts.length,
+      dIds: linkArray(section, 'd_ids'),
     });
   }
   return out;
@@ -1723,7 +1843,7 @@ function die(msg) {
 // positional, so cmdAppend later did `true.trim()` and threw "raw.trim is not a
 // function" (the documented --json path was dead). Scoping the bool set per
 // command fixes it without breaking `reconcile --json` (D-036 append bug).
-const DEFAULT_BOOL_FLAGS = new Set(['stdin', 'json', 'dry-run', 'no-graduate']);
+const DEFAULT_BOOL_FLAGS = new Set(['stdin', 'json', 'dry-run', 'no-graduate', 'allow-external']);
 const COMMAND_BOOL_FLAGS = {
   append: new Set(['stdin']), // --json is VALUED here (inline record JSON)
 };
@@ -1856,7 +1976,11 @@ module.exports = {
   extractBody,
   sectionTitle,
   linkField,
+  linkArray,
   addLinkDId,
+  decisionExists,
+  sanitizeInline,
+  defangProse,
   retroCatch,
   parseHarvestLessons,
   extractPromotedLessons,

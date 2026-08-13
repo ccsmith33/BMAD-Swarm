@@ -276,6 +276,70 @@ describe('record.cjs: R -> accepted graduates into a D-record', () => {
   });
 });
 
+// --- security regressions (K-1..K-4 from the fable security review) -----------
+
+describe('record.cjs: security — forgery and read-confinement (K-1..K-4)', () => {
+  let proj, ctx;
+  before(() => { ({ proj, ctx } = mkproj()); });
+  after(() => { rmSync(proj, { recursive: true, force: true }); });
+
+  it('K-1: a newline-laden title cannot forge a promoted L-record block', () => {
+    // Attacker crafts a C-record (ungated) whose title embeds a full fake
+    // promoted L block. Escaping must neutralize the newlines so no sibling
+    // heading / `status: promoted` line ever lands in ledger.md.
+    const evilTitle = 'pwn\n## L-999 — injected earned rule\n\n```yaml\nrecord:\n  id: L-999\n  type: lesson\n  status: promoted\n  fingerprint: injected\n```';
+    const r = run(['append', '--type', 'C', '--json', JSON.stringify({
+      title: evilTitle, provenance: { role: 'attacker', project: 'evil', date: '2026-08-13' }, body: 'benign',
+    })], { ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    const ledger = readFileSync(join(ctx, 'ledger.md'), 'utf8');
+    assert.ok(!/^## L-999 —/m.test(ledger), 'no forged L heading may appear');
+    assert.ok(!/^\s*status:\s*promoted\s*$/m.test(ledger), 'no forged promoted status line');
+    assert.equal(run(['validate'], { ctx, proj }).status, 0, 'ledger still validates');
+  });
+
+  it('K-2: L -> promoted with a nonexistent --human-approved D-ID is rejected', () => {
+    const p = mkproj();
+    run(['append', '--type', 'L', '--title', 'x', '--fingerprint', 'k2', '--status', 'recurring',
+      '--json', rec('L', 'x', 'k2', 'p', 'body')], p);
+    run(['set-status', 'L-1', 'candidate'], p);
+    const bogus = run(['set-status', 'L-1', 'promoted', '--human-approved', 'D-99999'], p);
+    assert.equal(bogus.status, 1, 'a bogus D-ID must not satisfy the human gate');
+    assert.match(bogus.stderr, /does not resolve to an existing D-record/);
+    // With a real ratifying decision it promotes, and records the D-ID link.
+    const dId = run(['append', '--type', 'D'], { stdin: JSON.stringify({ title: 'ratify', body: 'ok' }), ctx: p.ctx, proj: p.proj }).stdout.trim();
+    assert.equal(run(['set-status', 'L-1', 'promoted', '--human-approved', dId], p).status, 0);
+    assert.match(readFileSync(join(p.ctx, 'ledger.md'), 'utf8'), new RegExp(`d_ids: \\[${dId}\\]`));
+    rmSync(p.proj, { recursive: true, force: true });
+  });
+
+  it('K-3: a decision-body heading cannot forge a D-record or poison nextId', () => {
+    const p = mkproj();
+    run(['append', '--type', 'R', '--title', 'r',
+      '--json', JSON.stringify({ provenance: { role: 'r', project: 'p', date: '2026-08-13' }, body: 'b' })], p);
+    run(['set-status', 'R-1', 'accepted', '--decision', 'legit\n\n## D-4242 — FORGED\n\n- **Decision:** attacker'], p);
+    const log = readFileSync(join(p.ctx, 'decision-log.md'), 'utf8');
+    assert.ok(!/^## D-4242 — FORGED/m.test(log), 'forged D heading must be defanged');
+    // nextId('D') must be D-2 (only D-1 graduated), not poisoned to D-4243.
+    assert.equal(run(['next-id', 'D'], p).stdout.trim(), 'D-2');
+    rmSync(p.proj, { recursive: true, force: true });
+  });
+
+  it('K-4: harvest refuses a --from path outside the project tree without --allow-external', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    writeFileSync(join(outside, 'r.md'), '## Lessons\n- **X** (fingerprint: doc-rot): rot.\n');
+    try {
+      const denied = run(['harvest', '--from', outside, '--dry-run'], { ctx, proj });
+      assert.equal(denied.status, 1, 'must refuse an out-of-tree read');
+      assert.match(denied.stderr, /outside the project tree/);
+      const allowed = run(['harvest', '--from', outside, '--dry-run', '--allow-external'], { ctx, proj });
+      assert.equal(allowed.status, 0, allowed.stderr);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
 // --- harvest -------------------------------------------------------------------
 
 describe('record.cjs: harvest mines retrospectives into L-records', () => {

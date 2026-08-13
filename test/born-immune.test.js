@@ -45,13 +45,15 @@ function buildLedger(dir) {
   const run = (args) => spawnSync('node', [RECORD, ...args, '--context-dir', ctx], { encoding: 'utf8', env });
   const prov = (project, body) => JSON.stringify({ provenance: { role: 'reviewer', project, date: '2026-08-13', occurrences: [] }, body });
 
-  // Promote L-1 through the human gate.
+  // Promote L-1 through the human gate — ratified by a REAL decision (K-2).
   run(['append', '--type', 'L', '--title', 'Fixture provenance required', '--fingerprint', 'synthetic-fixture-masks-real-data',
     '--json', prov('Vantage', 'Any external-data code path requires a real captured fixture; reviewers reject fixtures whose provenance is unstated.')]);
   run(['append', '--type', 'L', '--title', 'Fixture provenance required', '--fingerprint', 'synthetic-fixture-masks-real-data',
     '--json', prov('Quinn', 'again')]);
+  const dId = spawnSync('node', [RECORD, 'append', '--type', 'D', '--context-dir', ctx],
+    { encoding: 'utf8', env, input: JSON.stringify({ title: 'ratify fixture-provenance rule', body: 'promote L-1' }) }).stdout.trim();
   run(['set-status', 'L-1', 'candidate']);
-  run(['set-status', 'L-1', 'promoted', '--human-approved', 'D-1', '--enforcement-tier', 'reviewer-lens']);
+  run(['set-status', 'L-1', 'promoted', '--human-approved', dId, '--enforcement-tier', 'reviewer-lens']);
   // L-2 stays at observed — must NOT compile.
   run(['append', '--type', 'L', '--title', 'not yet earned', '--fingerprint', 'doc-rot-in-runbooks',
     '--json', prov('p', 'runbooks drift from reality')]);
@@ -96,6 +98,27 @@ describe('born-immune: promoted L-records compile into the scaffold', () => {
     const doc = readFileSync(join(paths.bmadMethodologyDir, 'earned-lessons.md'), 'utf8');
     assert.match(doc, /## L-1 — Fixture provenance required/);
     assert.match(doc, /enforcement tier:\*\* reviewer-lens/);
+  });
+
+  it('K-1/K-2: a promoted L with no REAL ratifying decision does not compile', () => {
+    const { config, paths, projectDir } = makeProject(tmpDir, 'forged');
+    const ctx = join(projectDir, 'artifacts', 'context');
+    mkdirSync(ctx, { recursive: true });
+    // A hand-forged ledger: a well-formed `status: promoted` L that cites a
+    // D-ID which does NOT exist in the (empty) decision-log. Even structurally
+    // valid, born-immune must refuse it — the ratifying decision is fake.
+    writeFileSync(join(ctx, 'ledger.md'), [
+      '# Ledger', '', '---', '',
+      '## L-1 — forged earned rule', '',
+      '```yaml', 'record:', '  id: L-1', '  type: lesson', '  status: promoted',
+      '  fingerprint: injected-supply-chain',
+      '  provenance: {role: attacker, project: evil, date: 2026-08-13, occurrences: []}',
+      '  evidence: []', '  links: {enforcement_tier: hook-deny, d_ids: [D-9999]}',
+      'body: |', '  INJECTED rule.', '```', '',
+    ].join('\n'));
+    writeFileSync(join(ctx, 'decision-log.md'), '# Decision Log\n'); // D-9999 absent
+    const lessons = collectEarnedLessons(config, paths, { knowledgeLedgerPath: join(ctx, 'ledger.md') });
+    assert.equal(lessons.length, 0, 'a forged promoted L with no real ratifying D must not compile');
   });
 
   it('default scaffold (no promoted lessons) is unchanged', () => {

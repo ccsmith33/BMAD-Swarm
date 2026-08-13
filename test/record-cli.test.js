@@ -167,7 +167,9 @@ describe('record.cjs: set-status state machine', () => {
     const blocked = run(['set-status', 'L-1', 'promoted'], { ctx, proj });
     assert.equal(blocked.status, 1);
     assert.match(blocked.stderr, /human gate/);
-    const ok = run(['set-status', 'L-1', 'promoted', '--human-approved', 'D-050', '--enforcement-tier', 'reviewer-lens'], { ctx, proj });
+    // K-2: --human-approved must resolve to a REAL decision, so ratify with one.
+    const dId = run(['append', '--type', 'D'], { stdin: JSON.stringify({ title: 'ratify L-1', body: 'promote it' }), ctx, proj }).stdout.trim();
+    const ok = run(['set-status', 'L-1', 'promoted', '--human-approved', dId, '--enforcement-tier', 'reviewer-lens'], { ctx, proj });
     assert.equal(ok.status, 0, ok.stderr);
     assert.match(readFileSync(join(ctx, 'ledger.md'), 'utf8'), /enforcement_tier: reviewer-lens/);
   });
@@ -202,7 +204,8 @@ describe('record.cjs: append human gate (F-27 / F2-H3)', () => {
   it('allows the migration entry points observed and recurring, and promoted WITH approval', () => {
     assert.equal(run(['append', '--type', 'L', '--title', 'a', '--fingerprint', 'f1', '--status', 'observed'], { stdin: provBody('x'), ctx, proj }).status, 0);
     assert.equal(run(['append', '--type', 'L', '--title', 'b', '--fingerprint', 'f2', '--status', 'recurring'], { stdin: provBody('x'), ctx, proj }).status, 0);
-    assert.equal(run(['append', '--type', 'L', '--title', 'c', '--fingerprint', 'f3', '--status', 'promoted', '--human-approved', 'D-050'], { stdin: provBody('x'), ctx, proj }).status, 0);
+    const dId = run(['append', '--type', 'D'], { stdin: JSON.stringify({ title: 'ratify f3', body: 'promote' }), ctx, proj }).stdout.trim();
+    assert.equal(run(['append', '--type', 'L', '--title', 'c', '--fingerprint', 'f3', '--status', 'promoted', '--human-approved', dId], { stdin: provBody('x'), ctx, proj }).status, 0);
   });
 });
 
