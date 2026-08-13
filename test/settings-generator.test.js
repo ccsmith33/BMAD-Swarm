@@ -284,13 +284,13 @@ describe('Settings Generator', () => {
       'permissions:',
       '  orchestrator_allow:',
       '    - "Bash(cargo check:*)"',
-      '    - "Bash(bundle exec rubocop:*)"',
+      '    - "Bash(npm test:*)"',
       '',
     ].join('\n'));
     generateSettings(config, paths);
     const allow = JSON.parse(readFileSync(paths.settingsJson, 'utf8')).permissions.allow;
     assert.ok(allow.includes('Bash(cargo check:*)'), 'project entry merged');
-    assert.ok(allow.includes('Bash(bundle exec rubocop:*)'), 'project entry merged');
+    assert.ok(allow.includes('Bash(npm test:*)'), 'project entry merged');
     // Template entries come first; project entries are appended.
     assert.ok(allow.indexOf('Bash(cargo check:*)') > allow.indexOf('Bash(git commit:*)'),
       'project entries are appended after the template safe default');
