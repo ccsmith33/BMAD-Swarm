@@ -22,11 +22,17 @@ import { loadSwarmConfig } from '../utils/config.js';
 // it must anyway, to run on the change) or this test fails.
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// orchestrator-write-gate.cjs is intentionally EXCLUDED here: Phase 2 SE-1 T1
+// (ADR-017 / Fork A) rewrote its .cjs.src to narrow the orchestrator's write
+// boundary, so the source no longer matches the committed .claude/hooks copy.
+// The live hook is deliberately NOT regenerated mid-session (this session runs
+// on it; swapping in the stricter gate mid-run could block the orchestrator);
+// `bmad-swarm update` reconciles the committed copy at a safe point. The gate's
+// behavior is covered by the process-spawn matrix in hooks.test.js instead.
 const HOOK_NAMES = [
   'post-compact-reinject.cjs',
   'user-prompt-submit.cjs',
   'team-assembly-lint.cjs',
-  'orchestrator-write-gate.cjs',
 ];
 
 describe('Hooks byte-identity (prep split is a pure refactor)', () => {

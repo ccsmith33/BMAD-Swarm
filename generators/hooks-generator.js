@@ -100,7 +100,10 @@ export function getHooksConfig() {
       // anchor (spike 2026-08-11) but rejected: blocking there deletes the
       // just-created task instead of declining the spawn.
       { matcher: 'Agent', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/team-assembly-lint.cjs"' }] },
-      { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/orchestrator-write-gate.cjs"' }] },
+      // ADR-017 / F-016: the gate matches Bash + NotebookEdit as well, so a
+      // narrowed orchestrator cannot shell out (echo>/tee/node -e/sed -i) or
+      // NotebookEdit around the delegate-everything boundary.
+      { matcher: 'Edit|Write|MultiEdit|Bash|NotebookEdit', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/orchestrator-write-gate.cjs"' }] },
     ],
   };
 }

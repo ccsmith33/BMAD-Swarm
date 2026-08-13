@@ -354,3 +354,16 @@ team:
     model: opus
 rationale: Prep refactor before SE-1's 3 parallel tracks — split generators/hooks-generator.js inline hook sources into per-file generators/hooks/<name>.cjs.src with a byte-identity test, so T1/T2/T3 own disjoint hook files with no collision. Pure refactor, zero behavior change.
 ```
+
+## 2026-08-13 — bug-fix (Phase 2 SE-1 / T1: Fork A permission narrowing)
+
+```bmad-assembly
+entry_point: bug-fix
+complexity: 10
+autonomy: auto
+team:
+  - role: developer
+    domain: fork-a-permission-narrowing
+    model: opus
+rationale: SE-1 track T1 (sequential, on committed prep base). Implement ADR-017 + pinned-script amendment (D-049): narrow orchestrator shell, extend write-gate to Bash/NotebookEdit, path normalization (F-017), settings.local.json out of writable set. Security-critical — fable security-lens review follows. Opus per tier mix.
+```

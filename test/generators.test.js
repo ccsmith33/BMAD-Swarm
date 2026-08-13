@@ -1,5 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { writeFileSync, mkdirSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -833,7 +834,7 @@ methodology:
       assert.ok(content.includes('artifacts') && content.includes('project.yaml'), 'Should allow artifacts/** and project.yaml');
     });
 
-    it('orchestrator-write-gate allows all artifacts/ subpaths and denies source/test paths (hotfix Group 8d)', () => {
+    it('orchestrator-write-gate allows all artifacts/ subpaths and denies source/test paths (hotfix Group 8d; F-017 hardened)', () => {
       const projectDir = join(tmpDir, 'hooks-test-write-gate-scope');
       mkdirSync(projectDir, { recursive: true });
       const configPath = join(projectDir, 'swarm.yaml');
@@ -843,14 +844,23 @@ methodology:
       generateHooks(config, paths);
 
       const hookPath = join(paths.hooksDir, 'orchestrator-write-gate.cjs');
-      const content = readFileSync(hookPath, 'utf8');
 
-      // Extract the allowed array and functionally exercise it
-      const m = content.match(/const allowed = \[([\s\S]*?)\];/);
-      assert.ok(m, 'Should contain allowed array');
-      const allowed = eval('[' + m[1] + ']');
+      // Functionally exercise the generated hook by spawning it with an
+      // orchestrator payload and reading the permissionDecision. cwd is the
+      // project root so relative paths anchor there (F-017 realpath discipline).
+      function decisionFor(filePath) {
+        const result = spawnSync('node', [hookPath], {
+          input: JSON.stringify({ tool_input: { file_path: filePath } }),
+          encoding: 'utf8',
+          env: { ...process.env, AGENT_ROLE: 'orchestrator' },
+          cwd: projectDir,
+        });
+        if (!result.stdout || !result.stdout.trim()) return null;
+        try { return JSON.parse(result.stdout).hookSpecificOutput.permissionDecision; }
+        catch { return null; }
+      }
 
-      // ALLOW: every artifacts subpath (reviews, context, design, planning, implementation, exploration)
+      // ALLOW: every artifacts subpath + the exact repo-root config files.
       const allowPaths = [
         'artifacts/reviews/foo.md',
         'artifacts/context/decision-log.md',
@@ -859,33 +869,37 @@ methodology:
         'artifacts/planning/prd.md',
         'artifacts/implementation/stories/1-1.md',
         'artifacts/exploration/research.md',
-        'C:/Users/foo/artifacts/reviews/bar.md',
-        'C:\\Users\\foo\\artifacts\\reviews\\bar.md',
+        'artifacts\\reviews\\bar.md', // backslash separators normalize + anchor
         'project.yaml',
         'swarm.yaml',
         '.gitignore',
       ];
       for (const p of allowPaths) {
-        assert.ok(allowed.some(r => r.test(p)), 'Should ALLOW write to: ' + p);
+        assert.equal(decisionFor(p), null, 'Should ALLOW write to: ' + p);
       }
 
-      // DENY: source, tests, generators, hooks, templates, agents, methodology, cli, bin, package.json
+      // DENY: source, tests, generators, hooks, templates, agents, methodology,
+      // cli, bin, package.json, plus the F-017 bypass classes.
       const denyPaths = [
         'src/foo.js',
         'utils/config.js',
         'test/foo.test.js',
         'generators/hooks-generator.js',
         '.claude/hooks/orchestrator-write-gate.cjs',
+        '.claude/settings.local.json', // F-020
         'templates/settings.json.template',
         'agents/orchestrator.md',
         'methodology/phases.yaml',
         'cli/init.js',
         'bin/bmad-swarm.js',
         'package.json',
-        'projectXyaml',
+        'src/artifacts/malware.js', // F-017: sibling artifacts dir
+        'notes-artifacts/x.js',      // F-017: substring, not a segment
+        'evil/project.yaml',         // F-017: $-suffix config match
+        'artifacts/../.claude/settings.json', // F-017: traversal
       ];
       for (const p of denyPaths) {
-        assert.ok(!allowed.some(r => r.test(p)), 'Should DENY write to: ' + p);
+        assert.equal(decisionFor(p), 'deny', 'Should DENY write to: ' + p);
       }
     });
   });

@@ -105,6 +105,38 @@ describe('Settings Generator', () => {
     assert.match(agentHook.hooks[0].command, /\$CLAUDE_PROJECT_DIR/, 'hook command must be project-dir anchored (M-2)');
   });
 
+  it('ADR-017/F-016/F-018: orchestrator allow-list drops interpreter/arbitrary-write Bash', () => {
+    const { config, paths } = makeProject('settings-narrowed-shell');
+    generateSettings(config, paths);
+    const allow = JSON.parse(readFileSync(paths.settingsJson, 'utf8')).permissions.allow;
+    // The interpreter/redirect-capable grants that made the deny-list decorative
+    // and let a blocked orchestrator shell out must be gone.
+    for (const forbidden of ['Bash(node:*)', 'Bash(npx:*)', 'Bash(echo:*)', 'Bash(npm:*)', 'Bash(git:*)']) {
+      assert.ok(!allow.includes(forbidden), `allow-list must NOT include ${forbidden}`);
+    }
+    // No entry may grant a bare interpreter or npx with a wildcard.
+    for (const entry of allow) {
+      assert.ok(!/^Bash\(node:\*\)$|^Bash\(npx/.test(entry),
+        `allow entry grants an interpreter shell: ${entry}`);
+    }
+  });
+
+  it('ADR-017/D-049: orchestrator keeps read-inspection + the pinned ledger helper', () => {
+    const { config, paths } = makeProject('settings-pinned-helper');
+    generateSettings(config, paths);
+    const allow = JSON.parse(readFileSync(paths.settingsJson, 'utf8')).permissions.allow;
+    for (const expected of [
+      'Bash(git status:*)',
+      'Bash(git log:*)',
+      'Bash(git diff:*)',
+      'Bash(ls:*)',
+      'Bash(npm test:*)',
+      'Bash(node .claude/bmad/bin/record.cjs:*)',
+    ]) {
+      assert.ok(allow.includes(expected), `allow-list must include ${expected}`);
+    }
+  });
+
   it('permissions.defaultMode is acceptEdits (ADR-001)', () => {
     const { config, paths } = makeProject('settings-default-mode');
     generateSettings(config, paths);

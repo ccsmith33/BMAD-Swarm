@@ -624,8 +624,12 @@ describe('Hooks (process-spawn contract)', () => {
       assert.equal(result.decision, null, 'artifacts/ path should be allowed');
     });
 
-    it('allows Windows-style mixed-separator artifacts paths', () => {
-      const event = { tool_input: { file_path: 'C:\\project\\artifacts\\reviews/foo.md' } };
+    it('allows Windows-style (backslash) relative artifacts paths', () => {
+      // Backslash separators normalize to `/` and anchor to <root>/artifacts/.
+      // (Absolute foreign-root paths like C:\… can only be anchored on the host
+      // that owns that root; the cross-platform guarantee is the separator
+      // normalization, exercised here with a repo-relative path.)
+      const event = { tool_input: { file_path: 'artifacts\\reviews\\foo.md' } };
       const result = runHook('orchestrator-write-gate.cjs', {
         stdin: JSON.stringify(event),
         env: { AGENT_ROLE: 'orchestrator' },
@@ -739,23 +743,25 @@ describe('Hooks (process-spawn contract)', () => {
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
     });
 
-    it('allows .claude/settings.local.json (new allow-list entry)', () => {
+    it('F-020: DENIES .claude/settings.local.json (it can disable the gate)', () => {
+      // ADR-017: the orchestrator must not write the file that can widen its own
+      // permissions / disable this gate. Recovery is human-only now.
       const event = { tool_input: { file_path: '.claude/settings.local.json' } };
-      const result = runHook('orchestrator-write-gate.cjs', {
+      const { decision } = runHook('orchestrator-write-gate.cjs', {
         stdin: JSON.stringify(event),
         env: { AGENT_ROLE: 'orchestrator' },
       });
-      assert.equal(result.decision, null,
-        'settings.local.json is a legitimate orchestrator write (ADR-003 §3.5)');
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
+        'settings.local.json is a self-ungate surface — orchestrator write denied (F-020)');
     });
 
-    it('allows settings.local.json on Windows mixed separators', () => {
-      const event = { tool_input: { file_path: 'C:\\proj\\.claude/settings.local.json' } };
-      const result = runHook('orchestrator-write-gate.cjs', {
+    it('F-020: DENIES settings.local.json via backslash separators too', () => {
+      const event = { tool_input: { file_path: '.claude\\settings.local.json' } };
+      const { decision } = runHook('orchestrator-write-gate.cjs', {
         stdin: JSON.stringify(event),
         env: { AGENT_ROLE: 'orchestrator' },
       });
-      assert.equal(result.decision, null);
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
     });
 
     it('treats empty-string agent_id as main-thread (falsy — denies code edit)', () => {
@@ -781,6 +787,156 @@ describe('Hooks (process-spawn contract)', () => {
         env: { AGENT_ROLE: 'orchestrator' },
       });
       assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
+    });
+
+    // -------------------------------------------------------------------
+    // F-017: path normalization — traversal and sibling-directory bypass.
+    // The gate resolves + rejects `..` + segment-anchors, so a path that
+    // merely CONTAINS an allowed prefix cannot slip through.
+    // -------------------------------------------------------------------
+
+    function orchestratorFileDecision(filePath) {
+      const { decision } = runHook('orchestrator-write-gate.cjs', {
+        stdin: JSON.stringify({ tool_input: { file_path: filePath } }),
+        env: { AGENT_ROLE: 'orchestrator' },
+      });
+      return decision?.hookSpecificOutput?.permissionDecision || null;
+    }
+
+    it('F-017: DENIES traversal out of artifacts/ (artifacts/../.claude/settings.json)', () => {
+      assert.equal(orchestratorFileDecision('artifacts/../.claude/settings.json'), 'deny',
+        '`..` must be rejected before the allow check');
+    });
+
+    it('F-017: DENIES an absolute path that traverses through artifacts/', () => {
+      assert.equal(orchestratorFileDecision('/home/u/artifacts/../.claude/settings.json'), 'deny');
+    });
+
+    it('F-017: DENIES a sibling artifacts dir (src/artifacts/malware.js)', () => {
+      assert.equal(orchestratorFileDecision('src/artifacts/malware.js'), 'deny',
+        'only <root>/artifacts/ is writable, not any dir literally named artifacts');
+    });
+
+    it('F-017: DENIES a substring match (notes-artifacts/x.js)', () => {
+      assert.equal(orchestratorFileDecision('notes-artifacts/x.js'), 'deny');
+    });
+
+    it('F-017: DENIES a $-suffix config match (evil/project.yaml)', () => {
+      assert.equal(orchestratorFileDecision('evil/project.yaml'), 'deny',
+        'config files match as exact repo-root basenames, not path suffixes');
+    });
+
+    it('F-017: still ALLOWS a legitimate nested artifacts path', () => {
+      assert.equal(orchestratorFileDecision('artifacts/implementation/stories/1-1.md'), null);
+    });
+
+    // -------------------------------------------------------------------
+    // F-016: Bash write-shape interception for the orchestrator identity.
+    // -------------------------------------------------------------------
+
+    function orchestratorBashDecision(command, env = {}) {
+      const { decision } = runHook('orchestrator-write-gate.cjs', {
+        stdin: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+        env: { AGENT_ROLE: 'orchestrator', ...env },
+      });
+      return decision?.hookSpecificOutput?.permissionDecision || null;
+    }
+
+    const BLOCKED_BASH = [
+      ['echo redirection into a code path', "echo 'evil' > src/auth.js"],
+      ['append redirection into a code path', "echo 'x' >> generators/hooks-generator.js"],
+      ['redirection into .claude/', 'echo x > .claude/settings.json'],
+      ['redirection into settings.local.json (F-020)', 'printf x > .claude/settings.local.json'],
+      ['tee into a code path', "echo x | tee src/index.js"],
+      ['node -e fs write', 'node -e \'require("fs").writeFileSync("src/x.js","bad")\''],
+      ['node --eval', 'node --eval "1+1"'],
+      ['python -c', 'python3 -c "open(\'src/x.py\',\'w\').write(1)"'],
+      ['sed -i on .claude', 'sed -i s/a/b/ .claude/settings.json'],
+      ['dd of= a code path', 'dd if=/dev/zero of=src/x.js'],
+      ['cp into a code path', 'cp /tmp/x.js src/x.js'],
+      ['mv into a code path', 'mv /tmp/x.js generators/x.js'],
+      ['chained write after a benign command', 'git status && echo evil > src/x.js'],
+      ['sudo-wrapped node -e', 'sudo node -e \'process.exit(0)\''],
+      ['traversal redirect out of artifacts', 'echo x > artifacts/../.claude/settings.json'],
+      ['clobber operator >| into a code path', 'echo x >| src/x.js'],
+      ['fd redirect 2> to a code file', 'echo x 2> src/err.log'],
+      ['truncate-via-redirect (: > file)', ': > src/x.js'],
+      ['no-space redirect', 'echo x >src/z.js'],
+    ];
+    for (const [label, cmd] of BLOCKED_BASH) {
+      it(`F-016: DENIES ${label}`, () => {
+        assert.equal(orchestratorBashDecision(cmd), 'deny', `should block: ${cmd}`);
+      });
+    }
+
+    const ALLOWED_BASH = [
+      ['git status', 'git status'],
+      ['git log', 'git log --oneline -5'],
+      ['git diff', 'git diff HEAD~1'],
+      ['ls', 'ls -la src/'],
+      ['grep', 'grep -rn foo src/'],
+      ['npm test', 'npm test'],
+      ['the pinned ledger helper', 'node .claude/bmad/bin/record.cjs append --type F --stdin'],
+      ['echo with no redirect', "echo 'just printing'"],
+      ['redirect to /dev/null', 'ls -la > /dev/null'],
+      ['redirect to /tmp (scratchpad)', 'echo x > /tmp/scratch.txt'],
+      ['fd dup (not a file write)', 'npm test 2>&1'],
+      ['redirect INTO artifacts (writable set)', 'echo note > artifacts/context/scratch.md'],
+      ['cat for reading', 'cat swarm.yaml'],
+      ['the pinned CLI', 'node bin/bmad-swarm.js status'],
+    ];
+    for (const [label, cmd] of ALLOWED_BASH) {
+      it(`F-016: ALLOWS ${label}`, () => {
+        assert.equal(orchestratorBashDecision(cmd), null, `should pass: ${cmd}`);
+      });
+    }
+
+    it('F-016: a teammate (agent_id present) is UNAFFECTED by the Bash gate', () => {
+      const { decision } = runHook('orchestrator-write-gate.cjs', {
+        stdin: JSON.stringify({
+          tool_name: 'Bash',
+          tool_input: { command: "echo 'evil' > src/auth.js" },
+          agent_id: 'agent-abc123',
+        }),
+        env: { AGENT_ROLE: 'orchestrator' },
+      });
+      assert.equal(decision, null, 'teammates keep their working shell (ADR-003 identity check)');
+    });
+
+    it('F-016: a teammate (agent_type present) may run node -e', () => {
+      const { decision } = runHook('orchestrator-write-gate.cjs', {
+        stdin: JSON.stringify({
+          tool_name: 'Bash',
+          tool_input: { command: 'node -e "1+1"' },
+          agent_type: 'developer',
+        }),
+        env: { AGENT_ROLE: 'orchestrator' },
+      });
+      assert.equal(decision, null);
+    });
+
+    it('F-016: Bash gate is inert when AGENT_ROLE is not orchestrator', () => {
+      assert.equal(orchestratorBashDecision("echo x > src/y.js", { AGENT_ROLE: '' }), null);
+    });
+
+    // -------------------------------------------------------------------
+    // F-016: NotebookEdit is now intercepted like the other write tools.
+    // -------------------------------------------------------------------
+
+    it('F-016: DENIES NotebookEdit to a code path (notebook_path)', () => {
+      const { decision } = runHook('orchestrator-write-gate.cjs', {
+        stdin: JSON.stringify({ tool_name: 'NotebookEdit', tool_input: { notebook_path: 'src/analysis.ipynb' } }),
+        env: { AGENT_ROLE: 'orchestrator' },
+      });
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny');
+    });
+
+    it('F-016: ALLOWS NotebookEdit inside artifacts/', () => {
+      const { decision } = runHook('orchestrator-write-gate.cjs', {
+        stdin: JSON.stringify({ tool_name: 'NotebookEdit', tool_input: { notebook_path: 'artifacts/exploration/nb.ipynb' } }),
+        env: { AGENT_ROLE: 'orchestrator' },
+      });
+      assert.equal(decision, null);
     });
   });
 
