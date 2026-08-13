@@ -52,4 +52,8 @@ registerStartCommand(program);
 const { registerPhaseCommand } = await import('../cli/phase.js');
 registerPhaseCommand(program);
 
+// Mission Control (Phase 4 Stream M) — read-only report surface.
+const { registerReportCommand } = await import('../cli/report.js');
+registerReportCommand(program);
+
 program.parse();

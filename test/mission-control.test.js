@@ -1,6 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -251,6 +252,60 @@ describe('mission-control: read-only by construction', () => {
     const md = renderMissionControl(buildMissionControl(inputs));
     assert.match(md, /# Mission Control — empty/);
     assert.match(md, /Nothing is blocked on a human decision/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('mission-control: bmad-swarm report command', () => {
+  const CLI = join(__dirname, '..', 'bin', 'bmad-swarm.js');
+  const date = new Date().toISOString().slice(0, 10);
+
+  function seedProject(dir) {
+    const ctx = join(dir, 'artifacts', 'context');
+    mkdirSync(ctx, { recursive: true });
+    writeFileSync(join(dir, 'swarm.yaml'), 'project:\n  name: report-demo\ndefaults:\n  model: opus\n');
+    writeFileSync(join(ctx, 'decision-log.md'), DECISION_LOG);
+    writeFileSync(join(ctx, 'ledger.md'), RECORD_LEDGER);
+    writeFileSync(join(ctx, 'project-brain.md'), '---\nschema: project-brain/1\nupdated: 2026-08-13\ncheckpoint: 3\nphase: implementation\ngates:\n  architecture:\n    status: awaiting-human\n    d_id: D-051\n---\n\n## What this is (and why)\n');
+  }
+
+  it('writes the four-panel surface to artifacts/delivery/mission-control-<date>.md', () => {
+    const dir = join(tmpdir(), 'bmad-mc-report-' + Date.now());
+    seedProject(dir);
+    const stdout = execSync(`node "${CLI}" report`, { cwd: dir, encoding: 'utf8', timeout: 15000 });
+    const outPath = join(dir, 'artifacts', 'delivery', `mission-control-${date}.md`);
+    assert.ok(stdout.includes('Generated Mission Control report'), 'reports the written path to stdout');
+    assert.ok(existsSync(outPath), 'the dated report file exists under artifacts/delivery/');
+    const md = readFileSync(outPath, 'utf8');
+    assert.match(md, /# Mission Control — report-demo/);
+    assert.match(md, /## Awaiting human/);
+    assert.match(md, /## Running \/ stuck/);
+    assert.match(md, /## Decisions & recommendations/);
+    assert.match(md, /## Spend estimate/);
+    assert.match(md, /\*\*architecture\*\* \(D-051\)/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('overwrites the same-date report on re-run (idempotent-ish) and mutates no durable store', () => {
+    const dir = join(tmpdir(), 'bmad-mc-report-idem-' + Date.now());
+    seedProject(dir);
+    const ctx = join(dir, 'artifacts', 'context');
+    const storesBefore = ['decision-log.md', 'ledger.md', 'project-brain.md', join('..', '..', 'swarm.yaml')]
+      .map((f) => readFileSync(join(ctx, f), 'utf8'));
+
+    execSync(`node "${CLI}" report`, { cwd: dir, encoding: 'utf8', timeout: 15000 });
+    const outPath = join(dir, 'artifacts', 'delivery', `mission-control-${date}.md`);
+    const first = readFileSync(outPath, 'utf8');
+    execSync(`node "${CLI}" report`, { cwd: dir, encoding: 'utf8', timeout: 15000 });
+    const deliveryFiles = readdirSync(join(dir, 'artifacts', 'delivery'));
+
+    assert.equal(deliveryFiles.length, 1, 'same-date re-run overwrites, does not accumulate files');
+    assert.match(readFileSync(outPath, 'utf8'), /# Mission Control — report-demo/);
+    assert.ok(first.includes('# Mission Control'));
+
+    const storesAfter = ['decision-log.md', 'ledger.md', 'project-brain.md', join('..', '..', 'swarm.yaml')]
+      .map((f) => readFileSync(join(ctx, f), 'utf8'));
+    assert.deepEqual(storesAfter, storesBefore, 'report must not mutate any durable store');
     rmSync(dir, { recursive: true, force: true });
   });
 });
