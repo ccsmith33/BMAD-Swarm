@@ -94,6 +94,15 @@ function applyDefaults(raw) {
   // Agent defaults
   config.agents = config.agents || {};
 
+  // Permissions defaults (ADR-017 Amendment 1). The project-aware orchestrator
+  // allow-list block. Only default when ABSENT — a present-but-malformed value
+  // (e.g. a non-array) is left intact so validateConfig can reject it loudly
+  // rather than being silently replaced with an empty list.
+  config.permissions = config.permissions || {};
+  if (config.permissions.orchestrator_allow === undefined) {
+    config.permissions.orchestrator_allow = [];
+  }
+
   // Output defaults
   config.output = config.output || {};
   config.output.artifacts_dir = config.output.artifacts_dir || './artifacts';

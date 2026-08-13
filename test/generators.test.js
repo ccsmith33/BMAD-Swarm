@@ -870,7 +870,6 @@ methodology:
         'artifacts/implementation/stories/1-1.md',
         'artifacts/exploration/research.md',
         'artifacts\\reviews\\bar.md', // backslash separators normalize + anchor
-        'project.yaml',
         'swarm.yaml',
         '.gitignore',
       ];
@@ -893,6 +892,7 @@ methodology:
         'cli/init.js',
         'bin/bmad-swarm.js',
         'package.json',
+        'project.yaml',              // ADR-017 Amendment 1: removed from the writable set
         'src/artifacts/malware.js', // F-017: sibling artifacts dir
         'notes-artifacts/x.js',      // F-017: substring, not a segment
         'evil/project.yaml',         // F-017: $-suffix config match

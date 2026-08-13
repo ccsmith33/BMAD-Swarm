@@ -16,9 +16,19 @@
 // identity only:
 //   - confines the file tools to the writable set;
 //   - denies write-shaped shell (redirection, tee/dd/sed -i/cp/mv/install/
-//     truncate/ln, git tree-mutations, editors, and any interpreter that is not
-//     one of the two pinned scripts), scanning quote-aware and recursing into
-//     command substitutions.
+//     truncate/ln, WRITE-VECTOR + DESTRUCTIVE git, editors, and any interpreter
+//     that is not one of the two pinned scripts), scanning quote-aware and
+//     recursing into command substitutions.
+//
+// git (ADR-017 Amendment 1): coordination git is ALLOWED (commit, push, fetch,
+// merge --ff-only, checkout/switch branch-form, branch, tag) — the settings.json
+// allow-list stops PROMPTING for these, this gate denies the write/destructive
+// vectors inside them: apply/restore/am/stash/mv/rm, checkout|switch with a
+// pathspec, reset --hard/--merge/--keep, clean, push --force-family, non-ff
+// merge, pull without --ff-only, rebase/filter-branch/update-ref, -c alias.*,
+// --exec-path. Option-with-argument globals (-C, -c, --git-dir, --work-tree,
+// --namespace) are consumed BEFORE the subcommand is resolved (the -C bug:
+// `git -C /path apply x` must not read `/path` as the subcommand).
 //
 // Two-layer identity check (per ADR-003, HARN-1 fix) — UNCHANGED:
 //   (1) event.agent_id / event.agent_type are populated only inside a subagent
@@ -33,9 +43,11 @@
 //   - inside <projectRoot>/artifacts/  (EXCEPT the serialized ledger files,
 //     which are writable only through record.cjs — enforced for SHELL writes
 //     here; the ledger-write-guard hook covers the file tools for all agents)
-//   - the exact repo-root files project.yaml, swarm.yaml, .gitignore
+//   - the exact repo-root files swarm.yaml, .gitignore
 //   - the session marker <projectRoot>/.claude/hooks/.session-active
 // NOT writable (F-020): .claude/settings.local.json (self-ungate surface).
+// project.yaml was REMOVED from the writable set (ADR-017 Amendment 1 / Stream B
+// cutover — D-037 retires the file; phase writes flow through the CLI).
 
 const path = require('node:path');
 const fs = require('node:fs');
@@ -59,10 +71,17 @@ const DENY_BINARIES = new Set([
 // Binaries whose write destination we vet against the writable set.
 const WRITE_UTILS = new Set(['tee', 'dd', 'cp', 'mv', 'install', 'rsync', 'ln', 'truncate']);
 // git subcommands that rewrite working-tree FILES from an arbitrary source (a
-// code-write vector). Deliberately NOT commit/add/push/fetch — those record or
-// transmit, don't write source, and are normal delegated ops that reach the
-// allow-list prompt (reviewer matrix: `git commit -m "…"` must pass the gate).
-const GIT_WRITE_SUBCMDS = new Set(['apply', 'checkout', 'restore', 'stash', 'mv', 'rm']);
+// code-write vector). checkout/switch are NOT here — they are branch-safe and
+// only denied in their PATHSPEC form (inspectGit). Deliberately NOT
+// commit/add/push/fetch/branch/tag — those record, transmit or name refs, don't
+// write source, and are coordination ops (reviewer matrix: `git commit -m "…"`
+// must pass the gate). Pinned DISJOINT from the validator's
+// GIT_COORDINATION_SUBCMDS by test/orchestrator-allow.test.js.
+const GIT_WRITE_SUBCMDS = new Set(['apply', 'restore', 'am', 'stash', 'mv', 'rm']);
+// Global git options that consume a FOLLOWING argument. They must be skipped
+// before the subcommand is resolved, or `git -C /path apply x` reads `/path` as
+// the subcommand and the deny-set never matches (the -C bug).
+const GIT_GLOBAL_OPTS_WITH_ARG = new Set(['-C', '--git-dir', '--work-tree', '--namespace']);
 
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -91,7 +110,7 @@ process.stdin.on('end', () => {
   const filePath = toolInput.file_path || toolInput.notebook_path || toolInput.path || '';
   if (isAllowedWrite(filePath, projectRoot)) { process.exit(0); }
   deny(
-    'Blocked: orchestrator role cannot write ' + filePath + '. Delegate code/artifact changes to a teammate spawned via the Agent tool (subagent_type). Allowed orchestrator writes: artifacts/**, project.yaml, swarm.yaml, .gitignore.',
+    'Blocked: orchestrator role cannot write ' + filePath + '. Delegate code/artifact changes to a teammate spawned via the Agent tool (subagent_type). Allowed orchestrator writes: artifacts/**, swarm.yaml, .gitignore.',
   );
 });
 
@@ -164,7 +183,6 @@ function isAllowedWrite(rawPath, projectRoot) {
   const artifactsRoot = root + '/artifacts';
   const lexOk =
     abs === artifactsRoot || abs.startsWith(artifactsRoot + '/') ||
-    abs === root + '/project.yaml' ||
     abs === root + '/swarm.yaml' ||
     abs === root + '/.gitignore' ||
     abs === root + '/.claude/hooks/.session-active';
@@ -345,13 +363,92 @@ function inspectSub(tokens, projectRoot) {
     }
     return { deny: false };
   }
-  if (base === 'git') {
-    const sub = args.find((a) => a && !a.startsWith('-'));
-    if (sub && GIT_WRITE_SUBCMDS.has(sub)) return { deny: true, reason: shellReason('git ' + sub + ' (tree mutation)') };
-    return { deny: false };
-  }
+  if (base === 'git') return inspectGit(args);
   if (WRITE_UTILS.has(base)) return inspectWriteUtil(base, args, projectRoot);
   return { deny: false };
+}
+
+// Inspect a `git` invocation. `args` is everything after the `git` token
+// (already unquoted). Consume option-with-argument globals FIRST (the -C bug),
+// deny the -c alias/shell-escape and --exec-path binary-substitution vectors,
+// then classify the subcommand: write-vector + destructive shapes are denied;
+// coordination shapes (commit/push/fetch/branch/tag, merge --ff-only,
+// checkout|switch branch-form, and all read subcommands) pass.
+function inspectGit(args) {
+  let i = 0;
+  while (i < args.length) {
+    const a = args[i];
+    if (a === '-c') {
+      const val = args[i + 1] || '';
+      if (/^alias\./i.test(val) || val.includes('!')) {
+        return { deny: true, reason: shellReason('git -c ' + stripQuotes(val) + ' (alias/shell-escape)') };
+      }
+      i += 2; continue;
+    }
+    if (a.startsWith('-c') && a.length > 2) {
+      const val = a.slice(2);
+      if (/^alias\./i.test(val) || val.includes('!')) {
+        return { deny: true, reason: shellReason('git -c (alias/shell-escape)') };
+      }
+      i += 1; continue;
+    }
+    if (a === '--exec-path' || a.startsWith('--exec-path=')) {
+      return { deny: true, reason: shellReason('git --exec-path (binary substitution)') };
+    }
+    if (GIT_GLOBAL_OPTS_WITH_ARG.has(a)) { i += 2; continue; }   // consume flag + its argument
+    if (a.startsWith('--git-dir=') || a.startsWith('--work-tree=') || a.startsWith('--namespace=')) { i += 1; continue; }
+    if (a.startsWith('-')) { i += 1; continue; }                 // other single-token global (-p, --no-pager, …)
+    break;                                                       // first non-flag operand = the subcommand
+  }
+  const sub = args[i];
+  if (!sub) return { deny: false };                              // bare `git` (only globals) — no mutation
+  const rest = args.slice(i + 1);
+  const nonFlag = rest.filter((a) => a && !a.startsWith('-'));
+
+  // write-vector: rewrite tree files from an arbitrary source.
+  if (GIT_WRITE_SUBCMDS.has(sub)) {
+    return { deny: true, reason: shellReason('git ' + sub + ' (tree mutation)') };
+  }
+  // checkout / switch: branch-form passes; PATHSPEC-form is a file restore.
+  if (sub === 'checkout' || sub === 'switch') {
+    const hasCreate = rest.some((a) => a === '-b' || a === '-B' || a === '-c' || a === '-C' || a === '--orphan');
+    if (rest.includes('--') || (!hasCreate && nonFlag.length > 1)) {
+      return { deny: true, reason: shellReason('git ' + sub + ' with a pathspec (file restore)') };
+    }
+    return { deny: false };
+  }
+  // destructive shapes.
+  if (sub === 'reset') {
+    const bad = rest.find((a) => a === '--hard' || a === '--merge' || a === '--keep');
+    if (bad) return { deny: true, reason: shellReason('git reset ' + bad + ' (working-tree/index rewrite)') };
+    return { deny: false };                                      // --soft / --mixed / default: HEAD/index only
+  }
+  if (sub === 'clean') return { deny: true, reason: shellReason('git clean (untracked-file deletion)') };
+  if (sub === 'push') {
+    if (rest.some((a) => a === '--force' || a === '-f' || a === '--force-with-lease' ||
+        a.startsWith('--force-with-lease=') || a === '--delete' || a === '--mirror')) {
+      return { deny: true, reason: shellReason('git push (force/delete/mirror)') };
+    }
+    return { deny: false };
+  }
+  if (sub === 'merge') {
+    if (!rest.includes('--ff-only')) return { deny: true, reason: shellReason('git merge without --ff-only (may create a merge commit)') };
+    return { deny: false };
+  }
+  if (sub === 'pull') {
+    if (!rest.includes('--ff-only')) return { deny: true, reason: shellReason('git pull without --ff-only (embeds a merge)') };
+    return { deny: false };
+  }
+  if (sub === 'rebase' || sub === 'filter-branch' || sub === 'filter-repo' || sub === 'update-ref') {
+    return { deny: true, reason: shellReason('git ' + sub + ' (history/ref rewrite)') };
+  }
+  if (sub === 'reflog' && nonFlag[0] === 'expire') {
+    return { deny: true, reason: shellReason('git reflog expire (ref-history rewrite)') };
+  }
+  if (sub === 'gc' && rest.some((a) => a === '--prune' || a.startsWith('--prune='))) {
+    return { deny: true, reason: shellReason('git gc --prune (object pruning)') };
+  }
+  return { deny: false };                                        // coordination + read subcommands pass
 }
 
 function inspectWriteUtil(base, args, projectRoot) {

@@ -23,6 +23,7 @@ export function registerUpdateCommand(program) {
     .description('Regenerate all managed files (.claude/agents, CLAUDE.md, hooks, settings) from swarm.yaml')
     .option('--dry-run', 'Preview what would be regenerated without writing any files')
     .option('--force', 'Overwrite files even if they have been manually modified')
+    .option('--swap-live-hooks', 'Regenerate .claude/hooks/ + settings.json even while a live session is active (hot-swaps the running enforcement — off by default)')
     .addHelpText('after', `
 Examples:
   $ bmad-swarm update              Regenerate all managed files
@@ -33,6 +34,11 @@ Safe to run repeatedly. Never touches user-owned files:
   swarm.yaml, overrides/, artifacts/, src/
 Ejected agents (in overrides/agents/) are preserved and used as-is.
 Files with manual edits are skipped unless --force is used.
+
+While a live session is active (.claude/hooks/.session-active present), update
+SKIPS regenerating .claude/hooks/ and settings.json so it cannot hot-swap the
+enforcement the running session relies on. Pass --swap-live-hooks to override
+(--force does NOT override this — it is a different consent).
 `)
     .action(async (options) => {
       try {
@@ -60,6 +66,17 @@ async function runUpdate(options) {
 
   const config = loadSwarmConfig(paths.swarmYaml);
   const genOptions = { force: !!options.force };
+
+  // Live-swap guard (ADR-017 Amendment 1 §3.5): regenerating .claude/hooks/ +
+  // settings.json UNDER a running orchestrator session hot-swaps the gate that
+  // session relies on — that wedged the 2026-08-13 merge. While the
+  // .session-active marker exists, skip those two regen steps. --swap-live-hooks
+  // restores the old behavior explicitly; --force does NOT override it (it means
+  // "overwrite manual edits", a different consent). A stale marker left by a
+  // crash makes this warn spuriously — the warning names the marker path so the
+  // human can delete it (doctor already knows the marker; no new machinery).
+  const sessionMarker = join(paths.hooksDir, '.session-active');
+  const skipLiveHooks = existsSync(sessionMarker) && !options.swapLiveHooks;
 
   if (options.dryRun) {
     console.log('Dry run - showing what would be regenerated:\n');
@@ -125,7 +142,11 @@ async function runUpdate(options) {
   }
 
   // 3. Regenerate hooks
-  if (options.dryRun) {
+  if (skipLiveHooks) {
+    console.log('  ! Skipped .claude/hooks/: a live session is active (.claude/hooks/.session-active).');
+    console.log('    Re-run after the session ends, or pass --swap-live-hooks to override.');
+    console.log('    (If the session already ended, delete .claude/hooks/.session-active.)');
+  } else if (options.dryRun) {
     console.log('  Would regenerate .claude/hooks/');
   } else {
     const hookResult = generateHooks(config, paths, genOptions);
@@ -230,7 +251,10 @@ async function runUpdate(options) {
   }
 
   // 5. Regenerate settings.json
-  if (options.dryRun) {
+  if (skipLiveHooks) {
+    console.log('  ! Skipped .claude/settings.json: a live session is active (.claude/hooks/.session-active).');
+    console.log('    Re-run after the session ends, or pass --swap-live-hooks to override.');
+  } else if (options.dryRun) {
     console.log('  Would regenerate .claude/settings.json');
   } else {
     const settingsResult = generateSettings(config, paths, genOptions);
