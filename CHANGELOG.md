@@ -2,7 +2,35 @@
 
 All notable changes to bmad-swarm.
 
-## [Unreleased]
+## [3.0.0] — 2026-08-13
+
+> **⚠ Human sign-off required — version and publish.** The `3.0.0` bump and the npm publish are human sign-offs, not automated: ADR-020 is **PROPOSED, awaiting human approval** (D-033), and the phase-3 ship-prep design (`artifacts/design/parallel-execution-2026-08-13.md` §5) recommends `3.0.0` but defers the confirm to the publish gate. `npm publish --dry-run` has been run and attached as release evidence — **no package was published.** This is a **semver-major** release: it deletes documented features (the facade ring, ADR-020) and removes `project.yaml` (Stream B / D-037), both breaking, documented behavior.
+
+<!-- INTEGRATOR: insert Stream A entries from artifacts/delivery/changelog-entries-stream-a.md immediately below this line -->
+<!-- INTEGRATOR: insert Stream B entries from artifacts/delivery/changelog-entries-stream-b.md immediately below this line -->
+<!-- Stream C entries are already landed inline below (see artifacts/delivery/changelog-entries-stream-c.md — that file is the protocol copy; do NOT re-concatenate it). -->
+
+### Removed (facade kill list — ADR-020, audit CB-7)
+
+The audit found a ring of shipped, help-text-documented features that were functionally inert — discovered-but-never-generated, called-only-by-tests, or with zero importers — plus ~275 lines of tests pinning the dead code. Per ADR-020 all are deleted rather than wired (nothing in the field record showed demand; wiring the plugin branch would have been a security project — see SEC note).
+
+- **Plugin system deleted.** Removed `utils/plugins.js`, `cli/plugin.js`, the `bmad-swarm plugin` command (registration dropped from `bin/bmad-swarm.js`), and `test/plugins.test.js`. Plugin agents were discovered (`plugin list`) but never fed to `getAgentNames()`/generation, so a discovered plugin agent was never spawnable. **Security:** deleting plugin loading also retires the latent prompt-injection vector SEC-F-021 (untrusted `plugins/agents/*.md` read verbatim as agent instructions) without the hardening the "wire" branch would have required — ADR-020 point 4.
+- **Workspace / monorepo commands deleted.** Removed `utils/workspace.js`, `cli/workspace.js`, the `bmad-swarm workspace` command, and `test/workspace.test.js`. `mergeWorkspaceConfig` (the actual feature) was only ever called by its own tests; `init`/`update`/`start` never consulted workspace context.
+- **`run-reporter` deleted.** Removed `utils/run-reporter.js` and `test/run-reporter.test.js`. Its only importer was its own test — no CLI command or generator produced a run report. ADR-020 point 3 gave it a "wire as ADR-018's session-end snapshot, or delete in the same commit — no limbo" fork; the fork resolves to **delete**, because SE-2 built the task ledger as the session-end snapshot substrate without run-reporter (traceability for the ADR consequence).
+- **`integrations/github.js` deleted.** Zero importers. The `integrations/` directory is gone; the `files` whitelist no longer references it.
+- **methodology-eject remnant removed.** The `eject methodology` placebo was already retired (V-5 — the shipped methodology copy *is* the override); this drops its last dead remnant, the never-read `overridesMethodologyDir` path in `utils/paths.js`. Agent ejection (`bmad-swarm eject agent <name>`, the live Layer-3 override) is untouched.
+- **~275 lines of dead-code tests removed** along with the modules above (`test/plugins.test.js`, `test/workspace.test.js`, `test/run-reporter.test.js`, plus the workspace/plugin regions of `test/cli.test.js`). Tests that pin unreachable code are negative documentation — ADR-020.
+
+### Fixed
+
+- **F-023: generated CI no longer pins an unpublished version.** `generators/github-actions-generator.js` produced a workflow whose install step ran `npm install -g bmad-swarm@<local package.json version>`. Because that exact version is not on npm, the step 404'd (`ETARGET`) on the first run of *every* generated project's workflow — a guaranteed red build. The validate step now runs `npx --yes bmad-swarm@latest validate`, which resolves whatever is actually published (read-only token, push-and-PR triggers, and D-042 tracked-path filters unchanged). **Caveat:** the workflow is only honest once `bmad-swarm` is published to npm; a human may swap `@latest` for a specific about-to-publish version at the publish sign-off (design §5, default `@latest`). Test added in `test/cli.test.js` (asserts no unpublished pin + the resolvable `npx …@latest validate` spec).
+
+### Changed (packaging & release)
+
+- **`package.json`.** Version → `3.0.0` (**recommended**; the facade removals + `project.yaml` removal are breaking, documented behavior — human confirms at the publish gate). Added `repository`, `homepage`, and `bugs` fields (GitHub `ccsmith33/BMAD-Swarm`). Pruned the `files` whitelist: dropped the deleted `integrations/`, added the runtime `scripts/` directory.
+- **`.npmignore` removed.** Redundant against the `files` whitelist — with `files` present npm packs only the listed paths, so the blacklist could never add exclusions. The whitelist is now the single source of truth for the packed tarball (`npm pack --dry-run` confirmed no `test/`, `artifacts/`, or `.claude/` leakage).
+
+---
 
 v3 coordination layer (D-028, ADR-013, ADR-014). Three changes to how teams are assembled and spawned: orchestrator-assigned task ownership becomes the single wake channel; generated agents become valid native Claude Code custom agent definitions spawned via `subagent_type` (the `FIRST: Invoke /identity-{role}` teammate ceremony is retired); and the `teamcreate-gate` drops transcript scanning entirely in favor of the `artifacts/context/team-assembly-log.md` file handshake as the sole Pass-1 channel.
 

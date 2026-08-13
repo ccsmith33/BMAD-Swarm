@@ -41,7 +41,6 @@ export function getProjectPaths(projectRoot) {
     claudeMd: join(root, 'CLAUDE.md'),
     overridesDir: join(root, 'overrides'),
     overridesAgentsDir: join(root, 'overrides', 'agents'),
-    overridesMethodologyDir: join(root, 'overrides', 'methodology'),
     artifactsDir: join(root, 'artifacts'),
     projectYaml: join(root, 'project.yaml'),
   };
