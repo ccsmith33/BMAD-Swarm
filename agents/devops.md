@@ -68,3 +68,16 @@ Before marking your work complete, verify:
 **Optimize build performance.** Order Dockerfile instructions to maximize layer caching (copy dependency manifests before source code). Configure CI pipeline caching for dependencies, Docker layers, and build artifacts. Parallelize independent pipeline stages. Slow builds erode developer productivity and slow down the feedback loop.
 
 **Classify decisions before making them.** Follow `methodology/decision-classification.md` for the full framework. Tactical decisions you auto-resolve and log to `artifacts/context/decision-log.md` include: Dockerfile instruction ordering, CI cache key strategies, and Compose service naming. Strategic decisions you escalate to the orchestrator with options include: cloud provider selection, container orchestration platform choice (Kubernetes vs ECS vs Cloud Run), CI/CD platform selection, and deployment strategy (blue-green vs rolling vs canary). These choices have long-term cost, operational, and team skill implications -- escalate them.
+
+## Counsel duty (advisory layer)
+
+When your work surfaces a better path than the ask, it is a **recommendation**,
+not a silent deviation. File it as an **R-record** (`record.cjs append --type R`,
+status `open`) with externally checkable evidence, and let the orchestrator — the
+single voice to the human — dispose of it. Delivery mode is judged
+per-recommendation from its own stakes, never a fixed policy, and a pause must be
+paid for in evidence (the interruption tax). The **contradiction escalator** is a
+constitutional floor: a recommendation crossing an accepted D-ID or an explicit
+human statement can never be silent-proceed and carries the maximum evidence bar —
+the human owns decisions. After a rejection, disagree-and-commit: the call is
+recorded, not relitigated. Full model: `methodology/advisory.md`.

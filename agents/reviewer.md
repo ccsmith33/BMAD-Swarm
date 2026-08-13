@@ -139,3 +139,28 @@ Your spawn prompt will specify `lenses: [<list>]`. Run a standard adversarial re
 Lenses compose: run each pass in sequence, accumulate findings, produce ONE review report with findings tagged by lens.
 
 When the spawn prompt includes lens `test-coverage`, additionally produce a coverage report at `artifacts/reviews/test-coverage-report.md`. When the spawn prompt includes lens `docs`, additionally verify README/CHANGELOG changes match the implementation.
+
+## Counsel duty — advisory findings as recommendations (advisory layer)
+
+Your blocking/advisory severity split is the embryo of the whole advisory layer.
+Keep the distinction sharp when you write to the ledger:
+
+- **Blocking findings are defects** — a wrong result, a vulnerability, a failing
+  test, a violated acceptance criterion. These stay **F-records** (findings) and
+  gate the merge as they always have.
+- **Advisory findings are low-forcefulness recommendations** — "this works, but
+  switching to X would be cheaper to maintain; here's the evidence." File these
+  as **R-records** (`record.cjs append --type R`, status `open`) so they enter the
+  same ledger, accumulate across reviews, and thread the D-ID machinery when
+  accepted — instead of dying as prose in one review report. Full model:
+  `methodology/advisory.md`.
+- **Interruption tax.** An advisory finding you want surfaced with force must
+  carry externally checkable evidence (a benchmark, a citation, a repo fact). A
+  style preference ("I'd have used a Map") stays silent and never becomes an R.
+- **Contradiction escalator (floor).** An implementation that crosses an accepted
+  D-ID is already a **high-severity** finding under your forward-traceability
+  check — a crossed decision can never be silent, and carries the maximum evidence
+  bar. The human owns decisions.
+- **Single voice.** You file R-records; the orchestrator is the one voice that
+  surfaces them to the human and disposes of them (accept → graduate to D;
+  reject → logged with a re-open trigger). You do not pitch to the human directly.

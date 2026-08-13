@@ -24,6 +24,7 @@ export const SHIPPED_METHODOLOGY_PREFIX = '.claude/bmad/methodology/';
  */
 export const METHODOLOGY_SHIP_LIST = Object.freeze([
   'decision-classification.md',
+  'advisory.md',
   'decision-traceability.md',
   'brainstorming-techniques.md',
   'elicitation-methods.md',
