@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { getProjectPaths } from '../utils/paths.js';
+import { splitFrontmatter } from '../utils/project-brain.js';
 
 /**
  * Register the status command with the CLI program.
@@ -29,7 +30,8 @@ Examples:
 
 /**
  * Run the status command.
- * Reads project.yaml and shows phase, progress, active work.
+ * Reads the project-brain frontmatter (D-037 machine-state home) and shows
+ * phase + gate status, agent status, and artifact counts.
  */
 async function runStatus() {
   const projectRoot = process.cwd();
@@ -48,11 +50,19 @@ async function runStatus() {
   console.log(`  Stack: ${[config.stack?.language, config.stack?.framework].filter(Boolean).join(' + ') || 'not specified'}`);
   console.log(`  Autonomy: ${config.methodology?.autonomy || 'guided'}`);
 
-  // Read project.yaml if it exists
-  if (existsSync(paths.projectYaml)) {
-    const projectState = yaml.load(readFileSync(paths.projectYaml, 'utf8'));
-    console.log(`\n  Phase: ${projectState.phase || 'unknown'}`);
-    console.log(`  Status: ${projectState.status || 'unknown'}`);
+  // Read machine state (phase + gates) from the project-brain frontmatter — the
+  // D-037 home; there is no project.yaml.
+  if (existsSync(paths.brainPath)) {
+    const { frontmatter } = splitFrontmatter(readFileSync(paths.brainPath, 'utf8'));
+    const fm = frontmatter || {};
+    console.log(`\n  Phase: ${fm.phase || 'unknown'}`);
+    const gates = fm.gates && typeof fm.gates === 'object' ? Object.entries(fm.gates) : [];
+    if (gates.length > 0) {
+      console.log('  Gates:');
+      for (const [name, spec] of gates) {
+        console.log(`    ${name}: ${(spec && spec.status) || 'unknown'}`);
+      }
+    }
   }
 
   // Check agents

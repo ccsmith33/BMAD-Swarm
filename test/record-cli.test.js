@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, utimesSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -219,5 +219,85 @@ describe('record.cjs: append --type D to the decision log', () => {
     assert.match(log, /^## D-1 — a decision$/m);
     assert.match(log, /the decision text/);
     assert.ok(!existsSync(join(ctx, 'ledger.md')), 'D append must not create ledger.md');
+  });
+});
+
+describe('record.cjs: reconcile subcommand (SE-3 / T7)', () => {
+  let proj, ctx;
+  before(() => {
+    ({ proj, ctx } = mkproj());
+    // Build a ledger through the sanctioned writer (the only door to task-ledger.md).
+    run(['task-event', '--task', '1', '--event', 'created', '--owner', 'dev-a', '--session', 's1', '--detail', 'story-1'], { ctx, proj });
+    run(['task-event', '--task', '1', '--event', 'in_progress', '--owner', 'dev-a', '--session', 's1'], { ctx, proj });
+    run(['task-event', '--task', '2', '--event', 'created', '--owner', 'dev-b', '--session', 's1', '--detail', 'story-2'], { ctx, proj });
+    // Task 3: the ledger believes it is live, but TaskList will have dropped it.
+    run(['task-event', '--task', '3', '--event', 'created', '--owner', 'dev-c', '--session', 's1', '--detail', 'orphan'], { ctx, proj });
+    run(['task-event', '--task', '3', '--event', 'in_progress', '--owner', 'dev-c', '--session', 's1'], { ctx, proj });
+    // A brain with an awaiting-human gate (project-brain.md is exempt from the deny).
+    writeFileSync(join(ctx, 'project-brain.md'), [
+      '---',
+      'schema: project-brain/1',
+      'updated: 2026-08-13T10:00:00Z',
+      'checkpoint: 4',
+      'phase: implementation',
+      'gates:',
+      '  prd: {status: awaiting-human, d_id: D-9, at: 2026-08-13T09:00:00Z}',
+      '  architecture: {status: pending}',
+      'staleness: {ledger-events-since-checkpoint: 0}',
+      '---',
+      '',
+      '## What this is (and why)',
+      'A test.',
+      '',
+    ].join('\n'));
+  });
+  after(() => { rmSync(proj, { recursive: true, force: true }); });
+
+  const TASKLIST = JSON.stringify({ tasks: [
+    { id: '1', status: 'in_progress', owner: 'dev-a' },
+    { id: '2', status: 'pending', owner: 'dev-b' },
+    // task 3 dropped => orphan
+  ] });
+
+  it('--json reports the unwoken pending task, the orphan, and the awaiting-human gate', () => {
+    const r = run(['reconcile', '--tasklist', '-', '--json'], { stdin: TASKLIST, ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.rewake.map((x) => x.task), ['2']);
+    assert.match(out.rewake[0].reason, /not yet woken/);
+    assert.deepEqual(out.orphans.map((x) => x.task), ['3']);
+    assert.equal(out.orphans[0].owner, 'dev-c');
+    assert.deepEqual(out.awaitingHuman.map((x) => x.gate), ['prd']);
+    assert.equal(out.awaitingHuman[0].dId, 'D-9');
+    assert.equal(out.staleness.brainCheckpoint, 4);
+  });
+
+  it('human-readable mode prints an action list with RE-WAKE / ORPHANS / AWAITING HUMAN sections', () => {
+    const r = run(['reconcile', '--tasklist', '-'], { stdin: TASKLIST, ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /RE-WAKE/);
+    assert.match(r.stdout, /ORPHANS/);
+    assert.match(r.stdout, /AWAITING HUMAN/);
+    assert.match(r.stdout, /task 2 owner=dev-b/);
+    assert.match(r.stdout, /task 3 owner=dev-c/);
+  });
+
+  it('fails loudly on malformed TaskList JSON', () => {
+    const r = run(['reconcile', '--tasklist', '-'], { stdin: 'not json', ctx, proj });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /not valid JSON/);
+  });
+
+  it('reports nothing to reconcile when TaskList matches the ledger and no gates await', () => {
+    const clean = mkproj();
+    run(['task-event', '--task', '1', '--event', 'created', '--owner', 'dev-a'], { ctx: clean.ctx, proj: clean.proj });
+    run(['task-event', '--task', '1', '--event', 'in_progress', '--owner', 'dev-a'], { ctx: clean.ctx, proj: clean.proj });
+    const r = run(['reconcile', '--tasklist', '-'], {
+      stdin: JSON.stringify({ tasks: [{ id: '1', status: 'in_progress', owner: 'dev-a' }] }),
+      ctx: clean.ctx, proj: clean.proj,
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /nothing to reconcile/);
+    rmSync(clean.proj, { recursive: true, force: true });
   });
 });

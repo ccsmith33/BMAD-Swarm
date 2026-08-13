@@ -43,6 +43,8 @@ export function getProjectPaths(projectRoot) {
     overridesAgentsDir: join(root, 'overrides', 'agents'),
     overridesMethodologyDir: join(root, 'overrides', 'methodology'),
     artifactsDir: join(root, 'artifacts'),
-    projectYaml: join(root, 'project.yaml'),
+    // Machine-state home (D-037): phase + gates live in the brain frontmatter,
+    // NOT in a project.yaml chore-file (which is retired/deleted).
+    brainPath: join(root, 'artifacts', 'context', 'project-brain.md'),
   };
 }

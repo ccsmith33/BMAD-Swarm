@@ -44,7 +44,9 @@ describe('CLI Integration', () => {
     assert.ok(existsSync(join(dir, '.claude', 'agents', 'orchestrator.md')));
     assert.ok(existsSync(join(dir, '.claude', 'settings.json')));
     assert.ok(existsSync(join(dir, 'CLAUDE.md')));
-    assert.ok(existsSync(join(dir, 'project.yaml')));
+    // project.yaml is RETIRED (D-037): machine state lives in the project-brain
+    // frontmatter, not a prompted chore-file. init must NOT create it.
+    assert.ok(!existsSync(join(dir, 'project.yaml')), 'init must not create the retired project.yaml');
     assert.ok(existsSync(join(dir, 'artifacts')));
   });
 
@@ -77,6 +79,19 @@ describe('CLI Integration', () => {
     run('init -y', dir);
     const output = run('update', dir);
     assert.ok(output.includes('Regenerated'));
+  });
+
+  it('update migrates a legacy project.yaml into the brain frontmatter and deletes it (D-037 / step 4.2)', () => {
+    const dir = join(tmpBase, 'migrate-project-yaml');
+    mkdirSync(dir, { recursive: true });
+    run('init -y', dir);
+    // Simulate a pre-D-037 project that still carries a project.yaml.
+    writeFileSync(join(dir, 'project.yaml'), 'project:\n  name: legacy\nphase: design\nstatus: initialized\n');
+    const output = run('update', dir);
+    assert.match(output, /Migrated project\.yaml/);
+    assert.ok(!existsSync(join(dir, 'project.yaml')), 'project.yaml must be deleted by the migration');
+    const brain = readFileSync(join(dir, 'artifacts', 'context', 'project-brain.md'), 'utf8');
+    assert.match(brain, /phase:\s*design/, 'migrated phase must land in the brain frontmatter');
   });
 
   it('update --dry-run does not write files', () => {

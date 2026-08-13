@@ -12,6 +12,7 @@ import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
 import { generateRules } from '../generators/rules-generator.js';
 import { generateCommands } from '../generators/commands-generator.js';
+import { migrateProjectYamlToBrain } from '../utils/phase-machine.js';
 
 /**
  * Register the update command with the CLI program.
@@ -214,6 +215,27 @@ async function runUpdate(options) {
       if (content && /^<!-- bmad-generated:[a-f0-9]+ -->/.test(content)) {
         unlinkSync(paths.systemPrompt);
         console.log(`  \u2713 Removed stale .claude/system-prompt.txt`);
+      }
+    }
+  }
+
+  // 4.2. Machine-state migration (D-037 / WS-11): fold a legacy project.yaml's
+  // `phase` into the brain frontmatter, then delete project.yaml. Idempotent.
+  //
+  // This migrates a USER-OWNED file, NOT a generated hook/settings artifact, so
+  // it MUST run even when the live-swap guard skips steps 3 (hooks) + 5
+  // (settings.json) under an active session — it is deliberately OUTSIDE that
+  // guarded region. Placed between 4.1 and 4.5, disjoint from the guard.
+  if (options.dryRun) {
+    if (existsSync(join(projectRoot, 'project.yaml'))) {
+      console.log('  Would migrate project.yaml phase into the project-brain frontmatter and delete project.yaml (D-037)');
+    }
+  } else {
+    const migration = migrateProjectYamlToBrain(projectRoot, paths.brainPath);
+    if (migration.migrated) {
+      console.log(`  ✓ Migrated project.yaml → project-brain.md frontmatter (phase: ${migration.phase}) and removed project.yaml (D-037 / WS-11)`);
+      if (migration.createdBrain) {
+        console.log('    Created a minimal artifacts/context/project-brain.md to hold the machine state — the orchestrator will flesh it out on next session.');
       }
     }
   }

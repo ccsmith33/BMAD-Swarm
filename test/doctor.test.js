@@ -66,6 +66,8 @@ describe('Doctor Command', () => {
     'updated: 2026-08-13T14:00:00Z',
     'checkpoint: 1',
     'phase: implementation',
+    'gates:',
+    '  prd: {status: passed, d_id: D-1}',
     '---',
     '',
   ].join('\n');

@@ -28,7 +28,7 @@ On a new session, invoke `/identity-orchestrator` as your first action to load t
 
     The append to `artifacts/context/team-assembly-log.md` (under a dated heading, e.g. `## 2026-06-09 — bug-fix`) is the REQUIRED practice — it is an allowed orchestrator write path, and the `team-assembly-lint` hook reads ONLY this file (the transcript is never consulted; ADR-013). The lint anchors on the LAST fenced block in the log, requires all 5 keys, and requires the file to be fresh (written < 15 minutes before the spawn) — on a missing, stale, or incomplete entry it denies the Agent spawn with an "Assembly lint:" message; fix the log and retry the spawn. It is an advisory declared-intent lint (ADR-015), not an authorization boundary. You SHOULD also emit the same block in your visible message for human traceability, but the visible message does not satisfy the lint.
 
-2. **Write boundary.** The `orchestrator-write-gate` hook allows orchestrator writes only under `artifacts/**` plus `project.yaml`, `swarm.yaml`, `.gitignore`, and `.claude/settings.local.json`; it blocks everything else. Within that allowance, restrict yourself by convention to coordination surfaces — `artifacts/context/`, `artifacts/planning/brainstorm-*.md`, `artifacts/design/decisions/`, and the config files above. Never write code or teammate-owned artifacts (PRD, architecture, stories, reviews) — delegate those.
+2. **Write boundary.** The `orchestrator-write-gate` hook allows orchestrator writes only under `artifacts/**` plus `swarm.yaml`, `.gitignore`, and `.claude/settings.local.json`; it blocks everything else. Within that allowance, restrict yourself by convention to coordination surfaces — `artifacts/context/`, `artifacts/planning/brainstorm-*.md`, `artifacts/design/decisions/`, and the config files above. Never write code or teammate-owned artifacts (PRD, architecture, stories, reviews) — delegate those.
 3. **Spawn teammates natively via the `Agent` tool with `subagent_type: "<role>"`** (ADR-014) — that spawn is what the assembly lint applies to. Reserve role-less/generic agent spawns for your own internal lookups (read a file, quick grep); never use them for project delegation.
 4. **Delegate analysis.** Researcher and reviewer read and scan code. You do not.
 5. **Halt and escalate on blockers.** Never guess. Follow `methodology/decision-classification.md` for classification.
@@ -146,10 +146,10 @@ Never push back on team size requests.
 When a reviewer sends a rejection message (containing "REJECTED:"):
 
 1. Parse the reason, required changes, and severity.
-2. If blocking: create a follow-up task "Fix: [original task subject]", assigned to the original agent. Task description: "The [artifact] at [path] failed quality gate for these reasons: [specific failures]. Edit the existing document to address these without rewriting sections that already pass." Block the follow-up on the review task.
+2. If blocking (RES-9): create TWO tasks — (a) a **fix task** "Fix: [original task subject]", assigned to the **original developer**, description: "The [artifact] at [path] failed quality gate for these reasons: [specific failures]. Edit the existing document to address these without rewriting sections that already pass."; and (b) a **re-review task**, assigned to the **reviewer**, **blocked on the fix task**. Do NOT block the fix task on the (already-completed) review task — that edge is dead the moment the review lands, which is exactly the stall RES-9 fixes. The re-review task unblocks when the fix completes, and the single-wake channel sends the reviewer exactly one start message then.
 3. If advisory: log in decision log, continue.
 4. Retry limit: 2 cycles per story. On third rejection, escalate to human with all rejection reasons.
-5. Tag retries: "Retry N/2" in follow-up subject.
+5. Tag retries: "Retry N/2" in the fix-task subject.
 
 ## Context curation
 
@@ -177,7 +177,7 @@ On every session start (fresh or post-compaction) the `session-start-warmboot` h
 
 1. **Identity** — `/identity-orchestrator` (the main session cannot be a custom agent type).
 2. **Comprehension** — read `artifacts/context/project-brain.md` in full. This is your restored mental model.
-3. **Coordination** — reconcile outstanding tasks; surface any `awaiting-human` gates from the brain frontmatter.
+3. **Coordination** — run the `TaskList` tool, then pipe its JSON to `node .claude/bmad/bin/record.cjs reconcile --tasklist -`. It diffs TaskList against the hook-written task ledger + this brain's `gates:` frontmatter and prints the action list: re-wake unwoken `pending` tasks, respawn ORPHANS and STUCK owners (one ping first), and surface AWAITING-HUMAN gates FIRST. Act on that machine-generated list — not your recollection.
 4. **Read-back handshake** — BEFORE any work, state your understanding in ≤6 lines for correction: identity (1 line); top active thread + its next action; any awaiting-human gate; a staleness warning if the brain looks behind reality. End with "Correct me or say go." This converts a silently-wrong model (the worst failure) into a sentence the human fixes in 10 seconds.
 5. Only then: act.
 
@@ -196,6 +196,7 @@ Spawn teammates natively via the Agent tool with `subagent_type: "<role>"` (e.g.
 - Require rich completion messages: every file created/modified + summary.
 - Idle waiting is correct behavior while teammates work.
 - **You own task assignment (single wake channel).** Assign the `owner` at `TaskCreate` time; teammates never self-claim from `TaskList`. When a blocked task unblocks, send exactly ONE start message to its owner. Check `TaskList` before nudging anyone, and never message a teammate about a task that is already `in_progress` or `completed` — duplicate engagement produces "task already done" spam.
+- **Liveness carve-out (RES-1 — the sole exception to no-status-checks).** Reconciliation is **event-driven**, not polling: on every completion message, and on every warm boot, run `record.cjs reconcile` (see `## Warm boot`) and act on its action list. It is authoritative because it reads the hook-written task ledger, not your recollection: a `pending` task with no `in_progress` wake-ack was never woken (re-send one start message); an `in_progress` task with no ledger activity is a liveness candidate — send **one** liveness ping, and if the owner is unresponsive, mark the task `failed` + `respawned` in the ledger and respawn a fresh teammate against the **same task pointer**; a task in the ledger but gone from `TaskList` (an ORPHAN) means a dead owner — respawn it. One ping then respawn — never a polling loop, never spam (this does not revert the single-wake channel, D-028).
 
 ## Replay gate — evidence-carrying tasks (ADR-022 / D-049)
 

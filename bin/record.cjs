@@ -738,6 +738,308 @@ function cmdValidate(flags) {
 }
 
 // ---------------------------------------------------------------------------
+// Reconciliation (ADR-018 §2 / RES-2/RES-3/RES-4/RES-5; phase2 design §4.3).
+//
+// PURE, no I/O: reconcile() diffs the TaskList tool's output against the task
+// ledger + brain frontmatter and returns the machine-generated action list the
+// warm boot acts on. It lives HERE (not utils/reconcile.js) for the same reason
+// the envelope schema does: this file ships verbatim to .claude/bmad/bin/, where
+// the package's utils/ do not exist. utils/reconcile.js re-exports these so the
+// package side imports one source of truth (mirror of the record-envelope split).
+//
+// CAVEAT (verified live, spike-posttooluse-2026-08-13 §1/§4): consume the
+// TaskList tool's output, NOT TaskGet's. TaskList carries `owner` on every task;
+// TaskGet DROPS it. The not-yet-woken / dead-owner classification depends on
+// `owner`, so reconcile() takes taskListJson — never per-task TaskGet lookups.
+// ---------------------------------------------------------------------------
+
+// Ledger events that mean a task is DONE (so its absence from TaskList is normal,
+// not an orphan).
+const RECONCILE_TERMINAL_EVENTS = ['completed', 'failed', 'rejected', 'retired'];
+// Default minutes of ledger silence before an in_progress task is a liveness
+// candidate (RES-1). Overridable via opts.stuckThresholdMinutes.
+const RECONCILE_STUCK_DEFAULT_MIN = 30;
+
+// Normalize the TaskList tool output. Accepts the raw tool_response
+// (`{tasks:[…]}`), a bare tasks array, or a wrapper `{tool_response:{tasks:[…]}}`.
+// Task shape per spike: {id, subject, status, owner, blockedBy}.
+function _reconcileNormalizeTasks(taskListJson) {
+  let arr = [];
+  if (Array.isArray(taskListJson)) arr = taskListJson;
+  else if (taskListJson && Array.isArray(taskListJson.tasks)) arr = taskListJson.tasks;
+  else if (taskListJson && taskListJson.tool_response && Array.isArray(taskListJson.tool_response.tasks)) arr = taskListJson.tool_response.tasks;
+  return arr.map((t) => ({
+    id: String(t.id != null ? t.id : (t.task_id != null ? t.task_id : '')),
+    status: String(t.status || '').toLowerCase(),
+    owner: t.owner != null ? String(t.owner) : null,
+    subject: t.subject || '',
+    blockedBy: t.blockedBy != null ? t.blockedBy : (t.blocked_by != null ? t.blocked_by : null),
+  })).filter((t) => t.id);
+}
+
+// Parse one task-ledger line (format written by record.cjs task-event):
+//   <ISO> [session=X] task=Y event=Z [owner=W] [subject="…"]
+// subject= is always LAST and JSON-quoted (may itself contain "task="/"owner="),
+// so key scanning is confined to the head before " subject=".
+function parseTaskLedgerLine(line) {
+  const s = String(line == null ? '' : line).trim();
+  if (!s) return null;
+  const head = s.split(' subject=')[0];
+  const get = (k) => { const m = new RegExp('(?:^|\\s)' + k + '=(\\S+)').exec(head); return m ? m[1] : null; };
+  const task = get('task');
+  const event = get('event');
+  if (!task || !event) return null;
+  const tsM = /^(\S+)/.exec(head);
+  const ts = tsM ? tsM[1] : null;
+  const tsMs = ts ? Date.parse(ts) : NaN;
+  let subject = null;
+  const subjM = / subject=(.*)$/.exec(s);
+  if (subjM) { try { subject = JSON.parse(subjM[1]); } catch { subject = subjM[1]; } }
+  return { ts, tsMs, session: get('session'), task, event, owner: get('owner'), subject };
+}
+
+// Fold the ledger lines into per-task state (chronological; later rows win).
+function _reconcileLedgerByTask(ledgerLines) {
+  const byTask = new Map();
+  for (const line of ledgerLines || []) {
+    const e = parseTaskLedgerLine(line);
+    if (!e) continue;
+    if (!byTask.has(e.task)) {
+      byTask.set(e.task, { owner: null, subject: null, lastEvent: null, lastTsMs: NaN, statuses: new Set() });
+    }
+    const rec = byTask.get(e.task);
+    if (e.owner) rec.owner = e.owner;      // last owner wins
+    if (e.subject) rec.subject = e.subject;
+    rec.statuses.add(e.event);
+    rec.lastEvent = e.event;
+    if (Number.isFinite(e.tsMs)) rec.lastTsMs = e.tsMs;
+  }
+  return byTask;
+}
+
+function _reconcileIsBlocked(t) {
+  if (t.status === 'blocked') return true;
+  const b = t.blockedBy;
+  if (Array.isArray(b)) return b.length > 0;
+  return b != null && String(b).length > 0;
+}
+
+// Numeric-aware ascending sort by `.task` for deterministic output.
+function _reconcileSortByTask(a, b) {
+  const na = parseInt(a.task, 10);
+  const nb = parseInt(b.task, 10);
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+  return String(a.task).localeCompare(String(b.task));
+}
+
+/**
+ * Diff TaskList ⋈ task-ledger ⋈ brain frontmatter into a coordination action list.
+ *
+ * @param {object|Array} taskListJson  TaskList tool output (has `owner`).
+ * @param {string[]} ledgerLines       task-ledger.md lines.
+ * @param {object} brainFrontmatter    project-brain.md frontmatter (phase/gates/checkpoint).
+ * @param {object} [opts]              { now?: Date|number, stuckThresholdMinutes?: number }
+ * @returns {{rewake: object[], stuck: object[], awaitingHuman: object[], orphans: object[], staleness: object}}
+ */
+function reconcile(taskListJson, ledgerLines, brainFrontmatter, opts) {
+  opts = opts || {};
+  const now = opts.now != null ? (opts.now instanceof Date ? opts.now.getTime() : opts.now) : Date.now();
+  const stuckMin = opts.stuckThresholdMinutes != null ? opts.stuckThresholdMinutes : RECONCILE_STUCK_DEFAULT_MIN;
+  const tasks = _reconcileNormalizeTasks(taskListJson);
+  const byTask = _reconcileLedgerByTask(ledgerLines);
+  const taskIds = new Set(tasks.map((t) => t.id));
+
+  const rewake = [];
+  const stuck = [];
+  for (const t of tasks) {
+    const rec = byTask.get(t.id) || null;
+    if (t.status === 'pending' && !_reconcileIsBlocked(t)) {
+      // Authoritative wake-ack is a durable `in_progress` ledger row (RES-3).
+      // pending + no in_progress = not-yet-woken (or a lost wake if a stray
+      // `woken` row exists but was never acked).
+      const hasInProgress = rec && rec.statuses.has('in_progress');
+      if (!hasInProgress) {
+        const hasWoken = rec && rec.statuses.has('woken');
+        rewake.push({
+          task: t.id,
+          owner: t.owner || (rec && rec.owner) || null,
+          reason: hasWoken
+            ? 'woken but never acked in_progress in the ledger (lost wake, RES-3) — re-send exactly one start message'
+            : 'pending with no in_progress wake-ack in the ledger (not yet woken, RES-3) — send exactly one start message',
+        });
+      }
+    } else if (t.status === 'in_progress') {
+      const lastTsMs = rec && Number.isFinite(rec.lastTsMs) ? rec.lastTsMs : NaN;
+      const ageMinutes = Number.isFinite(lastTsMs) ? Math.floor((now - lastTsMs) / 60000) : null;
+      if (ageMinutes === null || ageMinutes >= stuckMin) {
+        stuck.push({ task: t.id, owner: t.owner || (rec && rec.owner) || null, lastEvent: rec ? rec.lastEvent : null, ageMinutes });
+      }
+    }
+  }
+
+  // Orphans: the ledger believes the task is live (non-terminal last event) but
+  // TaskList has lost it — a dead-owner / lost-task signal (respawn candidate).
+  const orphans = [];
+  for (const [id, rec] of byTask) {
+    if (taskIds.has(id)) continue;
+    if (RECONCILE_TERMINAL_EVENTS.includes(rec.lastEvent)) continue;
+    const ageMinutes = Number.isFinite(rec.lastTsMs) ? Math.floor((now - rec.lastTsMs) / 60000) : null;
+    orphans.push({
+      task: id,
+      owner: rec.owner,
+      lastEvent: rec.lastEvent,
+      ageMinutes,
+      reason: 'in the task ledger (last event: ' + rec.lastEvent + ') but absent from TaskList — dead owner or lost task; respawn against the same task pointer',
+    });
+  }
+
+  // Awaiting-human gates from brain frontmatter (surface these first).
+  const awaitingHuman = [];
+  const gates = brainFrontmatter && brainFrontmatter.gates && typeof brainFrontmatter.gates === 'object' && !Array.isArray(brainFrontmatter.gates)
+    ? brainFrontmatter.gates : {};
+  for (const gate of Object.keys(gates)) {
+    const g = gates[gate] || {};
+    const st = String(g.status || '').toLowerCase();
+    if (st === 'awaiting-human' || st === 'awaiting_human') {
+      awaitingHuman.push({ gate, since: g.at || g.since || g.timestamp || null, dId: g.d_id || g['d-id'] || g.dId || null });
+    }
+  }
+
+  let lastLedgerMs = NaN;
+  for (const rec of byTask.values()) {
+    if (Number.isFinite(rec.lastTsMs) && (!Number.isFinite(lastLedgerMs) || rec.lastTsMs > lastLedgerMs)) lastLedgerMs = rec.lastTsMs;
+  }
+  const staleness = {
+    ledgerAgeMinutes: Number.isFinite(lastLedgerMs) ? Math.floor((now - lastLedgerMs) / 60000) : null,
+    brainCheckpoint: brainFrontmatter && brainFrontmatter.checkpoint != null ? brainFrontmatter.checkpoint : null,
+  };
+
+  rewake.sort(_reconcileSortByTask);
+  stuck.sort(_reconcileSortByTask);
+  orphans.sort(_reconcileSortByTask);
+
+  return { rewake, stuck, awaitingHuman, orphans, staleness };
+}
+
+// --- lightweight frontmatter reader (record.cjs carries no YAML parser) -------
+// Reads the brain frontmatter's scalars + one level of nested maps whose entries
+// are flow-maps (`gate: {status: awaiting-human, d_id: D-9}`) or scalars — the
+// shape in artifact-schemas/project-brain.md. Deep block-nested gate entries are
+// out of scope for this reader (the pure reconcile() takes an already-parsed
+// object; only the CLI convenience path uses this).
+function _liteScalar(v) {
+  const s = String(v).trim();
+  if (s === '') return null;
+  if ((s[0] === '"' && s.endsWith('"')) || (s[0] === "'" && s.endsWith("'"))) return s.slice(1, -1);
+  if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+  if (s === 'true') return true;
+  if (s === 'false') return false;
+  if (s === 'null' || s === '~') return null;
+  return s;
+}
+
+function _liteFlowMap(v) {
+  const out = {};
+  const inner = String(v).trim().replace(/^\{/, '').replace(/\}$/, '');
+  if (!inner.trim()) return out;
+  for (const part of inner.split(',')) {
+    const idx = part.indexOf(':');
+    if (idx === -1) continue;
+    out[part.slice(0, idx).trim()] = _liteScalar(part.slice(idx + 1));
+  }
+  return out;
+}
+
+function parseFrontmatterLite(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text || ''));
+  if (!m) return {};
+  const fm = {};
+  let curKey = null;
+  for (const raw of m[1].split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    if (/^\S/.test(line)) {
+      const tm = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+      if (!tm) { curKey = null; continue; }
+      const k = tm[1];
+      const v = tm[2].replace(/\s+#.*$/, '');
+      if (v.trim() === '') { fm[k] = {}; curKey = k; }
+      else if (v.trim()[0] === '{') { fm[k] = _liteFlowMap(v); curKey = null; }
+      else { fm[k] = _liteScalar(v); curKey = null; }
+    } else if (curKey) {
+      const cm = /^\s+([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+      if (!cm) continue;
+      const ck = cm[1];
+      const cv = cm[2].replace(/\s+#.*$/, '');
+      if (cv.trim() === '') fm[curKey][ck] = {};
+      else if (cv.trim()[0] === '{') fm[curKey][ck] = _liteFlowMap(cv);
+      else fm[curKey][ck] = _liteScalar(cv);
+    }
+  }
+  return fm;
+}
+
+// Render the action list human-readably (the warm boot prints this and acts on it).
+function formatReconcile(r) {
+  const out = [];
+  out.push('Reconciliation (TaskList ⋈ task-ledger) — action list:');
+  out.push('');
+  if (!r.rewake.length && !r.stuck.length && !r.orphans.length && !r.awaitingHuman.length) {
+    out.push('  ✓ nothing to reconcile: no unwoken, stuck, or orphaned tasks, and no awaiting-human gates.');
+  } else {
+    if (r.rewake.length) {
+      out.push('  RE-WAKE (send exactly one start message each):');
+      for (const x of r.rewake) out.push('    - task ' + x.task + ' owner=' + (x.owner || '?') + ' — ' + x.reason);
+      out.push('');
+    }
+    if (r.orphans.length) {
+      out.push('  ORPHANS (in ledger, gone from TaskList — respawn against the same task pointer):');
+      for (const x of r.orphans) out.push('    - task ' + x.task + ' owner=' + (x.owner || '?') + ' lastEvent=' + x.lastEvent + (x.ageMinutes != null ? ' age=' + x.ageMinutes + 'm' : ''));
+      out.push('');
+    }
+    if (r.stuck.length) {
+      out.push('  STUCK (in_progress, no recent ledger activity — one liveness ping, then respawn):');
+      for (const x of r.stuck) out.push('    - task ' + x.task + ' owner=' + (x.owner || '?') + ' lastEvent=' + (x.lastEvent || 'none') + (x.ageMinutes != null ? ' age=' + x.ageMinutes + 'm' : ' (no ledger activity)'));
+      out.push('');
+    }
+    if (r.awaitingHuman.length) {
+      out.push('  AWAITING HUMAN (surface first):');
+      for (const x of r.awaitingHuman) out.push('    - gate ' + x.gate + (x.dId ? ' (' + x.dId + ')' : '') + (x.since ? ' since ' + x.since : ''));
+      out.push('');
+    }
+  }
+  out.push('  staleness: ledger last event ' + (r.staleness.ledgerAgeMinutes != null ? r.staleness.ledgerAgeMinutes + 'm ago' : 'n/a')
+    + '; brain checkpoint ' + (r.staleness.brainCheckpoint != null ? r.staleness.brainCheckpoint : 'n/a') + '.');
+  return out.join('\n') + '\n';
+}
+
+function cmdReconcile(flags) {
+  // TaskList JSON: `--tasklist -` (stdin) | `--tasklist <file>` | piped stdin.
+  let rawTasks = '';
+  if (flags.tasklist && flags.tasklist !== '-') {
+    rawTasks = fs.readFileSync(flags.tasklist, 'utf8');
+  } else if (flags.tasklist === '-' || !process.stdin.isTTY) {
+    rawTasks = readStdinSync();
+  }
+  let taskListJson = [];
+  if (rawTasks && rawTasks.trim()) {
+    try { taskListJson = JSON.parse(rawTasks); }
+    catch (e) { die('--tasklist input is not valid JSON: ' + e.message); }
+  }
+
+  const contextDir = contextDirFrom(flags);
+  const ledgerFile = taskLedgerPath(contextDir);
+  const ledgerLines = fs.existsSync(ledgerFile) ? fs.readFileSync(ledgerFile, 'utf8').split('\n') : [];
+
+  const brainFile = path.join(contextDir, 'project-brain.md');
+  const brainFm = fs.existsSync(brainFile) ? parseFrontmatterLite(fs.readFileSync(brainFile, 'utf8')) : {};
+
+  const result = reconcile(taskListJson, ledgerLines, brainFm, {});
+  if (flags.json) { process.stdout.write(JSON.stringify(result, null, 2) + '\n'); return; }
+  process.stdout.write(formatReconcile(result));
+}
+
+// ---------------------------------------------------------------------------
 // argv parsing + dispatch
 // ---------------------------------------------------------------------------
 
@@ -757,7 +1059,7 @@ function die(msg) {
 }
 
 // Parse `--flag value` / `--flag=value` / `--bool` into {flags, positionals}.
-const BOOL_FLAGS = new Set(['stdin']);
+const BOOL_FLAGS = new Set(['stdin', 'json']);
 const FLAG_ALIASES = {
   'reopen-trigger': 'reopenTrigger',
   'enforcement-tier': 'enforcementTier',
@@ -796,6 +1098,7 @@ function main(argv) {
     case 'set-status': return cmdSetStatus(positionals, flags);
     case 'next-id': return cmdNextId(positionals, flags);
     case 'task-event': return cmdTaskEvent(flags);
+    case 'reconcile': return cmdReconcile(flags);
     case 'validate': return cmdValidate(flags);
     case undefined:
     case '--help':
@@ -818,7 +1121,13 @@ Usage:
                     [--enforcement-tier <t>] [--human-approved <D-ID>] [--context-dir <dir>]
   record.cjs next-id <D|R|L|C|F> [--context-dir <dir>]
   record.cjs task-event --task <id> --event <e> [--owner <n>] [--session <s>] [--detail "…"]
+  record.cjs reconcile --tasklist <-|file> [--json] [--context-dir <dir>]
   record.cjs validate [--file <ledger.md>] [--context-dir <dir>]
+
+reconcile reads TaskList JSON (stdin with --tasklist -, or a file), diffs it
+against artifacts/context/task-ledger.md + project-brain.md frontmatter, and
+prints the re-wake / stuck / orphan / awaiting-human action list (--json for
+machine consumption).
 
 Input is JSON (the shipped script carries no YAML dependency); the stored ledger
 format is fenced YAML. append prints the newly allocated ID.
@@ -849,6 +1158,10 @@ module.exports = {
   currentStatus,
   editRecordStatus,
   LEDGER_HEADER,
+  reconcile,
+  parseTaskLedgerLine,
+  parseFrontmatterLite,
+  formatReconcile,
   main,
 };
 

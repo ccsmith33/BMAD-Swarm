@@ -24,6 +24,7 @@ function makeBrain(overrides = {}) {
     updated: '2026-08-13T14:00:00Z',
     checkpoint: 47,
     phase: 'implementation',
+    gates: '{prd: {status: passed, d_id: D-1}}', // required machine-state key (D-037)
     ...(overrides.frontmatter || {}),
   };
   const fmBlock = overrides.rawFrontmatter !== undefined
