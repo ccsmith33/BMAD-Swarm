@@ -154,10 +154,9 @@ async function runInit(options) {
   }
   console.log('  \u2713 Created artifacts/ directory');
 
-  // 9. Initialize project.yaml
-  const projectYaml = buildProjectYaml(answers);
-  writeFileSafe(paths.projectYaml, yaml.dump(projectYaml, { lineWidth: 120, noRefs: true }));
-  console.log('  \u2713 Initialized project.yaml');
+  // Machine state (phase + gates) is homed in the project-brain frontmatter when
+  // the orchestrator first writes the brain (D-037). There is NO project.yaml \u2014
+  // it was a prompted chore-file that lied in 8/9 field projects.
 
   // 10. Create overrides directory
   ensureDir(paths.overridesAgentsDir);
@@ -333,22 +332,5 @@ function buildSwarmYaml(answers) {
   if (answers.testing) config.stack.testing = answers.testing;
 
   return config;
-}
-
-/**
- * Build the initial project.yaml state file.
- * @param {object} answers - User answers
- * @returns {object} project.yaml content
- */
-function buildProjectYaml(answers) {
-  return {
-    project: {
-      name: answers.name,
-      type: answers.type,
-    },
-    phase: 'not-started',
-    status: 'initialized',
-    created: new Date().toISOString().split('T')[0],
-  };
 }
 

@@ -137,13 +137,9 @@ async function runDoctor() {
   // — user-modified files are their owner's responsibility (§3.4).
   reportPathSkew(paths);
 
-  // 7. project.yaml
-  if (existsSync(paths.projectYaml)) {
-    check(true, 'project.yaml exists');
-  } else {
-    check(false, 'project.yaml not found', 'Run `bmad-swarm init` to create');
-    hasIssues = true;
-  }
+  // 7. Machine state (phase + gates) is homed in the project-brain frontmatter
+  // (D-037) — there is no project.yaml. Its health is covered by the brain check
+  // (section 8.5), which validates the required `phase`/`gates` frontmatter keys.
 
   // 8. Artifact directories
   const artifactDirs = ['exploration', 'planning', 'design', 'implementation', 'reviews', 'context'];
