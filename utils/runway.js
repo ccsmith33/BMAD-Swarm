@@ -31,12 +31,21 @@ export const DEFAULT_DAWN_RESERVE_FRACTION = 0.05;
 // No-progress tripwire default: N iterations with no new state → advisory park.
 export const DEFAULT_TRIPWIRE_ITERATIONS = 3;
 
+// H5-2(d): the floor persists until the human-wake marker OR ends+grace,
+// whichever is first. Default 2h — matches the night-charter schema's grace_ms.
+export const DEFAULT_GRACE_MS = 7200000;
+
 // Task-ledger events that ADVANCE state. A task whose last N events contain one
 // of these is making progress and is not tripwired; everything else (rejected,
 // retry, failed, blocked, stuck, reopened, deny, park) is a no-progress signal.
 const PROGRESS_EVENTS = new Set([
   'in_progress', 'completed', 'evidence', 'review-pass', 'created', 'merged', 'artifact', 'passed',
 ]);
+
+// Synthetic "tasks" the night writes that are NOT work items — the floor's deny
+// log (task=night-floor event=denied) is a rap sheet, not a spinning item, and
+// must never be read as a no-progress work loop by the tripwire.
+const META_TASKS = new Set(['night-floor']);
 
 // Parse a charter clock value to epoch ms. The authoritative night-charter schema
 // (owned by Stream S) is ISO-8601 with a numeric offset; we tolerate a js-yaml
@@ -52,14 +61,28 @@ function parseClock(v) {
   return ms;
 }
 
+// Coerce a value to a finite epoch-ms number, accepting a number or a numeric
+// string. Non-numeric → NaN (the caller falls back to the human `ends` string).
+function toEpochMs(v) {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (v != null && /^\d+$/.test(String(v).trim())) return Number(String(v).trim());
+  return NaN;
+}
+
 /**
- * Parse a night-charter file's content. Accepts either YAML frontmatter
- * (`---` delimited) or a wrapped `night_charter:` block (the overnight-doc form).
- * Never throws — a reader must survive a store another stream is writing.
+ * Parse a night-charter file's content (the night-charter/1 schema — the S→GM
+ * interface). Accepts YAML frontmatter (`---` delimited) or a bare `night_charter:`
+ * block. Never throws — a reader must survive a store another stream is writing.
+ *
+ * CLOCK CONTRACT (anti TZ/clock-manipulation, per the schema's "Clock" section):
+ * `endsMs` prefers `ends_epoch_ms` — the absolute instant resolved at open time
+ * under the machine clock — and re-parses the ambiguous human `ends` string ONLY
+ * as a fallback when `ends_epoch_ms` is absent or non-numeric.
  *
  * @param {string} text - charter file content.
- * @returns {{ends: Date|null, endsMs: number, startMs: number, queue: string[],
- *            initiative: string|null, extraDeny: string[], escalation: string, raw: object}}
+ * @returns {{ends: Date|null, endsMs: number, endsEpochMs: number, startMs: number,
+ *            graceMs: number, queue: string[], initiative: string|null,
+ *            extraDeny: string[], escalation: string, status: string|null, raw: object}}
  */
 export function parseCharter(text) {
   const raw = String(text == null ? '' : text);
@@ -77,19 +100,30 @@ export function parseCharter(text) {
   }
   if (!data || typeof data !== 'object') data = {};
 
-  const endsMs = parseClock(data.ends != null ? data.ends : null);
-  const startMs = parseClock(data.opened != null ? data.opened : (data.starts != null ? data.starts : null));
+  // The absolute epoch fixed at open time wins; the human string is the fallback.
+  const endsEpochMs = toEpochMs(data.ends_epoch_ms != null ? data.ends_epoch_ms : data.endsEpochMs);
+  const endsStringMs = parseClock(data.ends != null ? data.ends : null);
+  const endsMs = Number.isFinite(endsEpochMs) ? endsEpochMs : endsStringMs;
+
+  const startMs = parseClock(
+    data.opened_at != null ? data.opened_at
+      : (data.opened != null ? data.opened : (data.starts != null ? data.starts : null)),
+  );
+  const graceMs = (typeof data.grace_ms === 'number' && Number.isFinite(data.grace_ms)) ? data.grace_ms : DEFAULT_GRACE_MS;
   const extraDeny = Array.isArray(data.extra_deny) ? data.extra_deny
     : (Array.isArray(data.extraDeny) ? data.extraDeny : []);
 
   return {
     ends: Number.isFinite(endsMs) ? new Date(endsMs) : null,
     endsMs: Number.isFinite(endsMs) ? endsMs : NaN,
+    endsEpochMs: Number.isFinite(endsEpochMs) ? endsEpochMs : NaN,
     startMs: Number.isFinite(startMs) ? startMs : NaN,
+    graceMs,
     queue: Array.isArray(data.queue) ? data.queue : [],
     initiative: data.initiative != null ? data.initiative : null,
     extraDeny,
     escalation: data.escalation != null ? data.escalation : 'none',
+    status: data.status != null ? String(data.status) : null,
     raw: data,
   };
 }
@@ -169,6 +203,7 @@ export function iterationCounts(ledgerLines, opts = {}) {
   for (const raw of ledgerLines || []) {
     const e = parseTaskLedgerLine(raw);
     if (!e) continue;
+    if (META_TASKS.has(e.task)) continue; // the floor's deny log is not a work loop
     let rec = byTask.get(e.task);
     if (!rec) { rec = { task: e.task, owner: null, subject: null, events: [] }; byTask.set(e.task, rec); }
     if (e.owner) rec.owner = e.owner;
@@ -207,24 +242,31 @@ export function formatDuration(ms) {
 }
 
 /**
- * Resolve and read the active night charter for a project (read-only). Follows a
- * `night-charter-current` pointer under artifacts/delivery/ when present (the
- * hook's canonical resolver — Stream S owns the writer); otherwise picks the
- * newest dated `night-charter-<date>.md`. Returns a parsed charter or null.
+ * Resolve and read the active night charter for a project (read-only). The
+ * `.night-charter-current` pointer under artifacts/delivery/ is the schema's
+ * single source of truth for "a night is open" — it holds the BASENAME of the
+ * active dated charter. When the pointer is absent (a normal day) we fall back to
+ * the newest dated `night-charter-<date>.md` so the morning report can still cite
+ * the night just past. Returns a parsed charter or null.
+ *
+ * Note: the floor hook's fail-closed semantics on a dangling/corrupt pointer are
+ * Stream S's enforcement concern; this read-only reader simply returns null when
+ * it cannot resolve a readable charter (the report degrades to a day-mode header).
  *
  * @param {string} projectRoot
- * @returns {object|null} parseCharter() result, or null when no charter exists.
+ * @returns {object|null} parseCharter() result, or null when no charter resolves.
  */
 export function readActiveCharter(projectRoot) {
   const paths = getProjectPaths(projectRoot);
   const deliveryDir = join(paths.artifactsDir, 'delivery');
   if (!existsSync(deliveryDir)) return null;
 
-  const pointer = join(deliveryDir, 'night-charter-current');
+  const pointer = join(deliveryDir, '.night-charter-current');
   let target = null;
   if (existsSync(pointer)) {
     const ref = readFileSync(pointer, 'utf8').trim();
     if (ref) {
+      // The pointer holds a basename; tolerate an absolute path defensively.
       const p = ref.startsWith('/') ? ref : join(deliveryDir, ref);
       if (existsSync(p)) target = p;
     }

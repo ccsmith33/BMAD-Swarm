@@ -27,12 +27,18 @@ function line(ts, task, event, owner, subject) {
 }
 
 const CHARTER_TEXT = `---
-schema: night-charter/1
-ends: ${ENDS}
-queue: [BUG-141, FEAT-52]
-initiative: unrestrained
-extra_deny: []
-escalation: none
+night_charter:
+  schema: night-charter/1
+  date: 2026-08-13
+  opened_at: 2026-08-13T22:00:00Z
+  ends: ${ENDS}
+  ends_epoch_ms: ${Date.parse(ENDS)}
+  grace_ms: 7200000
+  queue: [BUG-141, FEAT-52]
+  initiative: unrestrained
+  extra_deny: []
+  escalation: none
+  status: open
 ---
 
 # Night charter 2026-08-13
@@ -78,8 +84,8 @@ function nightLedger() {
   return [
     line('2026-08-14T01:00:00Z', '1', 'in_progress', 'dev-a', 'BUG-141'),
     line('2026-08-14T01:20:00Z', '1', 'completed', 'dev-a', 'BUG-141'),
-    // denied destructive action at 3am -> red banner
-    line('2026-08-14T03:00:00Z', '1', 'deny', 'dev-a', 'git push origin main'),
+    // denied destructive action at 3am -> red banner (canonical night-floor row)
+    line('2026-08-14T03:00:00Z', 'night-floor', 'denied', 'dev-a', 'git push origin main'),
     // fork pair on a reversible decision
     line('2026-08-14T02:00:00Z', '5', 'fork', 'dev-b', 'cache-strategy'),
     line('2026-08-14T02:05:00Z', '6', 'fork', 'dev-c', 'cache-strategy'),
@@ -154,6 +160,7 @@ describe('morning report: the seven-section model', () => {
     assert.ok(t7, 'the tripwired task appears');
     assert.equal(t7.reason, 'no-progress tripwire');
     assert.deepEqual(t7.trail, ['rejected', 'retry', 'rejected']);
+    assert.ok(!m.parkedTripwired.some((p) => p.task === 'night-floor'), 'the floor deny log is never tripwired as a work item');
   });
 
   it('NIGHT LEDGER red-banners the denied 3am push and counts records/events', () => {
@@ -238,6 +245,8 @@ describe('morning report: report-from-ledger (dead-orchestrator acceptance)', ()
     writeFileSync(join(ctx, 'ledger.md'), RECORD_LEDGER);
     writeFileSync(join(ctx, 'decision-log.md'), DECISION_LOG);
     writeFileSync(join(delivery, 'night-charter-2026-08-13.md'), CHARTER_TEXT);
+    // The pointer (basename) is the schema's source of truth for "night open".
+    writeFileSync(join(delivery, '.night-charter-current'), 'night-charter-2026-08-13.md\n');
   }
 
   it('morningReportMarkdown reads only the stores and mutates nothing', () => {

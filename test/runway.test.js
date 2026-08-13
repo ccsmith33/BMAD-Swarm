@@ -12,6 +12,7 @@ import {
   formatDuration,
   DEFAULT_DAWN_RESERVE_MS,
   DEFAULT_TRIPWIRE_ITERATIONS,
+  DEFAULT_GRACE_MS,
 } from '../utils/runway.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,14 +30,20 @@ const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
 
 describe('runway: parseCharter', () => {
-  it('parses ends: from YAML frontmatter (--- delimited)', () => {
+  it('parses the night-charter/1 frontmatter (night_charter: block)', () => {
     const text = `---
-schema: night-charter/1
-ends: 2026-08-14T07:00:00-05:00
-queue: [BUG-141, FEAT-52]
-initiative: unrestrained
-extra_deny: ["no dependency bumps"]
-escalation: none
+night_charter:
+  schema: night-charter/1
+  date: 2026-08-13
+  opened_at: 2026-08-13T22:00:00-05:00
+  ends: 2026-08-14T07:00:00-05:00
+  ends_epoch_ms: 1755178200000
+  grace_ms: 7200000
+  queue: [BUG-141, FEAT-52]
+  initiative: unrestrained
+  extra_deny: ["no dependency bumps"]
+  escalation: none
+  status: open
 ---
 
 # Night charter 2026-08-13
@@ -47,6 +54,30 @@ escalation: none
     assert.equal(c.initiative, 'unrestrained');
     assert.deepEqual(c.extraDeny, ['no dependency bumps']);
     assert.equal(c.escalation, 'none');
+    assert.equal(c.status, 'open');
+    assert.equal(c.graceMs, 7200000);
+    assert.ok(Number.isFinite(c.startMs), 'opened_at populates startMs');
+  });
+
+  it('prefers ends_epoch_ms over the human ends string (anti-TZ, per the schema)', () => {
+    // ends_epoch_ms is authoritative and deliberately DIFFERENT from the string,
+    // proving the string is not what drives the clock.
+    const epoch = Date.parse('2026-08-14T07:00:00Z');
+    const c = parseCharter(`---\nnight_charter:\n  ends: 2026-08-14T07:00:00-05:00\n  ends_epoch_ms: ${epoch}\n---\n`);
+    assert.equal(c.endsMs, epoch, 'endsMs is the absolute epoch, not the re-parsed string');
+    assert.equal(c.endsEpochMs, epoch);
+  });
+
+  it('falls back to parsing ends when ends_epoch_ms is absent', () => {
+    const c = parseCharter('---\nnight_charter:\n  ends: 2026-08-14T07:00:00Z\n---\n');
+    assert.equal(c.endsMs, Date.parse('2026-08-14T07:00:00Z'));
+    assert.ok(Number.isNaN(c.endsEpochMs), 'no epoch was stored');
+  });
+
+  it('defaults grace_ms to the 2h schema default when absent', () => {
+    const c = parseCharter('---\nnight_charter:\n  ends: 2026-08-14T07:00:00Z\n---\n');
+    assert.equal(c.graceMs, DEFAULT_GRACE_MS);
+    assert.equal(DEFAULT_GRACE_MS, 7200000);
   });
 
   it('parses a wrapped night_charter: block (the overnight-doc form)', () => {
@@ -169,6 +200,18 @@ describe('runway: iterationCounts (tripwire ADVISORY data, not a cap — D-034)'
     const items = iterationCounts(ledger, { tripwireIterations: 2 });
     assert.equal(items[0].tripwired, true);
   });
+
+  it('excludes the night-floor deny log — it is a rap sheet, not a work loop', () => {
+    // task=night-floor event=denied is how a blocked 3am push is logged; a run of
+    // them must NEVER be read as a no-progress work item and tripwired.
+    const ledger = [
+      line('2026-08-14T03:00:00Z', 'night-floor', 'denied', 'dev-a', 'git push origin main'),
+      line('2026-08-14T03:10:00Z', 'night-floor', 'denied', 'dev-a', 'npm publish'),
+      line('2026-08-14T03:20:00Z', 'night-floor', 'denied', 'dev-a', 'git push --force'),
+    ];
+    const items = iterationCounts(ledger);
+    assert.equal(items.length, 0, 'night-floor is not a work item and never tripwires');
+  });
 });
 
 describe('runway: formatDuration', () => {
@@ -193,15 +236,17 @@ describe('runway: readActiveCharter (read-only, resolves the current charter)', 
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('follows a night-charter-current pointer when present', () => {
+  it('follows the .night-charter-current pointer (basename) when present', () => {
     const dir = join(tmpdir(), 'bmad-runway-ptr-' + Date.now());
     const delivery = join(dir, 'artifacts', 'delivery');
     mkdirSync(delivery, { recursive: true });
-    writeFileSync(join(delivery, 'night-charter-2026-08-14.md'), '---\nends: 2026-08-14T07:00:00Z\ninitiative: unrestrained\n---\n');
-    writeFileSync(join(delivery, 'night-charter-current'), 'night-charter-2026-08-14.md\n');
+    // An older dated charter also exists; the pointer must win over newest-dated.
+    writeFileSync(join(delivery, 'night-charter-2026-08-99.md'), '---\nnight_charter:\n  ends: 2026-08-99T07:00:00Z\n  initiative: queue-only\n---\n');
+    writeFileSync(join(delivery, 'night-charter-2026-08-14.md'), '---\nnight_charter:\n  ends: 2026-08-14T07:00:00Z\n  initiative: unrestrained\n---\n');
+    writeFileSync(join(delivery, '.night-charter-current'), 'night-charter-2026-08-14.md\n');
     const c = readActiveCharter(dir);
     assert.ok(c);
-    assert.equal(c.initiative, 'unrestrained');
+    assert.equal(c.initiative, 'unrestrained', 'the pointer target wins, not the newest filename');
     rmSync(dir, { recursive: true, force: true });
   });
 
