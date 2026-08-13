@@ -104,8 +104,10 @@ describe('Regime router (decision-classification.md)', () => {
     assert.match(doc, /Night Ladder/);
   });
 
-  it('flags the Stream S verbatim-text integration slot (must not be silently dropped)', () => {
-    assert.match(doc, /Integration slot — Stream S's verbatim Night Ladder text/);
+  it('applies Stream S\'s verbatim Night Ladder actions (fork/default/park)', () => {
+    assert.match(doc, /FORK IT/);
+    assert.match(doc, /DEFAULT IT/);
+    assert.match(doc, /PARK \+ ROUTE AROUND/);
   });
 
   it('keeps the Contradiction Escalator invariant across modes', () => {
@@ -131,8 +133,9 @@ describe('Identity spine — regime awareness across the nine roles', () => {
     const body = readFileSync(join(agentsDir, 'orchestrator.md'), 'utf8');
     assert.match(body, /## Regime routing \(the router\)/);
     assert.match(body, /Plan approval at complexity ≥ 12/);
-    // Stream S's Night-Ladder text is still pending — its slot must stay flagged.
-    assert.match(body, /INTEGRATION SLOT \(Stream S → Stream R\)/);
+    // Stream S's Night-shift block has landed (applied verbatim).
+    assert.match(body, /## Night shift — the \/sleep protocol/);
+    assert.match(body, /Never-wake is the default/);
     // Stream GM's Governor night-mode block has landed (applied verbatim).
     assert.match(body, /Governor — night mode \(scheduler\)/);
     assert.match(body, /Redirects, never rations/);

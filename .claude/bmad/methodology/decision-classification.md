@@ -1,4 +1,4 @@
-<!-- bmad-generated:dac9fd0a -->
+<!-- bmad-generated:213bae9a -->
 # Decision Classification
 
 When agents encounter decisions during their work, they classify them as **tactical** or **strategic** to determine whether to resolve autonomously or escalate.
@@ -193,20 +193,18 @@ by whether a `/sleep` charter is active (Stream S's night floor; a charter with
   stall and never merge**: every night action ranks work and fills the morning
   report; ranking orders work, it never refuses it.
 
-| Decision class | Day action | Night action (Night Ladder) |
-|---|---|---|
-| **Tactical** (reversible, low blast radius) | silent-proceed — auto-resolve, one-line D-ID | **Rung 2 — default + record:** proceed on the reasonable default, log the D-ID + an `R`-record trail; it surfaces in the morning NIGHT LEDGER, never as a question |
-| **Strategic, two genuinely-good options** | pause-and-ask — escalate 2–3 options | **Rung 1 — fork both:** build each plausible option in its own isolated worktree; the morning report's PICK-ONE section presents the pair (diffs, test results, a judge note) for a 10-second human choice |
-| **Strategic crossing an accepted D-ID or an explicit human statement** (the Contradiction Escalator floor — see below) | inline-note minimum, pause-and-ask expected, **maximum** evidence bar; silent-proceed structurally forbidden | **Rung 3 — park + route around:** never auto-resolved at night; park with full context into the morning ANSWER-THESE queue (≤10-line brief, recommended call, default-if-approved) and redirect capacity to other queued work |
-| **Constitutional floor** (the D-034 destructive axis; the security floor) | invariant — never priced, never silent, never auto | invariant — the night floor *denies* the action (PreToolUse enforcement) and red-banners the attempt; **park-never-stall** — the item routes around the floor, the night continues |
+The day side is the delivery-mode ladder above (silent-proceed → inline-note →
+pause-and-ask, per `.claude/bmad/methodology/advisory.md`). The night side is the **Night
+Ladder** — Stream S's canonical wording, applied verbatim (the rung number tracks
+the one-way-door test and the stakes, not the class name):
 
-> **Integration slot — Stream S's verbatim Night Ladder text.** The night-action
-> column above is Stream R's faithful scaffold, built from the Phase-5
-> decomposition (§3.1/§3.2) and D-034/D-038 so the table is coherent and testable
-> now. **Stream S owns the canonical Night Ladder wording and delivers it as a
-> first-session handoff; at integration its text replaces the night-action cells
-> verbatim (integrate, don't paraphrase).** If S's text has not landed at the time
-> this file is committed, this note stays as the integration flag.
+| Decision class | Night action |
+|---|---|
+| Tactical | Auto-resolve + one-line D-ID (unchanged from day). |
+| Strategic, reversible (fails the one-way-door test) | **Rung 1 — FORK IT:** spike both options in isolated worktrees; both candidates get tests + evidence packs + a blind judge note. The decision becomes a morning selection between working artifacts — zero night time lost. Fork liberally; there is no fork budget (two branches cost two branch deletions). |
+| Strategic, one-way but low-stakes (door closes, blast radius small, no floor signal) | **Rung 2 — DEFAULT IT:** proceed on a reasoned default; log a re-openable R-ID carrying rationale, the rejected alternative, and a rollback note. Morning review can reverse it while it is still cheap. Never Rung-2 anything that touches the destructive floor. |
+| Strategic, one-way AND high-stakes (floor signal, contradiction-escalator hit) | **Rung 3 — PARK + ROUTE AROUND:** the decision enters the morning queue as a ≤10-line brief (claim, evidence, cost-both-ways, recommended call, default-if-approved); its dependent subtasks park with it; the scheduler moves to the next independent item. The night loses one work stream, not the night. |
+| Constitutional floors (destructive-action floor, security floor, contradiction escalator) | Invariant across all modes — never priced, never defaulted through. At night they PARK the item rather than stall the run; they can never be raised or narrowed by the night. |
 
 The **Contradiction Escalator** row is the one invariant across every mode and
 every autonomy level: a decision (or recommendation) that crosses an accepted
