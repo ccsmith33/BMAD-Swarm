@@ -1,7 +1,9 @@
-<!-- bmad-generated:dd1244be -->
+<!-- bmad-generated:8fedf3c1 -->
 # Artifact Schema: Product Requirements Document (PRD)
 
 The PRD is the authoritative source of what to build. It drives architecture, epic/story creation, and implementation decisions. The PRD must serve dual audiences: human stakeholders who review and approve it, and LLM agents who consume it for downstream work. Every requirement must be specific, measurable, and traceable to a user need.
+
+> Optional: track the PRD's load-bearing, non-obvious assertions in a **claims table** (C-IDs) — see [`claims-table.md`](claims-table.md). The claims lint is advisory.
 
 ## Expected Structure
 

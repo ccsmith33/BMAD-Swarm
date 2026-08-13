@@ -1,4 +1,4 @@
-<!-- bmad-generated:0bbb99e9 -->
+<!-- bmad-generated:d6918e32 -->
 # Artifact Schema: The Project Brain
 
 `artifacts/context/project-brain.md` is the durable comprehension artifact — the
@@ -29,8 +29,9 @@ schema: project-brain/1
 updated: 2026-08-13T14:02:00Z   # ISO 8601; bumped on every write
 checkpoint: 47                  # monotonic integer; bumped at each checkpoint ritual
 phase: implementation           # the machine-state home (subsumes project.yaml)
-gates:                          # phase-gate map: {gate-name: {status, ref/d-id}}
-  prd-approved: {status: passed, d-id: D-009}
+gates:                          # REQUIRED phase-gate map (D-037). {gate: {status, d_id?, at?}}
+  prd: {status: passed, d_id: D-009}          # status ∈ pending | awaiting-human | approved | passed | failed
+  architecture: {status: awaiting-human, d_id: D-012, at: 2026-08-13T13:50:00Z}
 staleness: {ledger-events-since-checkpoint: 0}
 ---
 
@@ -66,6 +67,21 @@ section: it stops a fresh session re-proposing the rejected thing.
 Fixed block, never grows: decision-log (+ next D-ID), lessons-learned, ledger,
 findings-register, latest phase artifacts. This is the index into the cold tier.
 ```
+
+## Machine state in the frontmatter (D-037 / ADR-018)
+
+There is no `project.yaml`. The frontmatter IS the machine-state home, with a
+guaranteed reader (the warm boot, every session) and event-driven writers (gate
+transitions). Two keys are load-bearing and **required** (`validate`/`doctor`
+enforce them):
+
+- `phase:` — the current lifecycle phase (scalar).
+- `gates:` — a **required** map (empty `{}` until a gate exists) of
+  `{gate-name: {status, d_id?, at?}}`. `status` ∈ `pending | awaiting-human |
+  approved | passed | failed | skipped` (`skipped` = the gate is deliberately not
+  applicable, e.g. a design-led track with no PRD). A gate at `awaiting-human` is what the warm-boot
+  reconciler (`record.cjs reconcile`) surfaces FIRST — this map is the single
+  home for "the run is paused on a human sign-off."
 
 ## The admission rule (surprise-weighted)
 

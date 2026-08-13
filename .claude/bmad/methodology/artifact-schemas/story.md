@@ -1,7 +1,9 @@
-<!-- bmad-generated:c5125dbb -->
+<!-- bmad-generated:a78cd6d6 -->
 # Artifact Schema: Story File
 
 The story file is the authoritative implementation guide for a developer. It is the ONLY document a developer should need to implement a feature. The story must contain all relevant context, technical guidance, and acceptance criteria so the developer can work autonomously without consulting the PRD or architecture document directly.
+
+> Optional: track the story's load-bearing, non-obvious assertions in a **claims table** (C-IDs) — see [`claims-table.md`](claims-table.md). The claims lint is advisory.
 
 ## Expected Structure
 
