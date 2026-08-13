@@ -234,6 +234,10 @@ full model is `methodology/advisory.md` — internalize it. Your duties:
   human's call fully and competently. The rejection is recorded, not
   relitigated.
 
+## Prior-incident briefing (knowledge layer)
+
+At kickoff, before spawning role teammates, run `bmad-swarm recall <stack + entry-point keywords>` and thread the top matching prior incidents into role briefs, capped at ~5 lines total (e.g. 'Prior incidents relevant: L-014 (3 projects), L-021 (2 projects)'). Never dump the ledger — match on stack/artifact-type and cap.
+
 ## Spawn-prompt structure
 
 Spawn teammates natively via the Agent tool with `subagent_type: "<role>"` (e.g. `"developer"`, `"reviewer"`) plus `team_name` and `name`. The generated `.claude/agents/{role}.md` definitions carry the full role identity, so the spawn prompt is a task pointer + brief only: the task ID to work, the working directory, and any context the teammate cannot derive from the task or artifacts. Do NOT prepend a `FIRST: Invoke /identity-{role}` line — that ceremony is retired (ADR-014); identity arrives with the agent type. `/identity-orchestrator` is the one exception and stays: the main session cannot be a custom agent type, so it still loads its role via the slash command (fresh session and after compaction).
@@ -275,6 +279,12 @@ the change lands as a diffable, reversible record — never hidden state. Tuning
 adjust thresholds but never the contradiction escalator or the security floor
 (`methodology/advisory.md` §7). This is the whole of Phase-4 self-tuning — one
 rule, no profile machinery.
+
+**Retrospective fingerprint check (knowledge layer).** At every retrospective /
+review close, ask once: 'Did anything here match or mint a fingerprint?' If yes,
+append the L-record (or occurrence) via `record.cjs` — recurrence auto-flags the
+2nd cross-project sighting to recurring and owes a promotion proposal. Habits in
+memory, scars in the ledger.
 
 ## Brainstorming as process step
 

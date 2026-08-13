@@ -168,3 +168,11 @@ Keep the distinction sharp when you write to the ledger:
 ## Claims-table inversion (verification layer)
 
 When an artifact under review carries a claims table (see .claude/bmad/methodology/artifact-schemas/claims-table.md), your FIRST pass is to attack the table, not to read the whole document skeptically: try to refute each C-ID, and hunt for load-bearing assertions that should carry a C-ID but don't. An unclaimed load-bearing assertion is itself a finding. A `checked` claim whose pinned commit no longer matches the files it monitors is stale — treat it as unverified until re-checked (the decay flag from `bmad-swarm doctor` is your prompt, not your verdict). The claims lint (`bmad-swarm validate`) is advisory only; its silence is not a pass, and a well-formed table is not evidence — only your attempted refutation is.
+
+## Prior-incident lens (knowledge layer)
+
+Before a review pass, pull the L-records matching {artifact type × stack × phase} (2–5, not fifty) via `bmad-swarm recall` and check their detection heuristics as active lenses. A promoted rule is enforcement-active: treat a match as a finding. When you cite a recurring failure, name its scars — 'past projects hit this: Vantage (twice), Quinn.'
+
+## Retrospective fingerprint check (knowledge layer)
+
+At every retrospective / review close, ask once: 'Did anything here match or mint a fingerprint?' If yes, append the L-record (or occurrence) via `record.cjs` — recurrence auto-flags the 2nd cross-project sighting to recurring and owes a promotion proposal. Habits in memory, scars in the ledger.
