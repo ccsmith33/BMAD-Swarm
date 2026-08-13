@@ -7,6 +7,11 @@ import yaml from 'js-yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const methodologyDir = join(__dirname, '..', 'methodology');
+const agentsDir = join(__dirname, '..', 'agents');
+const ALL_ROLES = [
+  'orchestrator', 'ideator', 'researcher', 'strategist', 'architect',
+  'developer', 'reviewer', 'security', 'devops',
+];
 
 // The real 9-role set (2.0.0). story-engineer, qa, retrospective, and
 // tech-writer were retired: strategist owns story decomposition, the
@@ -57,4 +62,93 @@ describe('Methodology role references', () => {
       assert.deepEqual(unknown, [], `Unknown/retired roles staffed: ${unknown.join(', ')}`);
     });
   }
+});
+
+// Stream R — the regime router lives in ONE table in decision-classification.md
+// (a second table that must stay in lockstep would drift). These assertions pin
+// the load-bearing router facts and the D-038 mode column.
+describe('Regime router (decision-classification.md)', () => {
+  const doc = readFileSync(join(methodologyDir, 'decision-classification.md'), 'utf8');
+
+  it('routes the three regimes by complexity band', () => {
+    assert.match(doc, /The Regime Router/);
+    assert.match(doc, /\*\*solo\*\*/);
+    assert.match(doc, /Workflow script/);
+    assert.match(doc, /agentic team/);
+    assert.match(doc, /≤ 6/);
+    assert.match(doc, /7–11/);
+    assert.match(doc, /≥ 12/);
+  });
+
+  it('carries the WS-12 plan-approval-at-complexity-≥12 rule', () => {
+    assert.match(doc, /Plan approval at complexity ≥ 12/);
+  });
+
+  it('encodes escalation-as-script-logic and the router-miss calibration event', () => {
+    assert.match(doc, /Escalation is script logic/);
+    assert.match(doc, /escalate: agentic/); // the missing primitive spike 3 found
+    assert.match(doc, /router-miss/);
+  });
+
+  it('ships named workflows only and stays a rule table (kill-list #7)', () => {
+    assert.ok(doc.includes('.claude/workflows/'), 'must reference the named-workflow location');
+    assert.match(doc, /never learned/);
+  });
+
+  it('has the D-038 mode column: day actions AND the Night Ladder rungs', () => {
+    assert.match(doc, /Mode Column/);
+    assert.match(doc, /silent-proceed/);
+    assert.match(doc, /Rung 1/);
+    assert.match(doc, /Rung 2/);
+    assert.match(doc, /Rung 3/);
+    assert.match(doc, /Night Ladder/);
+  });
+
+  it('flags the Stream S verbatim-text integration slot (must not be silently dropped)', () => {
+    assert.match(doc, /Integration slot — Stream S's verbatim Night Ladder text/);
+  });
+
+  it('keeps the Contradiction Escalator invariant across modes', () => {
+    assert.match(doc, /Contradiction Escalator/);
+    assert.match(doc, /regime-invariant|invariant across every mode/);
+  });
+});
+
+// Stream R — the identity spine: every role carries regime awareness, and the
+// orchestrator carries the router-consultation section plus the flagged S/GM
+// verbatim-text integration slots.
+describe('Identity spine — regime awareness across the nine roles', () => {
+  for (const role of ALL_ROLES) {
+    it(`${role}.md carries a regime-awareness reference`, () => {
+      const body = readFileSync(join(agentsDir, `${role}.md`), 'utf8');
+      const hasSection = /## Regime (awareness|routing)/.test(body);
+      const refsRouter = /decision-classification\.md/.test(body) && /regime/i.test(body);
+      assert.ok(hasSection && refsRouter, `${role}.md must reference the regime router`);
+    });
+  }
+
+  it('orchestrator.md consults the router and flags both handoff slots', () => {
+    const body = readFileSync(join(agentsDir, 'orchestrator.md'), 'utf8');
+    assert.match(body, /## Regime routing \(the router\)/);
+    assert.match(body, /Plan approval at complexity ≥ 12/);
+    assert.match(body, /INTEGRATION SLOT \(Stream S → Stream R\)/);
+    assert.match(body, /INTEGRATION SLOT \(Stream GM → Stream R\)/);
+  });
+
+  it('developer.md instructs escalate-do-not-guess in a workflow node', () => {
+    const body = readFileSync(join(agentsDir, 'developer.md'), 'utf8');
+    assert.match(body, /`escalate` output/);
+    assert.match(body, /router-miss/);
+  });
+
+  it('reviewer.md keeps the review gate regime-invariant', () => {
+    const body = readFileSync(join(agentsDir, 'reviewer.md'), 'utf8');
+    assert.match(body, /regime-invariant/);
+    assert.match(body, /router-miss/);
+  });
+
+  it('security.md keeps the floor invariant across regime and mode', () => {
+    const body = readFileSync(join(agentsDir, 'security.md'), 'utf8');
+    assert.match(body, /invariant across every regime and every mode/);
+  });
 });

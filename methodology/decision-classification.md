@@ -112,6 +112,110 @@ The autonomy level shifts the classification boundary:
 
 Tactical decisions are always auto-resolved regardless of autonomy level. The whole point is that nobody needs to be bothered with them.
 
+## The Regime Router (D-038)
+
+Classification decides *how an agent handles a decision*. The **regime router**
+decides something upstream of that: **how much agency a whole task needs before
+any team is assembled.** The complexity brain (the orchestrator's scoring table)
+is the control law; the native primitives — the solo main session, the
+deterministic Workflow script, the full agentic team — are just actuators. The
+router picks the actuator. This is Unlock 1 of the reinvention vision, amended by
+**D-038** (one priced router) and by spike 3 (the Workflow-tool contract, see
+"Escalation is script logic" below).
+
+The orchestrator scores complexity (5–15, per the scoring table in
+`agents/orchestrator.md`) and routes to exactly one regime:
+
+| Complexity score | Regime | What runs | Cost floor |
+|---|---|---|---|
+| **≤ 6**, single-file / well-shaped | **solo** — the main session handles it, no spawn | one agent, no assembly ceremony | ~0 marginal |
+| **7–11**, shaped but multi-step | **Workflow script** — a named `.claude/workflows/` deterministic pipeline with agentic nodes | fixed step graph (reproduce → fix → test → review → ledger), schema-validated node outputs, resumable at node boundaries | 1–2 spawns, resumable |
+| **≥ 12**, or ill-defined / exploratory | **agentic team** — the full assembly (entry-point + complexity tables size it) | full assembly ceremony, justified by the score | full ceremony |
+
+**Regime-invariant traceability (the load-bearing property).** Whichever regime
+runs, the work emits the *same* D-IDs, the same ledger lines via `record.cjs`,
+and the same artifact species as a full agentic run. An auditor cannot tell — and
+should not care — which regime produced a change. A Workflow node that runs
+`npm test` and blocks on a non-zero exit code is enforcement, not ceremony; a
+Workflow node that spawns an `agent()` is the same review gate the agentic regime
+runs. The regime is a cost decision, never a rigor decision.
+
+**Plan approval at complexity ≥ 12 (WS-12).** When the router lands a task in the
+agentic regime *because* its score is ≥ 12, the orchestrator produces the plan —
+the `bmad-assembly` block and task graph — and **pauses for human approval before
+spawning** (in `auto` mode this is the existing `auto → guided` autonomy override
+in `agents/orchestrator.md`; the router states it here so the rule lives with the
+routing decision that triggers it). Below 12, the router proceeds without a plan
+gate. This is the single WS-12 rule that rides in the router; the rest of WS-12 is
+deferred.
+
+**Escalation is script logic, not a platform primitive (spike-3 caveat, honored).**
+Spike 3 verified the Workflow tool live but found **no `escalate: agentic`
+primitive** — nothing re-routes a deterministic pipeline to a team by that name.
+So the router's "the deterministic tier escalates to agentic" is implemented as
+**script logic inside the workflow**: a node whose schema validation is exhausted
+(the StructuredOutput retry cap), or that emits an explicit escalation output,
+routes the remainder of the task to a fallback `agent()` team node **and logs a
+router-miss event** — `record.cjs task-event --event router-miss` — which is the
+one telemetry stream worth keeping, because it makes the complexity rubric
+empirically tunable later (self-tuning input, vision §4.6; no tuner is built this
+phase). Deterministic-tier workflows ship as **named** workflows in
+`.claude/workflows/` (never inline scripts): spike 3 found inline/dynamic
+workflows are permission-gated, so named packaging is the robust form. A live
+named-workflow smoke run confirmed the contract before this tier shipped (one
+`agent({schema})` node ran, forced StructuredOutput, returned its sentinel; the
+`resumeFromRunId` interface completes cleanly, with node-boundary resume as the
+reliable mechanism rather than cross-invocation cache).
+
+**Failure mode designed against: misrouting ambiguous work down.** The router's
+one real risk is routing genuinely-ambiguous work into the deterministic regime,
+where it cannot ask questions. The escape hatch above (any node may escalate to a
+team) is the containment: a misroute costs one router-miss event and a fallback
+spawn, not a wrong answer. **The router stays a rule table — never learned**
+(kill-list #7): it is auditable, tunable, and explainable, which is the trust
+that the whole ops loop depends on.
+
+## Mode Column — day actions and the Night Ladder (D-038 / D-034)
+
+The classes above (tactical / strategic / contradiction-escalator floor) route
+the *same decision* differently depending on **mode**. There is one table, not
+two: a day-table and a night-table would drift out of lockstep. The mode is set
+by whether a `/sleep` charter is active (Stream S's night floor; a charter with
+`ends:` in the future).
+
+- **By day**, the delivery-mode ladder governs (`methodology/advisory.md`):
+  silent-proceed → inline-note → pause-and-ask, judged per decision from its own
+  stakes.
+- **By night**, the human is asleep, so *pause-and-ask is not available* — a night
+  that stalls waiting for an answer is a wasted night. The **Night Ladder** (D-034
+  / D-038, Stream S) substitutes deterministic, reviewable actions that **never
+  stall and never merge**: every night action ranks work and fills the morning
+  report; ranking orders work, it never refuses it.
+
+| Decision class | Day action | Night action (Night Ladder) |
+|---|---|---|
+| **Tactical** (reversible, low blast radius) | silent-proceed — auto-resolve, one-line D-ID | **Rung 2 — default + record:** proceed on the reasonable default, log the D-ID + an `R`-record trail; it surfaces in the morning NIGHT LEDGER, never as a question |
+| **Strategic, two genuinely-good options** | pause-and-ask — escalate 2–3 options | **Rung 1 — fork both:** build each plausible option in its own isolated worktree; the morning report's PICK-ONE section presents the pair (diffs, test results, a judge note) for a 10-second human choice |
+| **Strategic crossing an accepted D-ID or an explicit human statement** (the Contradiction Escalator floor — see below) | inline-note minimum, pause-and-ask expected, **maximum** evidence bar; silent-proceed structurally forbidden | **Rung 3 — park + route around:** never auto-resolved at night; park with full context into the morning ANSWER-THESE queue (≤10-line brief, recommended call, default-if-approved) and redirect capacity to other queued work |
+| **Constitutional floor** (the D-034 destructive axis; the security floor) | invariant — never priced, never silent, never auto | invariant — the night floor *denies* the action (PreToolUse enforcement) and red-banners the attempt; **park-never-stall** — the item routes around the floor, the night continues |
+
+> **Integration slot — Stream S's verbatim Night Ladder text.** The night-action
+> column above is Stream R's faithful scaffold, built from the Phase-5
+> decomposition (§3.1/§3.2) and D-034/D-038 so the table is coherent and testable
+> now. **Stream S owns the canonical Night Ladder wording and delivers it as a
+> first-session handoff; at integration its text replaces the night-action cells
+> verbatim (integrate, don't paraphrase).** If S's text has not landed at the time
+> this file is committed, this note stays as the integration flag.
+
+The **Contradiction Escalator** row is the one invariant across every mode and
+every autonomy level: a decision (or recommendation) that crosses an accepted
+D-ID or an explicit human statement can never be silent-proceed by day and can
+never be auto-resolved by night — it is always Rung 3 (park) at night and always
+at least inline-note by day, always at the maximum evidence bar. The human owns
+DECISIONS; the router and the ladder may reorder *how little agency* the rest of
+the work gets, but they can never lower this floor. See "The Contradiction
+Escalator (constitutional floor)" above and `methodology/advisory.md` §3.
+
 ## Connection to Decision Traceability
 
 Both tactical and strategic decisions are tracked in the decision traceability system (see `methodology/decision-traceability.md`). The classification determines the documentation depth, not whether a decision is tracked.

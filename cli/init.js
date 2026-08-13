@@ -14,6 +14,7 @@ import { generateSettings } from '../generators/settings-generator.js';
 import { generateRules } from '../generators/rules-generator.js';
 import { renderEarnedRulesReview } from '../utils/earned-rules.js';
 import { generateCommands } from '../generators/commands-generator.js';
+import { generateWorkflows } from '../generators/workflows-generator.js';
 import { loadSwarmConfig } from '../utils/config.js';
 import { DEFAULT_MODEL } from '../utils/validator.js';
 import { runScan } from './scan.js';
@@ -149,6 +150,10 @@ async function runInit(options) {
   // 6.5. Generate .claude/commands/
   const commandResult = generateCommands(config, paths);
   console.log(`  \u2713 Generated .claude/commands/ (${commandResult.generated.length} commands)`);
+
+  // 6.6. Generate .claude/workflows/ (regime router deterministic tier)
+  const workflowResult = generateWorkflows(config, paths);
+  console.log(`  \u2713 Generated .claude/workflows/ (${workflowResult.generated.length} workflows)`);
 
   // 7. Generate CLAUDE.md
   generateClaudeMd(config, paths);
