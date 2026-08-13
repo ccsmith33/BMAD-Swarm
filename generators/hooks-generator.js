@@ -68,6 +68,7 @@ export function generateHooks(config, projectPaths, options = {}) {
     'orchestrator-write-gate.cjs',
     'ledger-write-guard.cjs',
     'replay-gate.cjs',
+    'task-ledger-writer.cjs',
   ];
 
   for (const name of hooks) {
@@ -144,6 +145,17 @@ export function getHooksConfig() {
     ],
     TaskCreated: [
       { hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/replay-gate.cjs"' }] },
+    ],
+    // ADR-018 / D-037 / D-049: the task-ledger writer. A guaranteed, event-driven
+    // writer of artifacts/context/task-ledger.md — the durable coordination log
+    // that lets a fresh session reconstruct in-flight state (crash-only). Fires
+    // AFTER the tool succeeds and appends a lifecycle row through the pinned
+    // record.cjs (lock + atomic); it never blocks (advisory logging side-channel,
+    // always exit 0). Payload shapes verified live on v2.1.222 (spike-posttooluse
+    // -2026-08-13): TaskCreate -> created/assigned, TaskUpdate -> the status set,
+    // SendMessage -> woken (resolved by an owner->task-id JOIN, not text-parsing).
+    PostToolUse: [
+      { matcher: 'TaskCreate|TaskUpdate|SendMessage', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/task-ledger-writer.cjs"' }] },
     ],
   };
 }

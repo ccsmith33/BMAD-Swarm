@@ -425,3 +425,16 @@ team:
     model: opus
 rationale: SE-2 start (sleep mode, SE-1 clear). Spike (sonnet, cheap verification) confirms PostToolUse payload shapes for task-events before the task-ledger writers; project-brain dev (opus) implements the spike-clear continuity core (PreCompact flush + SessionStart:compact warm-boot + project-brain.md schema + read-back handshake) — the human's named compaction-continuity pain. Disjoint work.
 ```
+
+## 2026-08-13 — bug-fix (Phase 2 SE-2 / task-ledger writers)
+
+```bmad-assembly
+entry_point: bug-fix
+complexity: 10
+autonomy: auto
+team:
+  - role: developer
+    domain: task-ledger-writers
+    model: opus
+rationale: SE-2 second half (on committed brain). PostToolUse writer hook appends durable task-ledger rows on TaskCreate/TaskUpdate (spike-clear) via the serialized record.cjs task-event channel; owner->task-id map for woken events. Reconciliation/liveness is SE-3. Opus per tier mix.
+```

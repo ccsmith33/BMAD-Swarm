@@ -54,7 +54,11 @@ describe('Settings Generator', () => {
     // TaskCreated enforces the `gate: replay` marker on story tasks.
     assert.ok(content.hooks.TaskCompleted, 'Should have the TaskCompleted replay-gate hook (ADR-022)');
     assert.ok(content.hooks.TaskCreated, 'Should have the TaskCreated marker-enforcement hook (ADR-022)');
-    assert.ok(!content.hooks.PostToolUse, 'Should NOT have PostToolUse hooks (task-tool-warning removed)');
+    // ADR-018 / D-037: the task-ledger writer is a PostToolUse hook on the task
+    // + messaging tools (the old task-tool-warning PostToolUse is still gone).
+    assert.ok(content.hooks.PostToolUse, 'Should have the PostToolUse task-ledger writer (ADR-018)');
+    assert.equal(content.hooks.PostToolUse[0].matcher, 'TaskCreate|TaskUpdate|SendMessage',
+      'PostToolUse writer must match the task + messaging tools');
     assert.ok(!content.hooks.TeammateIdle, 'Should NOT have TeammateIdle hooks (dead capability removed)');
   });
 
