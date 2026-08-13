@@ -89,6 +89,7 @@ function validateSingleArtifact(filePath) {
 
   checkSections(content, effective.required_sections, issues);
   checkPatterns(content, effective.required_patterns, issues);
+  checkConditionalPatterns(content, effective.conditional_patterns, issues);
 
   return { file: filePath, status: issues.length === 0 ? 'pass' : 'fail', issues };
 }
@@ -166,6 +167,21 @@ function checkPatterns(content, patterns, issues) {
       if (content.trim().length < p.min_length) {
         issues.push(p.message || `Content appears too short (< ${p.min_length} chars)`);
       }
+    }
+  }
+}
+
+/**
+ * Optional-field format checks: if `if_regex` matches, `must_regex` must too.
+ * A file where the field is absent passes untouched — this is how the spec
+ * expresses "optional, but well-formed when present" (e.g. story Depends-On).
+ */
+function checkConditionalPatterns(content, patterns, issues) {
+  if (!patterns) return;
+  for (const p of patterns) {
+    if (!new RegExp(p.if_regex, 'm').test(content)) continue;
+    if (!new RegExp(p.must_regex, 'm').test(content)) {
+      issues.push(p.message || `Malformed optional field: ${p.name}`);
     }
   }
 }

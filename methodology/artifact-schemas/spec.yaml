@@ -79,6 +79,15 @@ artifacts:
       - name: task-checklist
         regex: "- \\[[ x]\\]"
         message: "Missing task checklist (- [ ] items)"
+    conditional_patterns:
+      # L-5: stories are independent by default — no Depends-On field means no
+      # dependency edges (the orchestrator fans the story out in parallel). When
+      # the field IS present, every entry must carry a named reason: a dependency
+      # you cannot name is not a dependency.
+      - name: depends-on-named-reason
+        if_regex: "^## Depends-On"
+        must_regex: "^## Depends-On:\\s*\\d+\\.\\d+\\s*\\([^)]+\\)(\\s*,\\s*\\d+\\.\\d+\\s*\\([^)]+\\))*\\s*$"
+        message: "Depends-On entries must be story IDs each carrying a named reason, e.g. '## Depends-On: 1.2 (reads the schema created there)' — a dependency you cannot name is not a dependency; omit the field and the story runs in parallel"
 
   generic:
     required_patterns:

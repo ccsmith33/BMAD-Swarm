@@ -110,6 +110,7 @@ Then they see an error message "Invalid email or password" and no token is issue
 
 ### Story Sequencing
 - Stories within an epic must be ordered by dependency (foundational first)
+- Ordering communicates reading/priority order, not execution order: execution edges come only from each story's `## Depends-On:` field (see the story schema). Stories without declared dependencies are independent by default and run in parallel.
 - Cross-epic dependencies must be noted
 - The first epic/story should typically be project scaffolding and setup
 - Story numbering convention: `[Epic].[Story]` (e.g., 1.1, 1.2, 2.1)

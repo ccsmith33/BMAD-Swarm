@@ -11,6 +11,8 @@ The story file is the authoritative implementation guide for a developer. It is 
 
 ## Domain: [kebab-case-slug]   <!-- optional; omit for cross-cutting / unrouted work -->
 
+## Depends-On: [1.2 (reads the schema created there)]   <!-- optional; ABSENT = independent, runs in parallel -->
+
 ## User Story
 As a [specific user type],
 I want [specific capability],
@@ -98,6 +100,22 @@ The `## Domain:` heading declares the routing key used by the orchestrator in **
 **Reviewer audit posture.** The reviewer's audit of this field is **advisory only** — missing or mismatched domains in fixed mode surface as low-severity findings, never as blocking. See ADR-006 for the rationale. Do not gate merges on this field.
 
 **Cross-references.** Routing semantics, the architect's domain-map deliverable, and the orchestrator's decision tree are specified in `artifacts/design/architecture.md` §4 (Story schema additions) and §6 (Orchestrator routing). Full design rationale and rejected alternatives live in ADR-006 (`artifacts/design/decisions/adr-006-story-domain-field.md`).
+
+### Depends-On (optional)
+
+The `## Depends-On:` heading declares the ONLY sequencing edges the orchestrator honors when building the task graph. Stories are **independent by default**: a story without this field has no dependency edges — its task is created unblocked and runs concurrently with every other story (lesson L-5: over-serialization of independent work).
+
+| Property | Value |
+| --- | --- |
+| Type | comma-separated list of story IDs, each with a parenthesized named reason |
+| Format | `## Depends-On: 1.2 (reads the TrackRepository created there), 1.4 (needs decision D-012)` |
+| Entry shape | `<epic>.<story> (<reason>)` — the reason is REQUIRED, not decorative |
+| Required | no — absence is the normal case and means "fan out in parallel" |
+| Set by | strategist at story-creation time |
+
+**The named-reason rule.** Every entry must state WHY the edge exists: this story reads an artifact the dependency produces, or needs a decision the dependency makes. A dependency you cannot name is not a dependency — omit it and let the story run in parallel. The validator enforces this: a `## Depends-On:` line whose entries lack parenthesized reasons fails validation.
+
+**Relationship to Dev Notes `### Dependencies`.** The prose Dependencies block under Dev Notes remains as human context (components involved, patterns from prior stories). It carries no scheduling semantics — the orchestrator builds task-graph edges from `## Depends-On:` alone.
 
 ### User Story
 - Must use a specific user type, not generic "user"
@@ -218,7 +236,7 @@ Use the query builder pattern from the architecture ADR-003.
 - [ ] Dev notes include exact file locations for new and modified files
 - [ ] Dev notes include testing approach with framework and patterns
 - [ ] Dev notes include anti-patterns specific to this implementation
-- [ ] Dependencies on other stories are documented
+- [ ] Depends-On declared only for nameable dependencies (each entry carries its reason); independent stories omit the field entirely
 - [ ] Story traces to at least one PRD functional requirement
 
 ## Common Failures to Check For
@@ -231,4 +249,5 @@ Use the query builder pattern from the architecture ADR-003.
 - **Orphan story**: does not trace to any PRD requirement
 - **Missing test tasks**: implementation tasks but no test-writing tasks
 - **Incorrect sequencing**: tasks ordered wrong (API routes before data models)
+- **Phantom sequencing**: a `## Depends-On:` edge with no nameable reason — serializing work that could run in parallel is a defect, not caution
 - **Copy-paste criteria**: acceptance criteria lifted from another story without adapting to this one

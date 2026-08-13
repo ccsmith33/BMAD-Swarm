@@ -207,6 +207,47 @@ Then the data is saved
     assert.ok(result.failed > 0);
   });
 
+  // L-5 depends_on convention: stories are independent by default; a Depends-On
+  // entry must carry a named reason (a dependency you cannot name is not a
+  // dependency). The field's ABSENCE is covered by every passing story above.
+  it('accepts a story with a well-formed Depends-On (named reasons)', () => {
+    const dir = writeStory('depends-on-ok', 'story-2-3.md', `# Story 2.3
+## Depends-On: 2.1 (reads the Track schema created there), 1.2 (needs the auth decision D-012)
+## Acceptance Criteria
+- [ ] AC1: search endpoint returns filtered tracks
+## Tasks
+- [ ] Build query
+- [ ] Write tests
+`);
+    const result = validateArtifacts(dir, { phase: 'implementation' });
+    assert.equal(result.failed, 0, JSON.stringify(result.results));
+  });
+
+  it('rejects a Depends-On entry without a named reason (L-5)', () => {
+    const dir = writeStory('depends-on-bare', 'story-2-4.md', `# Story 2.4
+## Depends-On: 2.1
+## Acceptance Criteria
+- [ ] AC1: it works
+## Tasks
+- [ ] Do it
+`);
+    const result = validateArtifacts(dir, { phase: 'implementation' });
+    assert.equal(result.failed, 1, 'a reason-less Depends-On must fail validation');
+    assert.match(JSON.stringify(result.results), /cannot name is not a dependency/);
+  });
+
+  it('rejects a Depends-On where only some entries carry reasons', () => {
+    const dir = writeStory('depends-on-mixed', 'story-2-5.md', `# Story 2.5
+## Depends-On: 2.1 (reads the schema), 2.2
+## Acceptance Criteria
+- [ ] AC1: it works
+## Tasks
+- [ ] Do it
+`);
+    const result = validateArtifacts(dir, { phase: 'implementation' });
+    assert.equal(result.failed, 1, 'every Depends-On entry needs its reason');
+  });
+
   it('validates a single artifact by path (generic)', () => {
     const dir = join(tmpDir, 'single');
     mkdirSync(dir, { recursive: true });
