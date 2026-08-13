@@ -242,13 +242,26 @@ describe('record.cjs: R -> accepted graduates into a D-record', () => {
   });
   after(() => { rmSync(proj, { recursive: true, force: true }); });
 
-  it('mints a D sourced from the R on accept', () => {
+  it('mints a D sourced from the R on accept and plants a bidirectional pointer', () => {
     const r = run(['set-status', 'R-1', 'accepted'], { ctx, proj });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /graduated: R-1 -> D-1/);
     const log = readFileSync(join(ctx, 'decision-log.md'), 'utf8');
     assert.match(log, /## D-1 — adopt fixture-provenance rule/);
-    assert.match(log, /swarm-advisory \(graduated from R-1\)/);
+    assert.match(log, /swarm-advisory \(ref: R-1\)/); // D -> R back-pointer
+    // R -> D forward pointer planted in the R's links.
+    const ledger = readFileSync(join(ctx, 'ledger.md'), 'utf8');
+    const rSection = ledger.slice(ledger.indexOf('## R-1'));
+    assert.match(rSection, /d_ids: \[D-1\]/);
+  });
+
+  it('refuses appending an R directly at accepted (must enter at open)', () => {
+    const p = mkproj();
+    const r = run(['append', '--type', 'R', '--title', 'sneaky', '--status', 'accepted',
+      '--json', JSON.stringify({ provenance: { role: 'r', project: 'p', date: '2026-08-13' }, body: 'y' })], p);
+    assert.equal(r.status, 1, 'cannot skip graduation by entering at accepted');
+    assert.match(r.stderr, /may only enter at open/);
+    rmSync(p.proj, { recursive: true, force: true });
   });
 
   it('--no-graduate accepts the R without minting a D', () => {

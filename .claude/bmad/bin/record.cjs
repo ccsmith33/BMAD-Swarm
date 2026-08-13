@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bmad-generated:1ee52512
+// bmad-generated:9530bc1a
 // BMAD Swarm - record.cjs: the pinned, serialized-write channel for the unified
 // record ledger (ADR-021 / D-036 / D-049; phase2 design §3.2, §4.1).
 //
@@ -503,6 +503,35 @@ function linkField(sectionText, key) {
   return m ? unquoteScalar(m[1]) : null;
 }
 
+// Append a D-ID into a record's `links.d_ids: [...]` array (creating the array
+// or the whole links map when absent), returning the new full ledger content.
+// Used to plant the R -> D forward pointer on graduation (the D carries the
+// back-pointer in its prose), so the pair is bidirectional.
+function addLinkDId(content, id, dId) {
+  const b = sectionBounds(content, id);
+  if (!b) return content;
+  let section = content.slice(b.start, b.end);
+  const lm = /^(\s*links:\s*)(\{[^\n]*\})\s*$/m.exec(section);
+  if (!lm) return content; // no links line — leave untouched
+  let flow = lm[2];
+  const ki = flow.indexOf('d_ids:');
+  if (ki === -1) {
+    const inner = flow.slice(1, -1).trim();
+    const addition = `d_ids: [${dId}]`;
+    flow = `{${inner ? inner + ', ' + addition : addition}}`;
+  } else {
+    const lb = flow.indexOf('[', ki);
+    const rb = matchBracket(flow, lb);
+    if (lb === -1 || rb === -1) return content;
+    const innerArr = flow.slice(lb + 1, rb).trim();
+    if (new RegExp(`\\b${dId}\\b`).test(innerArr)) return content; // already linked
+    const merged = innerArr ? `${innerArr}, ${dId}` : dId;
+    flow = flow.slice(0, lb + 1) + merged + flow.slice(rb);
+  }
+  section = section.replace(lm[0], `${lm[1]}${flow}`);
+  return content.slice(0, b.start) + section + content.slice(b.end);
+}
+
 /**
  * Apply a cross-context recurrence to an existing L/F record: append the new
  * sighting as an occurrence (deduped) instead of minting a duplicate, and
@@ -766,6 +795,16 @@ function cmdAppend(flags) {
     }
   }
 
+  // Mirror the L-gate posture for R (Stream A dependency): an R may only ENTER
+  // at open, so nobody appends `--type R --status accepted` directly and skips
+  // the R->D graduation that `set-status R-x accepted` performs.
+  if (type === 'R') {
+    const requested = flags.status != null ? flags.status : (input.status != null ? input.status : INITIAL_STATUS.R);
+    if (requested !== 'open') {
+      die(`append --type R may only enter at open; status ${JSON.stringify(requested)} is reached via set-status (R -> accepted graduates to a D)`);
+    }
+  }
+
   const contextDir = contextDirFrom(flags);
 
   if (type === 'D') {
@@ -886,14 +925,16 @@ function cmdSetStatus(argv, flags) {
       const date = flags.date || todayISO();
       const cls = flags.classification || 'Tactical';
       const rationale = flags.decision || graduate.body || `Accepted recommendation ${id}.`;
-      const block = `\n## ${did} — ${title}\n\n- **Date:** ${date}\n- **Classification:** ${cls}\n- **Source:** swarm-advisory (graduated from ${id})\n- **Decision:** ${rationale}\n`;
+      const block = `\n## ${did} — ${title}\n\n- **Date:** ${date}\n- **Classification:** ${cls}\n- **Source:** swarm-advisory (ref: ${id})\n- **Decision:** ${rationale}\n`;
       const base = cur && cur.trim() ? cur.replace(/\s*$/, '\n') : cur;
       return base + block;
     });
+    // Plant the R -> D forward pointer (links.d_ids) so the pair is bidirectional.
+    withFileLock(contextDir, target, (cur) => addLinkDId(cur, id, graduatedD));
   }
 
   process.stdout.write(`${id} -> ${newStatus}\n`);
-  if (graduatedD) process.stdout.write(`graduated: ${id} -> ${graduatedD} (source: swarm-advisory)\n`);
+  if (graduatedD) process.stdout.write(`graduated: ${id} -> ${graduatedD} (source: swarm-advisory, bidirectional)\n`);
 }
 
 function cmdNextId(argv, flags) {
@@ -1816,6 +1857,7 @@ module.exports = {
   extractBody,
   sectionTitle,
   linkField,
+  addLinkDId,
   retroCatch,
   parseHarvestLessons,
   extractPromotedLessons,
