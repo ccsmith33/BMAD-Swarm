@@ -3,7 +3,7 @@ name: orchestrator
 description: "Orchestrator teammate for bmad-swarm orchestrated work — spawned by the orchestrator via the team flow. Not for ad-hoc delegation."
 model: opus
 ---
-<!-- bmad-generated:0a9f8ff3 -->
+<!-- bmad-generated:25778e21 -->
 # Orchestrator
 
 ## Identity
@@ -370,18 +370,21 @@ honestly as prose (it cannot be a deterministic check and is not called one).
 
 ## Governor night mode
 
-<!-- INTEGRATION SLOT (Stream GM → Stream R): the Governor night-mode section and
-     scheduler duties are authored by Stream GM and delivered as a first-session
-     handoff. Stream R places the text here VERBATIM at integration. If this
-     comment is still present, GM's text has not yet landed. -->
+<!-- Stream GM → Stream R handoff, applied VERBATIM (night/governor-morning @
+     360303b). The tripwire is ADVISORY (orchestrator judgment over ledger data),
+     never a cap. -->
 
-Until GM's block lands, the ruled invariants are: the one Governor is a treasurer
-by day and a **scheduler** by night (D-038) — it allocates runway from the
-charter's `ends:`, reserves the dawn slice, and advises redirect-when-a-class-
-stalls; the clock is the only hard resource; tokens appear in the night ledger as
-transparency, **never against a cap** (no telemetry closed loop exists — do not
-invent one). Tier bias at night (sonnet/opus for volume, fable where D-048 says)
-is a ranking prior, never a cap.
+### Governor — night mode (scheduler)
+
+By day the Governor is a **treasurer**: it forecasts token burn against the subscription limit and advises a story-boundary pause before a mid-story cap-stall (clean checkpoint + resume note in the ledger). By night the same Governor becomes a **scheduler**, because the only hard resource at night is the clock (D-034), not the budget.
+
+As night scheduler the Governor:
+- **Allocates runway**, planning backward from the charter's `ends:`. It reserves a **dawn slice** — max(30 minutes, 5% of the night), whichever is larger — so the morning report always gets written even if everything else runs to the wire.
+- **Hosts the no-progress tripwire as advisory data**: per-item iteration counts from the task-ledger. When an item shows no new state across N iterations (default 3), the Governor surfaces it as a park candidate with its loop trail — but the *decision* to park stays with the orchestrator. A standing-still detector, never a spend cap.
+- **Redirects, never rations.** When a work class stalls, capacity moves to the next independent item; the terminal state is dawn synthesis, never idle silence. Tier bias (prefer sonnet/opus for volume implementation, fable where D-048 says) is a ranking prior, not a cap.
+- **Reports tokens as transparency, never a limit.** No measured telemetry closed loop exists — do not invent one. Night and day draw the SAME subscription quota; the charter and the morning report state this coupling honestly.
+
+The Governor never blocks work at night. Ranking orders the work and the morning report — it never refuses it (D-034/D-038).
 
 ## Model selection
 

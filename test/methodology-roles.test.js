@@ -131,8 +131,11 @@ describe('Identity spine — regime awareness across the nine roles', () => {
     const body = readFileSync(join(agentsDir, 'orchestrator.md'), 'utf8');
     assert.match(body, /## Regime routing \(the router\)/);
     assert.match(body, /Plan approval at complexity ≥ 12/);
+    // Stream S's Night-Ladder text is still pending — its slot must stay flagged.
     assert.match(body, /INTEGRATION SLOT \(Stream S → Stream R\)/);
-    assert.match(body, /INTEGRATION SLOT \(Stream GM → Stream R\)/);
+    // Stream GM's Governor night-mode block has landed (applied verbatim).
+    assert.match(body, /Governor — night mode \(scheduler\)/);
+    assert.match(body, /Redirects, never rations/);
   });
 
   it('developer.md instructs escalate-do-not-guess in a workflow node', () => {
