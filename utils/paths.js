@@ -41,7 +41,6 @@ export function getProjectPaths(projectRoot) {
     claudeMd: join(root, 'CLAUDE.md'),
     overridesDir: join(root, 'overrides'),
     overridesAgentsDir: join(root, 'overrides', 'agents'),
-    overridesMethodologyDir: join(root, 'overrides', 'methodology'),
     artifactsDir: join(root, 'artifacts'),
     // Machine-state home (D-037): phase + gates live in the brain frontmatter,
     // NOT in a project.yaml chore-file (which is retired/deleted).

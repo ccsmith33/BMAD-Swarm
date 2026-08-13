@@ -52,10 +52,4 @@ registerStartCommand(program);
 const { registerPhaseCommand } = await import('../cli/phase.js');
 registerPhaseCommand(program);
 
-const { registerWorkspaceCommand } = await import('../cli/workspace.js');
-registerWorkspaceCommand(program);
-
-const { registerPluginCommand } = await import('../cli/plugin.js');
-registerPluginCommand(program);
-
 program.parse();

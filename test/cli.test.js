@@ -165,45 +165,6 @@ describe('CLI Integration', () => {
     assert.ok(output.includes('--print'), 'Should show --print flag');
   });
 
-  it('workspace list shows workspaces from swarm.yaml', () => {
-    const dir = join(tmpBase, 'ws-list');
-    mkdirSync(dir, { recursive: true });
-    run('init -y', dir);
-    // No workspaces key -> should handle gracefully
-    const output = run('workspace list', dir);
-    assert.ok(output.includes('No workspaces'), 'Should show no workspaces message for non-monorepo');
-  });
-
-  it('workspace detect checks workspace context', () => {
-    const dir = join(tmpBase, 'ws-detect');
-    mkdirSync(dir, { recursive: true });
-    run('init -y', dir);
-    const output = run('workspace detect', dir);
-    assert.ok(output.includes('not a workspace') || output.includes('Not a workspace'), 'Should indicate not a workspace');
-  });
-
-  it('workspace command is registered in CLI', () => {
-    const dir = join(tmpBase, 'ws-help');
-    mkdirSync(dir, { recursive: true });
-    const output = run('--help', dir);
-    assert.ok(output.includes('workspace'), 'Should show workspace command');
-  });
-
-  it('plugin list handles missing plugins directory', () => {
-    const dir = join(tmpBase, 'plugin-list');
-    mkdirSync(dir, { recursive: true });
-    run('init -y', dir);
-    const output = run('plugin list', dir);
-    assert.ok(output.includes('No plugins found') || output.includes('no plugins'), 'Should show no plugins message');
-  });
-
-  it('plugin command is registered in CLI', () => {
-    const dir = join(tmpBase, 'plugin-help');
-    mkdirSync(dir, { recursive: true });
-    const output = run('--help', dir);
-    assert.ok(output.includes('plugin'), 'Should show plugin command');
-  });
-
   it('init -y --github generates GitHub Actions workflow', () => {
     const dir = join(tmpBase, 'init-github');
     mkdirSync(dir, { recursive: true });
@@ -212,7 +173,7 @@ describe('CLI Integration', () => {
     assert.ok(existsSync(workflowPath), 'Should create workflow file');
     const content = readFileSync(workflowPath, 'utf8');
     assert.ok(content.includes('BMAD Validate'), 'Should contain workflow name');
-    assert.ok(content.includes('bmad-swarm validate'), 'Should contain validate step');
+    assert.ok(content.includes('bmad-swarm@latest validate'), 'Should contain the resolvable validate step');
   });
 
   it('F-018: --github workflow is runnable from a CI checkout', () => {
@@ -225,11 +186,16 @@ describe('CLI Integration', () => {
     // checkouts — its presence guarantees a red workflow.
     assert.ok(!content.includes('bmad-swarm doctor'), 'workflow must not run doctor');
 
-    // The install must be version-pinned, not floating on the public npm
-    // name.
+    // F-023: CI must resolve a *published* package. Pinning this repo's
+    // local package.json version (`npm install -g bmad-swarm@<version>`)
+    // 404s on npm until that exact version is published, reddening the
+    // first run of every generated workflow. Use `npx bmad-swarm@latest`,
+    // which resolves whatever is actually published.
     const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
-    assert.ok(content.includes(`npm install -g ${pkg.name}@${pkg.version}`),
-      'CI install must be pinned to the generating package version');
+    assert.ok(!content.includes(`${pkg.name}@${pkg.version}`),
+      'workflow must NOT pin the unpublished local package version (F-023)');
+    assert.match(content, /npx\s+--yes\s+bmad-swarm@latest\s+validate/,
+      'CI must run a resolvable published spec (npx --yes bmad-swarm@latest validate)');
 
     // F-D4: supported Node runtime, least-privilege token, and a push
     // trigger so main itself gets a validation signal (pull_request alone
