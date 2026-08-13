@@ -6,6 +6,7 @@ import { getProjectPaths } from '../utils/paths.js';
 import { loadSwarmConfig } from '../utils/config.js';
 import { generateAgents } from '../generators/agent-generator.js';
 import { generateMethodology } from '../generators/methodology-generator.js';
+import { generateBin } from '../generators/bin-generator.js';
 import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
@@ -96,6 +97,18 @@ async function runUpdate(options) {
       console.log(`    Use --force to overwrite.`);
     }
     methodologyMigrated = !existedBefore && methodologyResult.generated.length > 0;
+  }
+
+  // 1.6. Reship the pinned serialized-write CLI into .claude/bmad/bin/ (ADR-021).
+  if (options.dryRun) {
+    console.log('  Would regenerate .claude/bmad/bin/');
+  } else {
+    const binResult = generateBin(config, paths, genOptions);
+    console.log(`  ✓ Regenerated .claude/bmad/bin/ (${binResult.generated.length} script)`);
+    if (binResult.skipped.length > 0) {
+      console.log(`    Skipped (manually modified): ${binResult.skipped.length} script(s)`);
+      console.log(`    Use --force to overwrite.`);
+    }
   }
 
   // 2. Regenerate CLAUDE.md

@@ -367,3 +367,16 @@ team:
     model: opus
 rationale: SE-1 track T1 (sequential, on committed prep base). Implement ADR-017 + pinned-script amendment (D-049): narrow orchestrator shell, extend write-gate to Bash/NotebookEdit, path normalization (F-017), settings.local.json out of writable set. Security-critical — fable security-lens review follows. Opus per tier mix.
 ```
+
+## 2026-08-13 — bug-fix (Phase 2 SE-1 / T2: unified record ledger)
+
+```bmad-assembly
+entry_point: bug-fix
+complexity: 11
+autonomy: auto
+team:
+  - role: developer
+    domain: record-ledger
+    model: opus
+rationale: SE-1 track T2 (sequential, on committed T1 base). Unified record envelope (D-036/ADR-021) + serialized record.cjs pinned helper (the one T1 just allow-listed) + ledger-write-guard hook (RES-6 fix) + findings-register/lessons migration to ledger.md. Opus per tier mix.
+```

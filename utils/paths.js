@@ -33,6 +33,7 @@ export function getProjectPaths(projectRoot) {
     agentsDir: join(root, '.claude', 'agents'),
     bmadDir: join(root, '.claude', 'bmad'),
     bmadMethodologyDir: join(root, '.claude', 'bmad', 'methodology'),
+    bmadBinDir: join(root, '.claude', 'bmad', 'bin'),
     hooksDir: join(root, '.claude', 'hooks'),
     settingsJson: join(root, '.claude', 'settings.json'),
     rulesDir: join(root, '.claude', 'rules'),

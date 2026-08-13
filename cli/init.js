@@ -7,6 +7,7 @@ import { getProjectPaths } from '../utils/paths.js';
 import { writeFileSafe, ensureDir, updateGitignore } from '../utils/fs-helpers.js';
 import { generateAgents } from '../generators/agent-generator.js';
 import { generateMethodology } from '../generators/methodology-generator.js';
+import { generateBin } from '../generators/bin-generator.js';
 import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
@@ -121,6 +122,10 @@ async function runInit(options) {
   // generated agents' and commands' methodology references resolve (CB-1).
   const methodologyResult = generateMethodology(config, paths);
   console.log(`  \u2713 Generated .claude/bmad/methodology/ (${methodologyResult.generated.length} files)`);
+
+  // 3.6. Ship the pinned serialized-write CLI into .claude/bmad/bin/ (ADR-021).
+  const binResult = generateBin(config, paths);
+  console.log(`  \u2713 Generated .claude/bmad/bin/ (${binResult.generated.length} script)`);
 
   // 4. Generate .claude/settings.json
   generateSettings(config, paths);

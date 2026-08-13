@@ -35,6 +35,7 @@ export const METHODOLOGY_SHIP_LIST = Object.freeze([
   'artifact-schemas/project-context.md',
   'artifact-schemas/decision-log.md',
   'artifact-schemas/lessons-learned.md',
+  'artifact-schemas/record-envelope.md',
   'quality-gates/code-quality.md',
   'testing-knowledge/api-testing.md',
   'testing-knowledge/auth-testing.md',

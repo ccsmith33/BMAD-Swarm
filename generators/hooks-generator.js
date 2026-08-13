@@ -64,6 +64,7 @@ export function generateHooks(config, projectPaths, options = {}) {
     'user-prompt-submit.cjs',
     'team-assembly-lint.cjs',
     'orchestrator-write-gate.cjs',
+    'ledger-write-guard.cjs',
   ];
 
   for (const name of hooks) {
@@ -104,6 +105,11 @@ export function getHooksConfig() {
       // narrowed orchestrator cannot shell out (echo>/tee/node -e/sed -i) or
       // NotebookEdit around the delegate-everything boundary.
       { matcher: 'Edit|Write|MultiEdit|Bash|NotebookEdit', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/orchestrator-write-gate.cjs"' }] },
+      // ADR-021 / D-049: the serialized-write channel. Denies DIRECT edits to
+      // ledger.md / task-ledger.md / decision-log.md for EVERY agent, forcing
+      // all writes through node .claude/bmad/bin/record.cjs (RES-6 fix). Bash is
+      // deliberately absent from this matcher so the pinned CLI still runs.
+      { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-write-guard.cjs"' }] },
     ],
   };
 }
