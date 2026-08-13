@@ -637,13 +637,17 @@ describe('Hooks (process-spawn contract)', () => {
       assert.equal(result.decision, null);
     });
 
-    it('allows project.yaml', () => {
+    // ADR-017 Amendment 1: project.yaml was REMOVED from the writable set
+    // (D-037 retires the file; the Stream B cutover relies on this). The
+    // orchestrator can no longer write it directly.
+    it('DENIES project.yaml (removed from the writable set, ADR-017 Amendment 1)', () => {
       const event = { tool_input: { file_path: 'project.yaml' } };
-      const result = runHook('orchestrator-write-gate.cjs', {
+      const { decision } = runHook('orchestrator-write-gate.cjs', {
         stdin: JSON.stringify(event),
         env: { AGENT_ROLE: 'orchestrator' },
       });
-      assert.equal(result.decision, null);
+      assert.equal(decision?.hookSpecificOutput?.permissionDecision, 'deny',
+        'project.yaml is no longer in the orchestrator writable set');
     });
 
     it('allows swarm.yaml', () => {
@@ -916,6 +920,64 @@ describe('Hooks (process-spawn contract)', () => {
     for (const [label, cmd] of ALLOWED_BASH) {
       it(`F-016: ALLOWS ${label}`, () => {
         assert.equal(orchestratorBashDecision(cmd), null, `should pass: ${cmd}`);
+      });
+    }
+
+    // -------------------------------------------------------------------
+    // ADR-017 Amendment 1: git inspection matrix. Coordination git is
+    // ALLOWED; write-vector + destructive git is DENIED. Includes the -C bug
+    // (option-with-argument globals consumed before subcommand resolution),
+    // the -c alias/shell-escape vector, and --exec-path.
+    // -------------------------------------------------------------------
+    const GIT_ALLOWED = [
+      ['git commit', 'git commit -m "wip"'],
+      ['git push (plain)', 'git push origin stream-a'],
+      ['git fetch', 'git fetch origin'],
+      ['git merge --ff-only', 'git merge --ff-only stream-a'],
+      ['git pull --ff-only', 'git pull --ff-only origin main'],
+      ['git checkout branch-form', 'git checkout main'],
+      ['git checkout -b (create)', 'git checkout -b feature'],
+      ['git switch branch-form', 'git switch main'],
+      ['git switch -c (create)', 'git switch -c feature'],
+      ['git branch', 'git branch feature'],
+      ['git tag', 'git tag v3.0.0'],
+      ['git reset --soft', 'git reset --soft HEAD~1'],
+      ['git reset (default/mixed)', 'git reset HEAD~1'],
+      ['git -C <path> checkout main (the -C bug: subcommand must resolve to checkout)', 'git -C /tmp checkout main'],
+      ['git -c core.pager=cat log', 'git -c core.pager=cat log --oneline'],
+    ];
+    for (const [label, cmd] of GIT_ALLOWED) {
+      it(`git-matrix: ALLOWS ${label}`, () => {
+        assert.equal(orchestratorBashDecision(cmd), null, `coordination git should pass: ${cmd}`);
+      });
+    }
+
+    const GIT_DENIED = [
+      ['git apply a patch', 'git apply /tmp/x.patch'],
+      ['git -C <path> apply (the -C bug: must still be denied)', 'git -C /tmp apply evil.patch'],
+      ['git am a mailbox', 'git am /tmp/x.mbox'],
+      ['git restore', 'git restore src/foo.js'],
+      ['git stash pop', 'git stash pop'],
+      ['git checkout <ref> -- <path> (pathspec)', 'git checkout main -- src/app.js'],
+      ['git checkout <ref> <path> (two operands, pathspec)', 'git checkout HEAD~3 src/foo.js'],
+      ['git switch pathspec', 'git switch main -- src/app.js'],
+      ['git reset --hard', 'git reset --hard HEAD~1'],
+      ['git reset --merge', 'git reset --merge'],
+      ['git clean', 'git clean -fdx'],
+      ['git push --force', 'git push --force'],
+      ['git push --force-with-lease', 'git push --force-with-lease'],
+      ['git push --delete', 'git push origin --delete stream-a'],
+      ['git merge without --ff-only', 'git merge stream-a'],
+      ['git pull without --ff-only', 'git pull origin main'],
+      ['git rebase', 'git rebase main'],
+      ['git filter-branch', 'git filter-branch --tree-filter x HEAD'],
+      ['git update-ref', 'git update-ref refs/heads/x HEAD'],
+      ['git -c alias shell-escape', "git -c alias.x='!sh' x"],
+      ['git --exec-path binary substitution', 'git --exec-path=/tmp/evil status'],
+    ];
+    for (const [label, cmd] of GIT_DENIED) {
+      it(`git-matrix: DENIES ${label}`, () => {
+        assert.equal(orchestratorBashDecision(cmd), 'deny', `write-vector/destructive git should be denied: ${cmd}`);
       });
     }
 

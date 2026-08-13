@@ -24,6 +24,43 @@ describe('Config Validator', () => {
     assert.ok(errors.some(e => e.includes('project.name')));
   });
 
+  // ADR-017 Amendment 1: permissions.orchestrator_allow validation. Invalid
+  // entries must surface as validateConfig errors (loud config-load failure),
+  // not silent drops.
+  describe('permissions.orchestrator_allow', () => {
+    const withAllow = (list) => validateConfig({ project: { name: 'test' }, permissions: { orchestrator_allow: list } });
+
+    it('accepts a valid list of Bash grants', () => {
+      const errors = withAllow(['Bash(cargo check:*)', 'Bash(git commit:*)']);
+      assert.equal(errors.filter(e => e.includes('orchestrator_allow')).length, 0);
+    });
+
+    it('rejects a bare git grant', () => {
+      const errors = withAllow(['Bash(git:*)']);
+      assert.ok(errors.some(e => e.includes('orchestrator_allow') && /git/.test(e)));
+    });
+
+    it('rejects an interpreter grant', () => {
+      const errors = withAllow(['Bash(node -e:*)']);
+      assert.ok(errors.some(e => e.includes('orchestrator_allow')));
+    });
+
+    it('rejects a --force literal', () => {
+      const errors = withAllow(['Bash(git push --force:*)']);
+      assert.ok(errors.some(e => e.includes('orchestrator_allow')));
+    });
+
+    it('rejects a non-array value', () => {
+      const errors = validateConfig({ project: { name: 'test' }, permissions: { orchestrator_allow: 'Bash(ls:*)' } });
+      assert.ok(errors.some(e => e.includes('orchestrator_allow') && e.includes('array')));
+    });
+
+    it('names the offending entry in the error', () => {
+      const errors = withAllow(['Bash(tee x:*)']);
+      assert.ok(errors.some(e => e.includes('Bash(tee x:*)')), 'error must quote the refused entry');
+    });
+  });
+
   it('catches missing project name', () => {
     const errors = validateConfig({ project: {} });
     assert.ok(errors.some(e => e.includes('project.name')));
