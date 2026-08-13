@@ -4,6 +4,7 @@ import { getProjectPaths } from '../utils/paths.js';
 import { loadSwarmConfig, getAgentNames } from '../utils/config.js';
 import { readFileSafe } from '../utils/fs-helpers.js';
 import { METHODOLOGY_SHIP_LIST } from '../utils/scaffold-paths.js';
+import { validateBrain, extractPointers } from '../utils/project-brain.js';
 
 export function registerDoctorCommand(program) {
   program
@@ -159,6 +160,13 @@ async function runDoctor() {
     hasIssues = true;
   }
 
+  // 8.5. Project brain health (phase2 §4.4 / continuity §2.5). Validate the
+  // frontmatter contract and verify every cold-store pointer resolves — the
+  // anti-fabrication guard (a brain of unpointered/dangling assertions
+  // accumulates confident falsehoods a fresh session cannot detect). The brain
+  // is optional: absence is informational, not a failure.
+  if (checkProjectBrain(paths)) hasIssues = true;
+
   // 9. Orphaned overrides
   if (existsSync(paths.overridesAgentsDir)) {
     const overrides = readdirSync(paths.overridesAgentsDir).filter(f => f.endsWith('.md'));
@@ -178,6 +186,66 @@ async function runDoctor() {
   } else {
     console.log('All checks passed!');
   }
+}
+
+/**
+ * Project-brain health check. Validates the frontmatter contract (required keys
+ * + schema version) and resolves every cold-store pointer (artifacts/… paths on
+ * disk, cited D-IDs in the decision log). Returns true if it found a problem
+ * (so the caller flips hasIssues). A missing brain is informational, not a fail.
+ * @param {object} paths - Project paths
+ * @returns {boolean} whether an issue was found
+ */
+function checkProjectBrain(paths) {
+  const brainPath = join(paths.artifactsDir, 'context', 'project-brain.md');
+  if (!existsSync(brainPath)) {
+    console.log('  ℹ project brain not found (artifacts/context/project-brain.md) — comprehension continuity is off');
+    return false;
+  }
+  const text = readFileSafe(brainPath) || '';
+  let issue = false;
+
+  // Frontmatter contract (ignore the advisory budget error — that is validate's
+  // domain; doctor checks structural health + pointers).
+  const v = validateBrain(text);
+  const structuralErrors = v.errors.filter((e) => !/^budget:/.test(e));
+  if (structuralErrors.length === 0) {
+    check(true, 'project brain frontmatter + schema valid');
+  } else {
+    check(false, `project brain has ${structuralErrors.length} schema/frontmatter issue(s): ${structuralErrors[0]}`,
+      'Fix artifacts/context/project-brain.md against .claude/bmad/methodology/artifact-schemas/project-brain.md');
+    issue = true;
+  }
+
+  // Pointer resolution: dangling file paths + missing D-IDs.
+  const { paths: ptrPaths, dIds } = extractPointers(text);
+  const danglingPaths = ptrPaths.filter((rel) => !existsSync(join(paths.root, rel)));
+
+  const knownDIds = collectDecisionIds(join(paths.artifactsDir, 'context', 'decision-log.md'));
+  const missingDIds = knownDIds === null ? [] : dIds.filter((id) => !knownDIds.has(id));
+
+  if (danglingPaths.length === 0 && missingDIds.length === 0) {
+    check(true, `project brain pointers resolve (${ptrPaths.length} path(s), ${dIds.length} D-ID(s))`);
+  } else {
+    const parts = [];
+    if (danglingPaths.length) parts.push(`${danglingPaths.length} dangling path(s): ${danglingPaths.join(', ')}`);
+    if (missingDIds.length) parts.push(`${missingDIds.length} unknown D-ID(s): ${missingDIds.join(', ')}`);
+    check(false, `project brain has ${parts.join('; ')}`,
+      'A brain pointer must resolve (anti-fabrication guard). Fix or remove the dangling reference.');
+    issue = true;
+  }
+
+  return issue;
+}
+
+// Collect the D-IDs defined in the decision log. Returns null if the log is
+// absent (D-ID verification is then skipped — cannot verify what is not there).
+function collectDecisionIds(decisionLogPath) {
+  if (!existsSync(decisionLogPath)) return null;
+  const content = readFileSafe(decisionLogPath) || '';
+  const ids = new Set();
+  for (const m of content.matchAll(/\bD-\d+\b/g)) ids.add(m[0]);
+  return ids;
 }
 
 function check(pass, message, fix) {

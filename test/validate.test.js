@@ -1,9 +1,14 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { validateArtifacts, VALID_PHASES } from '../utils/artifact-validator.js';
+import { BUDGET_TOKENS } from '../utils/project-brain.js';
+
+const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'bmad-swarm.js');
 
 // Full section sets, keyed to methodology/artifact-schemas/spec.yaml. Building
 // valid fixtures from these keeps the tests honest against the single source.
@@ -230,5 +235,55 @@ Then the data is saved
   it('exports VALID_PHASES including reviews', () => {
     assert.ok(VALID_PHASES.includes('reviews'));
     assert.ok(VALID_PHASES.includes('implementation'));
+  });
+});
+
+// M-1 wiring: `validate` runs an ADVISORY project-brain budget lint. Over-budget
+// prints a warning but never hard-fails the command (the brain is a
+// comprehension aid, not a quality gate).
+describe('validate CLI — project-brain advisory', () => {
+  const tmpDir = join(tmpdir(), 'bmad-validate-brain-' + Date.now());
+  before(() => { mkdirSync(tmpDir, { recursive: true }); });
+  after(() => { rmSync(tmpDir, { recursive: true, force: true }); });
+
+  function makeProjectWithBrain(name, brainBody) {
+    const dir = join(tmpDir, name);
+    mkdirSync(join(dir, 'artifacts', 'context'), { recursive: true });
+    writeFileSync(join(dir, 'swarm.yaml'), 'project:\n  name: t\n');
+    const fm = '---\nschema: project-brain/1\nupdated: 2026-08-13T14:00:00Z\ncheckpoint: 1\nphase: implementation\n---\n';
+    writeFileSync(join(dir, 'artifacts', 'context', 'project-brain.md'), fm + brainBody);
+    return dir;
+  }
+
+  const SECTIONS = (openQ) => [
+    '\n## What this is (and why)\nA project.',
+    '\n## Current mental model\n- a',
+    '\n## Load-bearing facts\n- f (D-1)',
+    '\n## Active threads\n- t — s — n — artifacts/x.md @c1',
+    '\n## Dead ends\n- d — w (D-2) @c1',
+    `\n## Open questions\n${openQ}`,
+    '\n## Pointers\n- decision-log: artifacts/context/decision-log.md\n',
+  ].join('\n');
+
+  function runValidate(dir) {
+    try {
+      return { code: 0, out: execSync(`node "${CLI}" validate`, { cwd: dir, encoding: 'utf8' }) };
+    } catch (err) {
+      return { code: err.status ?? 1, out: (err.stdout || '') + (err.stderr || '') };
+    }
+  }
+
+  it('emits an over-budget advisory on a bloated brain', () => {
+    const fat = '- ' + 'x'.repeat(BUDGET_TOKENS * 4 + 200);
+    const dir = makeProjectWithBrain('over', SECTIONS(fat));
+    const { out } = runValidate(dir);
+    assert.match(out, /Project Brain/);
+    assert.match(out, /over budget/);
+  });
+
+  it('reports within-budget for a lean brain and does not hard-fail on the brain', () => {
+    const dir = makeProjectWithBrain('lean', SECTIONS('- q?'));
+    const { out } = runValidate(dir);
+    assert.match(out, /within budget/);
   });
 });

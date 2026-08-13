@@ -60,15 +60,19 @@ export function estimateTokens(text) {
 }
 
 /**
- * Split a brain file into { frontmatter, body, raw }. Frontmatter is the leading
- * `---`-fenced YAML block; body is everything after it.
+ * Split a brain file into { frontmatter, body, raw, frontmatterBlock }.
+ * Frontmatter is the leading `---`-fenced YAML block; body is everything after
+ * it. `frontmatterBlock` is the VERBATIM leading slice (fences included) such
+ * that `frontmatterBlock + body === raw` byte-for-byte — so eviction can measure
+ * against the same serialization the budget gate measures, never a re-`dump`ed
+ * copy (M-2).
  * @param {string} text
- * @returns {{ frontmatter: object|null, body: string, raw: string, frontmatterError: string|null }}
+ * @returns {{ frontmatter: object|null, body: string, raw: string, frontmatterBlock: string, frontmatterError: string|null }}
  */
 export function splitFrontmatter(text) {
   const raw = String(text || '');
   const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(raw);
-  if (!m) return { frontmatter: null, body: raw, raw, frontmatterError: 'no --- frontmatter block' };
+  if (!m) return { frontmatter: null, body: raw, raw, frontmatterBlock: '', frontmatterError: 'no --- frontmatter block' };
   let frontmatter = null;
   let frontmatterError = null;
   try {
@@ -76,7 +80,10 @@ export function splitFrontmatter(text) {
   } catch (e) {
     frontmatterError = e && e.message ? e.message : String(e);
   }
-  return { frontmatter, body: m[2] || '', raw, frontmatterError };
+  const body = m[2] || '';
+  // Exact prefix (handles the optional trailing newline after the closing ---).
+  const frontmatterBlock = raw.slice(0, raw.length - body.length);
+  return { frontmatter, body, raw, frontmatterBlock, frontmatterError };
 }
 
 // Parse a `## Heading` sectioned markdown body into ordered sections. Each
@@ -116,11 +123,11 @@ function parseItem(text) {
  * @returns {{ frontmatter, body, sections, sectionMap, frontmatterError }}
  */
 export function parseBrain(text) {
-  const { frontmatter, body, frontmatterError } = splitFrontmatter(text);
+  const { frontmatter, body, frontmatterBlock, frontmatterError } = splitFrontmatter(text);
   const sections = parseSections(body);
   const sectionMap = new Map();
   for (const s of sections) sectionMap.set(normalizeHeading(s.heading), s);
-  return { frontmatter, body, sections, sectionMap, frontmatterError };
+  return { frontmatter, body, frontmatterBlock, sections, sectionMap, frontmatterError };
 }
 
 /**
@@ -192,6 +199,28 @@ export function validateBrain(text) {
   return { ok: errors.length === 0, errors, warnings, tokens, overBudget };
 }
 
+/**
+ * Extract the brain's verifiable pointers: cold-store file paths and cited
+ * D-IDs (continuity §2.5 anti-fabrication guard — Vantage's 22 fabricated paths).
+ * Only `artifacts/…` paths are returned (the cold stores + phase artifacts the
+ * brain indexes); scaffold refs like `.claude/…` are deliberately excluded — they
+ * are regenerated, not durable records, and would false-positive against a stale
+ * dogfood install. The `next D-ID: D-NNN` pointer line is skipped: that ID is
+ * intentionally not-yet-allocated.
+ * @param {string} text
+ * @returns {{ paths: string[], dIds: string[] }}
+ */
+export function extractPointers(text) {
+  const paths = new Set();
+  for (const m of String(text).matchAll(/\b(artifacts\/[\w./-]+\.\w{2,5})\b/g)) paths.add(m[1]);
+  const dIds = new Set();
+  for (const line of String(text).split('\n')) {
+    if (/next\s*d-id/i.test(line)) continue; // the "next D-ID" pointer is not-yet-allocated
+    for (const m of line.matchAll(/\bD-\d+\b/g)) dIds.add(m[0]);
+  }
+  return { paths: [...paths], dIds: [...dIds] };
+}
+
 // A load-bearing fact must carry a resolvable pointer: a file path or a D-ID
 // (or L-/F-/R-/C- record id). The anti-fabrication guard (continuity §2.5 /
 // Vantage's 22 fabricated paths) — a brain of unpointered assertions accumulates
@@ -232,23 +261,29 @@ function truncate(s, n = 60) {
  */
 export function evictToBudget(text, opts = {}) {
   const budget = opts.budget ?? BUDGET_TOKENS;
-  const parsed = parseBrain(text);
+  const { frontmatterBlock, body } = splitFrontmatter(text);
 
-  // Build a mutable working copy of evictable items with their locations.
+  // Work directly on the RAW body lines so a zero-eviction result reserializes
+  // byte-for-byte to the input (frontmatterBlock + body === raw), and the token
+  // count agrees exactly with validateBrain (M-2). Only whole evicted bullet
+  // lines are removed; every other line is preserved verbatim.
   const evictableSpecs = new Set(SECTIONS.filter((s) => s.evictable).map((s) => normalizeHeading(s.heading)));
-  const kept = new Map();       // heading → item[] (order preserved)
-  const candidates = [];        // { headingNorm, heading, idx, item }
-  for (const sec of parsed.sections) {
-    const hn = normalizeHeading(sec.heading);
-    kept.set(hn, sec.items.map((it) => ({ ...it, dropped: false })));
-    if (evictableSpecs.has(hn)) {
-      kept.get(hn).forEach((it, idx) => candidates.push({ headingNorm: hn, heading: sec.heading, idx, item: it }));
+  const lines = body.split('\n');
+  const candidates = [];        // { lineIdx, heading, item }
+  let currentHeadingNorm = null;
+  let currentHeading = null;
+  lines.forEach((line, lineIdx) => {
+    const h = /^##\s+(.*\S)\s*$/.exec(line);
+    if (h) { currentHeading = h[1].trim(); currentHeadingNorm = normalizeHeading(currentHeading); return; }
+    const b = /^\s*[-*]\s+(.*\S)\s*$/.exec(line);
+    if (b && currentHeadingNorm && evictableSpecs.has(currentHeadingNorm)) {
+      candidates.push({ lineIdx, heading: currentHeading, item: parseItem(b[1]) });
     }
-  }
+  });
 
-  // Oldest touched first; null (unmarked) sorts last so it is evicted only as a
-  // last resort — but we STOP before cutting unmarked items (protected by
-  // judgment), so in practice unmarked entries survive mechanical eviction.
+  // Oldest touched first; null (unmarked) sorts last, but we STOP before cutting
+  // unmarked items (protected by judgment), so in practice unmarked entries
+  // survive mechanical eviction.
   candidates.sort((a, b) => {
     const ta = a.item.touchedAt, tb = b.item.touchedAt;
     if (ta === null && tb === null) return 0;
@@ -257,21 +292,20 @@ export function evictToBudget(text, opts = {}) {
     return ta - tb;
   });
 
+  const dropped = new Set();    // line indices to remove
   const evicted = [];
-  const render = () => rebuildBody(parsed.sections, kept);
+  const render = () => frontmatterBlock + lines.filter((_, i) => !dropped.has(i)).join('\n');
   for (const c of candidates) {
-    if (estimateTokens(joinFrontmatter(parsed) + render()) <= budget) break;
+    if (estimateTokens(render()) <= budget) break;
     if (c.item.touchedAt === null) break; // do not mechanically cut unmarked items
-    const arr = kept.get(c.headingNorm);
-    if (arr[c.idx].dropped) continue;
-    arr[c.idx].dropped = true;
+    dropped.add(c.lineIdx);
     evicted.push({ section: c.heading, text: c.item.text, touchedAt: c.item.touchedAt });
   }
 
-  const body = render();
-  const tokens = estimateTokens(joinFrontmatter(parsed) + body);
+  const rebuiltBody = lines.filter((_, i) => !dropped.has(i)).join('\n');
+  const tokens = estimateTokens(frontmatterBlock + rebuiltBody);
   return {
-    body,
+    body: rebuiltBody,
     evicted,
     tokens,
     underBudget: tokens <= budget,
@@ -279,32 +313,4 @@ export function evictToBudget(text, opts = {}) {
     // orchestrator must curate identity/mental-model/pointers by hand.
     protectedRemaining: tokens > budget,
   };
-}
-
-function joinFrontmatter(parsed) {
-  if (!parsed.frontmatter) return '';
-  return '---\n' + yaml.dump(parsed.frontmatter) + '---\n';
-}
-
-// Re-render the body from the parsed sections, dropping evicted items. Non-list
-// prose lines inside a section are preserved verbatim; only dropped bullets are
-// removed.
-function rebuildBody(sections, kept) {
-  const out = [];
-  for (const sec of sections) {
-    out.push(`## ${sec.heading}`);
-    const droppedTexts = new Set(
-      (kept.get(normalizeHeading(sec.heading)) || []).filter((it) => it.dropped).map((it) => it.text),
-    );
-    for (const line of sec.rawLines) {
-      const b = /^\s*[-*]\s+(.*\S)\s*$/.exec(line);
-      if (b) {
-        const { text } = parseItem(b[1]);
-        if (droppedTexts.has(text)) continue;
-      }
-      out.push(line);
-    }
-  }
-  // Trim a single trailing blank the join may introduce; keep it tidy.
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
 }

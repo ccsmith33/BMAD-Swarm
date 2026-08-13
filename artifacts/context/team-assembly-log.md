@@ -438,3 +438,17 @@ team:
     model: opus
 rationale: SE-2 second half (on committed brain). PostToolUse writer hook appends durable task-ledger rows on TaskCreate/TaskUpdate (spike-clear) via the serialized record.cjs task-event channel; owner->task-id map for woken events. Reconciliation/liveness is SE-3. Opus per tier mix.
 ```
+
+## 2026-08-13 — audit (Phase 2 SE-2 adversarial review)
+
+```bmad-assembly
+entry_point: audit
+complexity: 10
+autonomy: auto
+team:
+  - role: reviewer
+    domain: se2
+    lenses: [code-quality, test-coverage]
+    model: opus
+rationale: SE-2 (project brain + task-ledger writers) committed on branch. Adversarial review — brain budget/eviction/PreCompact-flush/warm-boot correctness, task-ledger PostToolUse writer soundness (per verified spike), never-blocks discipline, 7-hook interactions, no SE-1 regression. Opus (continuity/coordination, not a security boundary).
+```

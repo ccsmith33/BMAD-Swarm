@@ -9,6 +9,7 @@ import {
   evictToBudget,
   estimateTokens,
   splitFrontmatter,
+  extractPointers,
   SCHEMA_VERSION,
   BUDGET_TOKENS,
   SECTIONS,
@@ -239,6 +240,66 @@ describe('project-brain: token budget + eviction', () => {
     const result = evictToBudget(brain, { budget: 50 });
     // The unmarked fact stays — mechanical eviction stops at unmarked items.
     assert.match(result.body, /unmarked fact/);
+  });
+});
+
+describe('project-brain: extractPointers (M-1 doctor wiring)', () => {
+  it('returns artifacts/ paths and excludes .claude/ scaffold refs', () => {
+    const { paths } = extractPointers(makeBrain());
+    assert.ok(paths.includes('artifacts/context/decision-log.md'));
+    assert.ok(!paths.some((p) => p.startsWith('.claude/')), '.claude scaffold refs must be excluded');
+  });
+
+  it('collects cited D-IDs but skips the "next D-ID" pointer line', () => {
+    const brain = makeBrain({
+      sections: {
+        'What this is (and why)': 'A project.',
+        'Current mental model': ['- a'],
+        'Load-bearing facts': ['- fact (D-1)'],
+        'Active threads': ['- t — s — n — artifacts/x.md @c1'],
+        'Dead ends': ['- d — rejected (D-2) @c1'],
+        'Open questions': ['- q?'],
+        'Pointers': ['- decision-log (next D-ID: D-99): artifacts/context/decision-log.md'],
+      },
+    });
+    const { dIds } = extractPointers(brain);
+    assert.ok(dIds.includes('D-1'));
+    assert.ok(dIds.includes('D-2'));
+    assert.ok(!dIds.includes('D-99'), 'the not-yet-allocated next D-ID must be skipped');
+  });
+});
+
+describe('project-brain: M-2 token agreement (validate vs evict)', () => {
+  // A no-op eviction must reserialize byte-identically and report the SAME token
+  // count validateBrain reports — even with nested/flow frontmatter mappings
+  // that a yaml.dump round-trip would mutate.
+  const nested = makeBrain({
+    frontmatter: {}, // uses defaults
+    rawFrontmatter: [
+      '---',
+      'schema: project-brain/1',
+      'updated: 2026-08-13T14:00:00Z',
+      'checkpoint: 1',
+      'phase: implementation',
+      'gates:',
+      '  prd-approved: {status: passed, d-id: D-009}',
+      'staleness: {ledger-events-since-checkpoint: 0}',
+      '---',
+      '',
+    ].join('\n'),
+  });
+
+  it('no-op eviction agrees with validate on token count (nested frontmatter)', () => {
+    const v = validateBrain(nested).tokens;
+    const e = evictToBudget(nested, { budget: 10 ** 9 }).tokens;
+    assert.equal(v, e, 'validate and evict must measure the same serialization');
+  });
+
+  it('no-op eviction reserializes the body byte-for-byte', () => {
+    const { body } = splitFrontmatter(nested);
+    const result = evictToBudget(nested, { budget: 10 ** 9 });
+    assert.equal(result.body, body, 'zero-eviction body must be verbatim');
+    assert.equal(result.evicted.length, 0);
   });
 });
 

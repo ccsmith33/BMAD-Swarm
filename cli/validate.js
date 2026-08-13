@@ -1,7 +1,9 @@
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { getProjectPaths } from '../utils/paths.js';
 import { validateArtifacts } from '../utils/artifact-validator.js';
+import { readFileSafe } from '../utils/fs-helpers.js';
+import { validateBrain, BUDGET_TOKENS } from '../utils/project-brain.js';
 
 export function registerValidateCommand(program) {
   program
@@ -47,7 +49,35 @@ async function runValidate(options) {
 
   console.log(`\nTotal: ${result.passed} passed, ${result.failed} failed`);
 
+  // Project-brain budget lint — ADVISORY only (the brain is a comprehension aid,
+  // not a quality gate; spec §4.4 line 239). It never changes the exit code.
+  lintProjectBrain(paths);
+
   if (result.failed > 0) {
     process.exit(1);
+  }
+}
+
+// Advisory budget/schema lint for artifacts/context/project-brain.md. Prints an
+// over-budget warning (the touch-or-die eviction trigger) plus any schema
+// errors/warnings as advisories. Deliberately does NOT affect the exit code.
+function lintProjectBrain(paths) {
+  const brainPath = join(paths.artifactsDir, 'context', 'project-brain.md');
+  if (!existsSync(brainPath)) return; // the brain is optional
+  const text = readFileSafe(brainPath) || '';
+  const v = validateBrain(text);
+
+  console.log('\nProject Brain (advisory — comprehension aid, not a gate)\n');
+  if (v.overBudget) {
+    console.log(`  ⚠ over budget: ${v.tokens} tokens exceeds the ~${BUDGET_TOKENS}-token cap — run a touch-or-die eviction pass at the next checkpoint`);
+  } else {
+    console.log(`  ✓ within budget: ${v.tokens}/${BUDGET_TOKENS} tokens`);
+  }
+  for (const e of v.errors) {
+    if (/^budget:/.test(e)) continue; // already surfaced above
+    console.log(`  ⚠ ${e}`);
+  }
+  for (const w of v.warnings) {
+    console.log(`  ℹ ${w}`);
   }
 }
