@@ -108,3 +108,7 @@ decide who hears it. Full model: `methodology/advisory.md`.
 Preference is not disagreement: "I'd have used a Map here" stays silent. Only a
 claim with a real stakes signal (reversibility, blast radius, security, cost,
 contradiction) earns a voice.
+
+## Claims-table authoring (verification layer)
+
+At artifact-completion time, author a claims table for the load-bearing, non-obvious assertions your work rests on (3-7 C-IDs; an assertion that, if false, would change a decision, break the build, or invalidate downstream work). Mark each `checked` (backed by a replayable evidence item — pin the commit), `cited` (resolving source), `attested` (a named human said so), or `assumed` (explicitly unverified — allowed and visible; the honest `assumed` is the point). Do not claim every sentence — the budget is load-bearing. Schema: .claude/bmad/methodology/artifact-schemas/claims-table.md.

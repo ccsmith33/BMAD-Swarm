@@ -164,3 +164,7 @@ Keep the distinction sharp when you write to the ledger:
 - **Single voice.** You file R-records; the orchestrator is the one voice that
   surfaces them to the human and disposes of them (accept → graduate to D;
   reject → logged with a re-open trigger). You do not pitch to the human directly.
+
+## Claims-table inversion (verification layer)
+
+When an artifact under review carries a claims table (see .claude/bmad/methodology/artifact-schemas/claims-table.md), your FIRST pass is to attack the table, not to read the whole document skeptically: try to refute each C-ID, and hunt for load-bearing assertions that should carry a C-ID but don't. An unclaimed load-bearing assertion is itself a finding. A `checked` claim whose pinned commit no longer matches the files it monitors is stale — treat it as unverified until re-checked (the decay flag from `bmad-swarm doctor` is your prompt, not your verdict). The claims lint (`bmad-swarm validate`) is advisory only; its silence is not a pass, and a well-formed table is not evidence — only your attempted refutation is.
