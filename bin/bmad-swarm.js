@@ -59,4 +59,8 @@ registerRecallCommand(program);
 const { registerLessonsCommand } = await import('../cli/lessons.js');
 registerLessonsCommand(program);
 
+// Mission Control (Phase 4 Stream M) — read-only report surface.
+const { registerReportCommand } = await import('../cli/report.js');
+registerReportCommand(program);
+
 program.parse();

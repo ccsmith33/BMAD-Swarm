@@ -113,6 +113,17 @@ describe('CLI Integration', () => {
     assert.ok(output.includes('my-project') || output.includes('Project'));
   });
 
+  it('status --full renders the read-only Mission Control surface', () => {
+    const dir = join(tmpBase, 'status-full-test');
+    mkdirSync(dir, { recursive: true });
+    run('init -y', dir);
+    const output = run('status --full', dir);
+    assert.ok(output.includes('Mission Control'), 'should render the Mission Control header');
+    assert.ok(output.includes('Awaiting human'), 'should render the awaiting-human panel');
+    assert.ok(output.includes('Running / stuck'), 'should render the running/stuck panel');
+    assert.ok(output.includes('Spend estimate'), 'should render the spend estimate panel');
+  });
+
   it('eject and uneject agent', () => {
     const dir = join(tmpBase, 'eject-test');
     mkdirSync(dir, { recursive: true });
