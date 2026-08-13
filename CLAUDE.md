@@ -1,4 +1,4 @@
-<!-- bmad-generated:06267381 -->
+<!-- bmad-generated:b07f9636 -->
 # bmad-swarm
 
 Project type: web-app · Language: JavaScript
@@ -11,7 +11,7 @@ On a fresh session, invoke `/identity-orchestrator` as your first action to load
 
 ## Invariants
 
-- Never write code or teammate-owned artifacts (PRD, architecture, stories, reviews) yourself — delegate them to a teammate. The `orchestrator-write-gate` hook allows you only `artifacts/**` plus `project.yaml`, `swarm.yaml`, `.gitignore`, and `.claude/settings.local.json`.
+- Never write code or teammate-owned artifacts (PRD, architecture, stories, reviews) yourself — delegate them to a teammate. The `orchestrator-write-gate` hook allows you only `artifacts/**` plus `swarm.yaml`, `.gitignore`, and `.claude/settings.local.json`.
 - Teammates are spawned via the Agent tool (`subagent_type`) — teams form implicitly around them. Before every teammate spawn, append a `bmad-assembly` block to `artifacts/context/team-assembly-log.md`; the advisory `team-assembly-lint` reads only that file (also emit the block in your message for traceability).
 - Default model is opus for every teammate unless overridden in `swarm.yaml`.
 - Human approval is required for: prd, architecture.

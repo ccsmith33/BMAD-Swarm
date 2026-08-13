@@ -1,12 +1,18 @@
 ---
 schema: project-brain/1
-updated: 2026-08-13T15:00:00Z
+updated: '2026-08-13T23:02:49.854Z'
 checkpoint: 1
-phase: implementation
+phase: delivery
 gates:
-  prd-approved: {status: skipped, note: reinvention track is design-led, no PRD}
-  architecture-approved: {status: passed, ref: artifacts/design/phase2-enforcement-resilience-2026-08-13.md}
-staleness: {ledger-events-since-checkpoint: 0}
+  prd-approved:
+    status: skipped
+    note: reinvention track is design-led
+    no PRD: null
+  architecture-approved:
+    status: passed
+    ref: artifacts/design/phase2-enforcement-resilience-2026-08-13.md
+staleness:
+  ledger-events-since-checkpoint: 0
 ---
 
 ## What this is (and why)
