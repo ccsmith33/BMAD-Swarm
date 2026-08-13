@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { getProjectPaths } from '../utils/paths.js';
 import { splitFrontmatter } from '../utils/project-brain.js';
+import { missionControlMarkdown } from '../utils/mission-control.js';
 
 /**
  * Register the status command with the CLI program.
@@ -12,20 +13,44 @@ export function registerStatusCommand(program) {
   program
     .command('status')
     .description('Show project configuration, current phase, agent status, and artifact counts')
+    .option('--full', 'Render the read-only Mission Control surface (awaiting-human, running/stuck, decisions/recommendations, spend estimate)')
     .addHelpText('after', `
 Examples:
-  $ bmad-swarm status    Display project name, type, stack, autonomy level,
-                         current phase, agent list (with ejected markers),
-                         and artifact file counts per directory
+  $ bmad-swarm status         Display project name, type, stack, autonomy level,
+                              current phase, agent list (with ejected markers),
+                              and artifact file counts per directory
+  $ bmad-swarm status --full  Render the Mission Control control surface: the
+                              awaiting-human queue, running/stuck tasks, recent
+                              decisions + open recommendations, and a spend
+                              estimate — read-only, generated from the ledgers
 `)
-    .action(async () => {
+    .action(async (opts) => {
       try {
-        await runStatus();
+        if (opts.full) {
+          await runMissionControl();
+        } else {
+          await runStatus();
+        }
       } catch (err) {
         console.error(`Error: ${err.message}`);
         process.exit(1);
       }
     });
+}
+
+/**
+ * Render the Mission Control surface (read-only, D-041). Prints the four action
+ * panels generated purely from the durable stores — no live TaskList is passed,
+ * so running/stuck is ledger-recency-classified (see utils/mission-control.js).
+ */
+async function runMissionControl() {
+  const projectRoot = process.cwd();
+  const paths = getProjectPaths(projectRoot);
+  if (!existsSync(paths.swarmYaml)) {
+    console.log('Not a BMAD Swarm project. Run `bmad-swarm init` first.');
+    return;
+  }
+  process.stdout.write(missionControlMarkdown(projectRoot) + '\n');
 }
 
 /**
