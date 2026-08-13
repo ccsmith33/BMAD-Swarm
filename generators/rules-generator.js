@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { PACKAGE_TEMPLATES_DIR } from '../utils/paths.js';
 import { writeGeneratedFile, isFileManuallyModified, ensureDir } from '../utils/fs-helpers.js';
 import { render } from '../utils/template.js';
+import { collectEarnedLessons, renderLearnedStandards } from '../utils/earned-rules.js';
 
 /**
  * Generate .claude/rules/ files from rule templates and swarm.yaml config.
@@ -30,6 +31,12 @@ export function generateRules(config, projectPaths, options = {}) {
 
   const data = buildRulesTemplateData(config);
 
+  // Born-immune (phase4 §3.1 item 6): promoted L-records compile into the
+  // quality-standards scaffold as "Learned Standards". Empty unless a rule was
+  // actually earned+promoted, so the default scaffold is unchanged.
+  const earnedLessons = collectEarnedLessons(config, projectPaths, options);
+  const learnedSection = renderLearnedStandards(earnedLessons);
+
   for (const templateFile of templateFiles) {
     const outputPath = join(projectPaths.rulesDir, templateFile);
 
@@ -41,7 +48,10 @@ export function generateRules(config, projectPaths, options = {}) {
 
     const templatePath = join(rulesTemplateDir, templateFile);
     const template = readFileSync(templatePath, 'utf8');
-    const content = render(template, data);
+    let content = render(template, data);
+    if (templateFile === 'quality-standards.md' && learnedSection) {
+      content = content.replace(/\s*$/, '\n') + learnedSection;
+    }
 
     writeGeneratedFile(outputPath, content);
     generated.push(templateFile);

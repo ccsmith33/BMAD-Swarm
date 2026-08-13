@@ -492,7 +492,7 @@ body: |
 record:
   id: F-27
   type: finding
-  status: open
+  status: resolved
   fingerprint: append-status-bypasses-human-gate
   provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-13, occurrences: []}
   evidence:

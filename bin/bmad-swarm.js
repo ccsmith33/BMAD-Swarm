@@ -52,4 +52,11 @@ registerStartCommand(program);
 const { registerPhaseCommand } = await import('../cli/phase.js');
 registerPhaseCommand(program);
 
+// Knowledge-promotion surface (Stream K): recall + lessons {harvest,propose,reopen-scan}.
+const { registerRecallCommand } = await import('../cli/recall.js');
+registerRecallCommand(program);
+
+const { registerLessonsCommand } = await import('../cli/lessons.js');
+registerLessonsCommand(program);
+
 program.parse();

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bmad-generated:e4906445
+// bmad-generated:1ee52512
 // BMAD Swarm - record.cjs: the pinned, serialized-write channel for the unified
 // record ledger (ADR-021 / D-036 / D-049; phase2 design §3.2, §4.1).
 //
@@ -386,6 +386,173 @@ function editRecordStatus(content, id, newStatus, opts) {
 }
 
 // ---------------------------------------------------------------------------
+// Recurrence + record introspection (all textual — no YAML parse; the shipped
+// script carries no parser). The provenance flow map is emitted single-line by
+// emitFlow, so it is scannable with an anchored regex + a bracket walker.
+// ---------------------------------------------------------------------------
+
+// Strip surrounding double-quotes (and unescape) from an emitted scalar token.
+function unquoteScalar(s) {
+  const t = String(s).trim();
+  if (t.length >= 2 && t[0] === '"' && t.endsWith('"')) {
+    return t.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return t;
+}
+
+// Locate the single `provenance: {…}` line inside a record section. Returns
+// {whole, indent, flow} or null. The flow is the `{…}` map, guaranteed on one
+// line by emitFlow.
+function provenanceLine(sectionText) {
+  const m = /^(\s*)provenance:\s*(\{.*\})\s*$/m.exec(sectionText);
+  if (!m) return null;
+  return { whole: m[0], indent: m[1], flow: m[2] };
+}
+
+// Quote-aware bracket walk: given `[` at index `lb` in `s`, return the index of
+// its matching `]` (skipping brackets inside double-quoted strings).
+function matchBracket(s, lb) {
+  let depth = 0;
+  let inQ = false;
+  for (let i = lb; i < s.length; i++) {
+    const c = s[i];
+    if (inQ) { if (c === '"' && s[i - 1] !== '\\') inQ = false; continue; }
+    if (c === '"') { inQ = true; continue; }
+    if (c === '[') depth++;
+    else if (c === ']') { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+// Append one occurrence flow-map into the `occurrences: [...]` inside a
+// provenance flow string. Returns the new flow string.
+function appendOccurrenceToFlow(flow, occ) {
+  const occFlow = emitFlow(occ);
+  const ki = flow.indexOf('occurrences:');
+  if (ki === -1) {
+    // No occurrences key (shouldn't happen — serializeRecord always emits it),
+    // splice one before the closing brace.
+    return flow.replace(/\}\s*$/, `, occurrences: [${occFlow}]}`);
+  }
+  const lb = flow.indexOf('[', ki);
+  const rb = matchBracket(flow, lb);
+  if (lb === -1 || rb === -1) return flow;
+  const inner = flow.slice(lb + 1, rb).trim();
+  const newInner = inner ? `${inner}, ${occFlow}` : occFlow;
+  return flow.slice(0, lb + 1) + newInner + flow.slice(rb);
+}
+
+// Distinct project names named in a provenance flow (own project + every
+// occurrence's project) — the cross-context recurrence key.
+function projectsInProvenance(flow) {
+  const set = new Set();
+  if (!flow) return set;
+  const oi = flow.indexOf('occurrences:');
+  const head = oi === -1 ? flow : flow.slice(0, oi);
+  const tail = oi === -1 ? '' : flow.slice(oi);
+  const own = /\bproject:\s*("(?:[^"\\]|\\.)*"|[^,}\]]+)/.exec(head);
+  if (own) set.add(unquoteScalar(own[1]));
+  const re = /\bproject:\s*("(?:[^"\\]|\\.)*"|[^,}\]]+)/g;
+  let m;
+  while ((m = re.exec(tail)) !== null) set.add(unquoteScalar(m[1]));
+  return set;
+}
+
+// Find the section of the FIRST record of `type` whose fingerprint === `fp`.
+// Returns {id, start, end} or null.
+function findSectionByFingerprint(content, type, fp) {
+  const headRe = new RegExp(`^##\\s+(${type}-\\d+)\\s+—`, 'gm');
+  let m;
+  while ((m = headRe.exec(content)) !== null) {
+    const id = m[1];
+    const b = sectionBounds(content, id);
+    if (!b) continue;
+    const section = content.slice(b.start, b.end);
+    const fm = /^\s*fingerprint:\s*(\S+)/m.exec(section);
+    if (fm && unquoteScalar(fm[1]) === String(fp)) return { id, start: b.start, end: b.end };
+  }
+  return null;
+}
+
+// Extract the dedented `body: |` block-scalar text from a record section.
+function extractBody(sectionText) {
+  const idx = sectionText.search(/^body:\s*\|\s*$/m);
+  if (idx === -1) return '';
+  const after = sectionText.slice(idx).split('\n').slice(1);
+  const lines = [];
+  for (const raw of after) {
+    if (/^```/.test(raw)) break;               // end of the fenced block
+    if (raw.trim() === '') { lines.push(''); continue; }
+    const dm = /^(\s{2})(.*)$/.exec(raw);       // body is indented 2 spaces
+    if (!dm && raw[0] !== ' ') break;           // a non-indented line ends it
+    lines.push(dm ? dm[2] : raw.replace(/^\s{0,2}/, ''));
+  }
+  return lines.join('\n').replace(/\s+$/, '');
+}
+
+// Section heading title (`## <ID> — <title>`).
+function sectionTitle(sectionText) {
+  const m = /^##\s+\S+\s+—\s+(.+)$/m.exec(sectionText);
+  return m ? m[1].trim() : '';
+}
+
+// Read an inline link field from a record section's `links: {...}` flow map.
+function linkField(sectionText, key) {
+  const re = new RegExp(`\\b${key}:\\s*("(?:[^"\\\\]|\\\\.)*"|[^,}\\]]+)`);
+  const m = re.exec(sectionText);
+  return m ? unquoteScalar(m[1]) : null;
+}
+
+/**
+ * Apply a cross-context recurrence to an existing L/F record: append the new
+ * sighting as an occurrence (deduped) instead of minting a duplicate, and
+ * auto-transition an L observed -> recurring once ≥2 distinct project contexts
+ * are recorded (diverge-knowledge §4: "the system now owes the human a
+ * proposal"). Two F-records on one fingerprint flag an L rollup proposal.
+ *
+ * @returns {{content: string, summary: {id, transitioned, rollup, message}}}
+ */
+function applyRecurrence(content, existing, type, input, flags) {
+  let section = content.slice(existing.start, existing.end);
+  const pl = provenanceLine(section);
+  const prov = input.provenance || {};
+  const occ = {};
+  if (prov.project) occ.project = prov.project;
+  occ.date = prov.date || flags.date || todayISO();
+  const ref = input.ref || (input.links && input.links.ref) || (flags.ref);
+  if (ref) occ.ref = ref;
+
+  let added = false;
+  if (pl) {
+    const occFlow = emitFlow(occ);
+    if (pl.flow.includes(occFlow)) {
+      // idempotent: this exact sighting is already recorded.
+    } else {
+      const newFlow = appendOccurrenceToFlow(pl.flow, occ);
+      section = section.replace(pl.whole, `${pl.indent}provenance: ${newFlow}`);
+      added = true;
+    }
+  }
+
+  const flow = provenanceLine(section);
+  const contexts = flow ? projectsInProvenance(flow.flow) : new Set();
+  const status = currentStatus(section);
+  let transitioned = false;
+  if (type === 'L' && status === 'observed' && contexts.size >= 2) {
+    section = section.replace(/^(\s*status:\s*)\S+/m, '$1recurring');
+    transitioned = true;
+  }
+  const rollup = type === 'F' && contexts.size >= 2;
+
+  const newContent = content.slice(0, existing.start) + section + content.slice(existing.end);
+  const fp = flags.fingerprint != null ? flags.fingerprint : input.fingerprint;
+  let msg = `recurrence: ${added ? 'appended occurrence to' : 'sighting already recorded on'} ${existing.id}`;
+  if (transitioned) msg += ' — auto-transitioned observed -> recurring; the system now owes the human a promotion proposal (record.cjs promote-propose ' + existing.id + ')';
+  if (rollup) msg += ` — 2+ findings share fingerprint ${fp}: propose an L rollup (record.cjs append --type L --fingerprint ${fp} …)`;
+  return { content: newContent, summary: { id: existing.id, transitioned, rollup, added, message: 'record.cjs: ' + msg } };
+}
+
+// ---------------------------------------------------------------------------
 // Locking + atomic write
 // ---------------------------------------------------------------------------
 
@@ -621,20 +788,43 @@ function cmdAppend(flags) {
     return;
   }
 
-  // R/L/C/F -> ledger.md fenced-YAML envelope.
+  // R/L/C/F -> ledger.md fenced-YAML envelope (recurrence-aware).
+  const res = appendEnvelopeRecord(contextDir, type, input, flags);
+  if (res.errors) die('record failed envelope validation:\n  - ' + res.errors.join('\n  - '));
+  process.stdout.write(res.id + '\n');
+  if (res.recurrence) process.stderr.write(res.recurrence.message + '\n');
+}
+
+// Append (or recurrence-fold) one R/L/C/F record into ledger.md under the lock.
+// Returns {id, recurrence|null, errors|null}. Shared by cmdAppend and cmdHarvest
+// so harvested lessons get the SAME dedup + auto-recurring behavior as manual
+// appends (the flagship demo: two projects' synthetic-fixture lessons fold into
+// one L at recurring). The F-27 human gate is enforced by the callers on the
+// APPEND door (harvest only mints at observed, so it never needs the gate).
+function appendEnvelopeRecord(contextDir, type, input, flags) {
   const target = ledgerPath(contextDir);
   let allocated = null;
   let validationErrors = null;
+  let recurrence = null;
   withFileLock(contextDir, target, (cur) => {
     const base = cur && cur.trim() ? cur : LEDGER_HEADER;
+    const fp = flags.fingerprint != null ? flags.fingerprint : input.fingerprint;
+    if ((type === 'L' || type === 'F') && fp) {
+      const existing = findSectionByFingerprint(base, type, fp);
+      if (existing) {
+        const r = applyRecurrence(base, existing, type, input, flags);
+        recurrence = r.summary;
+        allocated = existing.id;
+        return r.content;
+      }
+    }
     const rec = buildRecord(type, input, flags, base);
     const errs = validateEnvelope(rec);
     if (errs.length > 0) { validationErrors = errs; return null; }
     allocated = rec.id;
     return base.replace(/\s*$/, '\n') + '\n' + serializeRecord(rec) + '\n';
   });
-  if (validationErrors) die('record failed envelope validation:\n  - ' + validationErrors.join('\n  - '));
-  process.stdout.write(allocated + '\n');
+  return { id: allocated, recurrence, errors: validationErrors };
 }
 
 function cmdSetStatus(argv, flags) {
@@ -649,10 +839,12 @@ function cmdSetStatus(argv, flags) {
   const target = ledgerPath(contextDir);
 
   let err = null;
+  let graduate = null; // {title, body} captured when an R is accepted
   withFileLock(contextDir, target, (cur) => {
     const b = sectionBounds(cur, id);
     if (!b) { err = `record ${id} not found in ledger`; return null; }
-    const from = currentStatus(cur.slice(b.start, b.end));
+    const section = cur.slice(b.start, b.end);
+    const from = currentStatus(section);
     if (!from) { err = `record ${id} has no status`; return null; }
     const allowed = (TRANSITIONS[type][from] || []);
     if (!allowed.includes(newStatus)) {
@@ -669,13 +861,39 @@ function cmdSetStatus(argv, flags) {
       err = 'R -> rejected requires --reopen-trigger "…" (ADR-021)';
       return null;
     }
+    // R -> accepted graduates into a D-record (source: swarm-advisory) unless
+    // opted out — the advisory layer's accepted recommendations become tracked
+    // decisions (phase4 §3.2 / diverge-advisory). Capture the text here (under
+    // the lock, from the pre-edit section) and append the D after the ledger
+    // write below; the accept itself is NOT blocked if graduation is disabled.
+    if (type === 'R' && newStatus === 'accepted' && !flags.noGraduate) {
+      graduate = { title: sectionTitle(section), body: extractBody(section) };
+    }
     return editRecordStatus(cur, id, newStatus, {
       reopenTrigger: flags.reopenTrigger,
       enforcementTier: flags.enforcementTier,
     });
   });
   if (err) die(err);
+
+  let graduatedD = null;
+  if (graduate) {
+    const dTarget = decisionLogPath(contextDir);
+    withFileLock(contextDir, dTarget, (cur) => {
+      const did = nextId(cur, 'D');
+      graduatedD = did;
+      const title = flags.title || graduate.title || `(graduated from ${id})`;
+      const date = flags.date || todayISO();
+      const cls = flags.classification || 'Tactical';
+      const rationale = flags.decision || graduate.body || `Accepted recommendation ${id}.`;
+      const block = `\n## ${did} — ${title}\n\n- **Date:** ${date}\n- **Classification:** ${cls}\n- **Source:** swarm-advisory (graduated from ${id})\n- **Decision:** ${rationale}\n`;
+      const base = cur && cur.trim() ? cur.replace(/\s*$/, '\n') : cur;
+      return base + block;
+    });
+  }
+
   process.stdout.write(`${id} -> ${newStatus}\n`);
+  if (graduatedD) process.stdout.write(`graduated: ${id} -> ${graduatedD} (source: swarm-advisory)\n`);
 }
 
 function cmdNextId(argv, flags) {
@@ -1050,6 +1268,393 @@ function cmdReconcile(flags) {
 }
 
 // ---------------------------------------------------------------------------
+// Knowledge verbs: promote-propose, recall, reopen-scan, harvest
+// (diverge-knowledge §4/§7; phase4 §3.1). These READ the ledger + on-disk
+// artifacts and mint L-records; none writes outside artifacts/ (contextDirFrom
+// keeps the confinement; the retro-catch walk is read-only).
+// ---------------------------------------------------------------------------
+
+// Text extensions the retro-catch / harvest walkers will read.
+const SCAN_EXTS = new Set(['.md', '.markdown', '.txt', '.yaml', '.yml', '.json', '.js', '.cjs', '.ts', '.py']);
+const SCAN_SKIP_DIRS = new Set(['node_modules', '.git', '.ledger.lock', 'dist', 'build', 'coverage']);
+const SCAN_MAX_BYTES = 512 * 1024;
+
+// Recursively list readable text files under `root` (bounded; skips vendor dirs).
+function walkTextFiles(root, out = [], depth = 0) {
+  if (depth > 12) return out;
+  let entries;
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    if (e.name.startsWith('.') && e.name !== '.') { if (SCAN_SKIP_DIRS.has(e.name)) continue; }
+    const full = path.join(root, e.name);
+    if (e.isDirectory()) {
+      if (SCAN_SKIP_DIRS.has(e.name)) continue;
+      walkTextFiles(full, out, depth + 1);
+    } else if (e.isFile() && SCAN_EXTS.has(path.extname(e.name).toLowerCase())) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+// Keywords derived from a fingerprint slug (drop short stopwords).
+function fingerprintKeywords(fp) {
+  return String(fp).toLowerCase().split(/[-_]/).filter((w) => w.length >= 4);
+}
+
+// Crude morphological stem: strip a common inflection so "masks"/"masked",
+// "regresses"/"regressed" match one another. Advisory-grade — retro-catch and
+// reopen-scan are judgment aids, never enforcement, so light stemming is fine.
+function stemWord(w) {
+  return String(w).toLowerCase().replace(/(ings|ing|ed|es|s)$/, '');
+}
+
+// Which of `kws` appear (verbatim or by stem) in `text`.
+function keywordHits(text, kws) {
+  const t = String(text).toLowerCase();
+  return kws.filter((k) => {
+    if (t.includes(k)) return true;
+    const s = stemWord(k);
+    return s.length >= 4 && t.includes(s);
+  });
+}
+
+/**
+ * Counterfactual replay (diverge-knowledge §7.3): run a lesson's detection
+ * signal over on-disk artifacts and count how many the rule WOULD have caught,
+ * plus a false-positive check. Deterministic and cited — a file is a
+ *   - retro-catch  if it names the exact fingerprint slug OR contains every
+ *                  fingerprint keyword (a strong contextual match), and
+ *   - weak/FP hit  if it contains SOME (but not all) keywords and not the slug.
+ *
+ * @returns {{root, catches: string[], falsePositives: string[], scanned: number}}
+ */
+function retroCatch(root, fp, opts) {
+  opts = opts || {};
+  const slug = String(fp).toLowerCase();
+  const kws = fingerprintKeywords(fp);
+  // The record store itself would circularly "catch" the lesson's own record —
+  // a retro-catch must be an INDEPENDENT artifact, so exclude the ledger files.
+  const STORE = new Set(['ledger.md', 'decision-log.md', 'task-ledger.md']);
+  const files = walkTextFiles(root).filter((f) => !STORE.has(path.basename(f)));
+  const catches = [];
+  const falsePositives = [];
+  for (const f of files) {
+    let text;
+    try {
+      const st = fs.statSync(f);
+      if (st.size > SCAN_MAX_BYTES) continue;
+      text = fs.readFileSync(f, 'utf8').toLowerCase();
+    } catch { continue; }
+    const hasSlug = text.includes(slug);
+    const present = keywordHits(text, kws);
+    // A strong contextual match is a majority of the fingerprint's keywords
+    // (never fewer than two, so a lone generic word like "data" is not a catch).
+    const strong = kws.length ? Math.max(2, Math.ceil(kws.length * 0.6)) : 1;
+    const rel = path.relative(root, f) || f;
+    if (hasSlug || present.length >= strong) catches.push(rel);
+    else if (present.length > 0) falsePositives.push(rel);
+  }
+  return { root, catches, falsePositives, scanned: files.length };
+}
+
+function cmdPromotePropose(argv, flags) {
+  const id = argv[0];
+  if (!id || id[0] !== 'L') die('usage: promote-propose <L-ID> [--artifacts-root <dir>] [--json]');
+  const contextDir = contextDirFrom(flags);
+  const target = ledgerPath(contextDir);
+  if (!fs.existsSync(target)) die('ledger.md does not exist yet; nothing to propose');
+  const content = fs.readFileSync(target, 'utf8');
+  const b = sectionBounds(content, id);
+  if (!b) die(`record ${id} not found in ledger`);
+  const section = content.slice(b.start, b.end);
+  const status = currentStatus(section);
+  const title = sectionTitle(section);
+  const fpM = /^\s*fingerprint:\s*(\S+)/m.exec(section);
+  if (!fpM) die(`${id} has no fingerprint; cannot run a retro-catch`);
+  const fingerprint = unquoteScalar(fpM[1]);
+  const tier = linkField(section, 'enforcement_tier') || 'reviewer-lens';
+  const rule = extractBody(section);
+  const flow = provenanceLine(section);
+  const contexts = flow ? [...projectsInProvenance(flow.flow)] : [];
+
+  // Retro-catch over the artifacts tree (default: the project's artifacts/ dir).
+  const root = flags.artifactsRoot
+    ? path.resolve(flags.artifactsRoot)
+    : path.dirname(contextDir); // .../artifacts
+  const retro = retroCatch(root, fingerprint);
+
+  if (flags.json) {
+    process.stdout.write(JSON.stringify({
+      id, title, fingerprint, status, proposedTier: tier, rule,
+      contexts, occurrenceContexts: contexts.length,
+      retroCatch: { root: retro.root, catches: retro.catches, count: retro.catches.length, scanned: retro.scanned },
+      falsePositives: { files: retro.falsePositives, count: retro.falsePositives.length },
+      humanGate: `record.cjs set-status ${id} promoted --human-approved <D-ID> --enforcement-tier ${tier}`,
+    }, null, 2) + '\n');
+    return;
+  }
+
+  const out = [];
+  out.push(`PROMOTION PROPOSAL — ${id} (${title})`);
+  out.push('');
+  out.push(`  fingerprint:      ${fingerprint}`);
+  out.push(`  current status:   ${status}`);
+  out.push(`  distinct contexts: ${contexts.length}${contexts.length ? ' (' + contexts.join(', ') + ')' : ''}`);
+  out.push(`  proposed tier:    ${tier}`);
+  out.push('');
+  out.push('  RULE (as it would compile into scaffolds):');
+  for (const line of (rule || '(none)').split('\n')) out.push('    ' + line);
+  out.push('');
+  out.push(`  RETRO-CATCH (counterfactual replay over ${retro.root}, ${retro.scanned} files scanned):`);
+  out.push(`    would have caught ${retro.catches.length} artifact(s):`);
+  for (const c of retro.catches.slice(0, 25)) out.push('      ✓ ' + c);
+  if (retro.catches.length > 25) out.push(`      … +${retro.catches.length - 25} more`);
+  out.push('');
+  out.push(`  FALSE-POSITIVE CHECK: ${retro.falsePositives.length} file(s) partially match (would need review):`);
+  for (const c of retro.falsePositives.slice(0, 10)) out.push('      ? ' + c);
+  if (retro.falsePositives.length > 10) out.push(`      … +${retro.falsePositives.length - 10} more`);
+  out.push('');
+  out.push('  This is a PROPOSAL. Promotion is the human gate (ADR-021). To ratify:');
+  if (status === 'recurring') out.push(`    record.cjs set-status ${id} candidate`);
+  out.push(`    record.cjs set-status ${id} promoted --human-approved <D-ID> --enforcement-tier ${tier}`);
+  process.stdout.write(out.join('\n') + '\n');
+}
+
+// Scan every `## <ID> — title` section of a markdown file and score by how many
+// query terms it contains. Returns [{id, title, type, score, matched, snippet}].
+function scanForRecall(content, terms, typesAllowed) {
+  const out = [];
+  const headRe = /^##\s+([DRLCF]-\d+)\s+—\s+(.+)$/gm;
+  let m;
+  while ((m = headRe.exec(content)) !== null) {
+    const id = m[1];
+    const title = m[2].trim();
+    if (typesAllowed && !typesAllowed.has(id[0])) continue;
+    const b = sectionBounds(content, id);
+    const section = b ? content.slice(b.start, b.end) : (m[0] + '\n');
+    const hay = section.toLowerCase();
+    const matched = terms.filter((t) => hay.includes(t));
+    if (matched.length === 0) continue;
+    const bodyText = extractBody(section) || title;
+    const snippet = bodyText.split('\n').find((l) => l.trim()) || title;
+    out.push({ id, title, type: id[0], score: matched.length, matched, snippet: snippet.slice(0, 200) });
+  }
+  return out;
+}
+
+function cmdRecall(argv, flags) {
+  const query = argv.join(' ').trim();
+  if (!query) die('usage: recall <query…> [--json] [--context-dir <dir>]');
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const contextDir = contextDirFrom(flags);
+
+  const results = [];
+  const ledgerFile = ledgerPath(contextDir);
+  if (fs.existsSync(ledgerFile)) {
+    results.push(...scanForRecall(fs.readFileSync(ledgerFile, 'utf8'), terms));
+  }
+  const dlogFile = decisionLogPath(contextDir);
+  if (fs.existsSync(dlogFile)) {
+    // decision-log.md is prose (## D-n — title + a Decision: line); reuse the
+    // same section scanner (it keys on `## <ID> — title`).
+    results.push(...scanForRecall(fs.readFileSync(dlogFile, 'utf8'), terms, new Set(['D'])));
+  }
+  results.sort((a, b) => (b.score - a.score) || a.id.localeCompare(b.id));
+
+  if (flags.json) { process.stdout.write(JSON.stringify({ query, results }, null, 2) + '\n'); return; }
+  if (results.length === 0) { process.stdout.write(`recall "${query}": no records match.\n`); return; }
+  const out = [`recall "${query}" — ${results.length} cited record(s):`, ''];
+  for (const r of results) {
+    out.push(`  [${r.id}] ${r.title}  (matched: ${r.matched.join(', ')})`);
+    out.push(`      ${r.snippet}`);
+  }
+  process.stdout.write(out.join('\n') + '\n');
+}
+
+function cmdReopenScan(flags) {
+  const contextDir = contextDirFrom(flags);
+  const target = ledgerPath(contextDir);
+  const rejected = [];
+  if (fs.existsSync(target)) {
+    const content = fs.readFileSync(target, 'utf8');
+    const headRe = /^##\s+(R-\d+)\s+—\s+(.+)$/gm;
+    let m;
+    while ((m = headRe.exec(content)) !== null) {
+      const id = m[1];
+      const b = sectionBounds(content, id);
+      const section = b ? content.slice(b.start, b.end) : '';
+      if (currentStatus(section) !== 'rejected') continue;
+      const trigger = linkField(section, 'reopen_trigger') || '(no trigger recorded)';
+      rejected.push({ id, title: m[2].trim(), trigger });
+    }
+  }
+
+  // Optional evidence to test triggers against (a file or inline text). A
+  // trigger "firing" is a judgment call (advisory lint, never enforcement, per
+  // phase4 §3.2) — we only HIGHLIGHT likely fires by keyword overlap.
+  let against = null;
+  if (flags.against) {
+    against = (fs.existsSync(flags.against) ? fs.readFileSync(flags.against, 'utf8') : String(flags.against)).toLowerCase();
+  }
+  for (const r of rejected) {
+    if (against) {
+      const kws = r.trigger.toLowerCase().split(/\W+/).filter((w) => w.length >= 4);
+      const hits = keywordHits(against, kws);
+      // Judgment aid, not enforcement: a very short trigger needs all its words;
+      // a longer one needs a 40% overlap (min two) to be flagged "likely fired".
+      const need = kws.length <= 2 ? kws.length : Math.max(2, Math.ceil(kws.length * 0.4));
+      r.likelyFired = kws.length > 0 && hits.length >= need;
+      r.triggerHits = hits;
+    }
+  }
+
+  if (flags.json) { process.stdout.write(JSON.stringify({ rejected }, null, 2) + '\n'); return; }
+  if (rejected.length === 0) { process.stdout.write('reopen-scan: no rejected R-records to review.\n'); return; }
+  const out = ['reopen-scan — rejected recommendations whose re-open trigger may have fired', '  (advisory: a trigger firing is a human judgment call, not enforcement)', ''];
+  for (const r of rejected) {
+    const flag = r.likelyFired ? ' [LIKELY FIRED]' : '';
+    out.push(`  ${r.id} ${r.title}${flag}`);
+    out.push(`      reopen-trigger: ${r.trigger}`);
+    if (r.triggerHits && r.triggerHits.length) out.push(`      matched terms: ${r.triggerHits.join(', ')}`);
+  }
+  process.stdout.write(out.join('\n') + '\n');
+}
+
+// Parse harvestable lessons out of a retrospective/lessons markdown file.
+// Two lightweight conventions (a real retro can adopt either):
+//   1) bullet form:  - **Title** (fingerprint: slug): statement…
+//   2) heading form: ### Title  \n  fingerprint: slug  \n  statement paragraph
+// Returns [{title, fingerprint, statement}].
+function parseHarvestLessons(text) {
+  const lessons = [];
+  const lines = String(text).split('\n');
+
+  // Bullet form.
+  const bulletRe = /^\s*[-*]\s+(?:\*\*(.+?)\*\*|(.+?))\s*\(fingerprint:\s*([a-z0-9][a-z0-9-]*)\)\s*:?\s*(.*)$/i;
+  for (const line of lines) {
+    const bm = bulletRe.exec(line);
+    if (bm) {
+      lessons.push({
+        title: (bm[1] || bm[2] || '').trim(),
+        fingerprint: bm[3].trim().toLowerCase(),
+        statement: (bm[4] || '').trim(),
+      });
+    }
+  }
+
+  // Heading form.
+  for (let i = 0; i < lines.length; i++) {
+    const hm = /^#{2,4}\s+(.+?)\s*$/.exec(lines[i]);
+    if (!hm) continue;
+    let fingerprint = null;
+    const body = [];
+    for (let j = i + 1; j < lines.length && !/^#{2,4}\s+/.test(lines[j]); j++) {
+      const fm = /^\s*fingerprint:\s*([a-z0-9][a-z0-9-]*)\s*$/i.exec(lines[j]);
+      if (fm) { fingerprint = fm[1].trim().toLowerCase(); continue; }
+      if (lines[j].trim()) body.push(lines[j].trim());
+    }
+    if (fingerprint) lessons.push({ title: hm[1].trim(), fingerprint, statement: body.join(' ').slice(0, 400) });
+  }
+  return lessons;
+}
+
+function cmdHarvest(flags) {
+  if (!flags.from) die('usage: harvest --from <dir|file> [--project <name>] [--dry-run] [--json]');
+  const src = path.resolve(flags.from);
+  if (!fs.existsSync(src)) die(`--from path does not exist: ${src}`);
+  const isDir = fs.statSync(src).isDirectory();
+  const files = isDir ? walkTextFiles(src) : [src];
+  const date = flags.date || todayISO();
+
+  // Provenance project: --project forces a single label; otherwise the source's
+  // first path segment (or filename stem) is the project, so harvesting a tree
+  // of per-project retros yields cross-context recurrence (the flagship demo:
+  // Vantage + Quinn synthetic-fixture lessons fold into one L at recurring).
+  const projectFor = (rel) => {
+    if (flags.project) return flags.project;
+    const seg = String(rel).split(/[\\/]/)[0];
+    return seg.replace(/\.[^.]+$/, '') || 'harvest';
+  };
+
+  const found = [];
+  for (const f of files) {
+    let text;
+    try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    const rel = path.relative(src, f) || path.basename(f);
+    for (const les of parseHarvestLessons(text)) {
+      found.push({ ...les, source: rel, project: projectFor(rel) });
+    }
+  }
+
+  if (flags.dryRun) {
+    if (flags.json) { process.stdout.write(JSON.stringify({ dryRun: true, lessons: found }, null, 2) + '\n'); return; }
+    process.stdout.write(`harvest --dry-run: ${found.length} lesson(s) found\n`);
+    for (const l of found) process.stdout.write(`  [${l.fingerprint}] ${l.title} — ${l.source}\n`);
+    return;
+  }
+
+  const contextDir = contextDirFrom(flags);
+  const results = [];
+  for (const les of found) {
+    const input = {
+      title: les.title,
+      fingerprint: les.fingerprint,
+      provenance: { role: 'harvester', project: les.project, date, occurrences: [] },
+      body: les.statement || les.title,
+    };
+    // Mint at observed (never a later gated stage); recurrence-aware append
+    // folds repeats of a fingerprint into one L and auto-flags recurring.
+    const res = appendEnvelopeRecord(contextDir, 'L', input, { fingerprint: les.fingerprint, date });
+    if (res.errors) { die('harvest: a lesson failed validation:\n  - ' + res.errors.join('\n  - ')); }
+    results.push({ id: res.id, fingerprint: les.fingerprint, recurrence: res.recurrence ? res.recurrence.message : null });
+  }
+
+  if (flags.json) { process.stdout.write(JSON.stringify({ harvested: results }, null, 2) + '\n'); return; }
+  process.stdout.write(`harvest: ${results.length} lesson(s) recorded\n`);
+  for (const r of results) {
+    process.stdout.write(`  ${r.id} [${r.fingerprint}]${r.recurrence ? '  (recurrence: folded)' : ''}\n`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Born-immune compilation support (read-only): extract PROMOTED L-records so the
+// package-side generators can compile earned rules into the scaffold. Pure +
+// textual (no writes) — exported for utils/record-envelope.js re-use.
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract every promoted L-record from ledger.md content.
+ * @returns {{id, title, fingerprint, enforcementTier, rule, contexts, occurrenceCount}[]}
+ */
+function extractPromotedLessons(ledgerContent) {
+  const out = [];
+  const content = String(ledgerContent || '');
+  const headRe = /^##\s+(L-\d+)\s+—\s+(.+)$/gm;
+  let m;
+  while ((m = headRe.exec(content)) !== null) {
+    const id = m[1];
+    const b = sectionBounds(content, id);
+    if (!b) continue;
+    const section = content.slice(b.start, b.end);
+    if (currentStatus(section) !== 'promoted') continue;
+    const fpM = /^\s*fingerprint:\s*(\S+)/m.exec(section);
+    const flow = provenanceLine(section);
+    const contexts = flow ? [...projectsInProvenance(flow.flow)] : [];
+    out.push({
+      id,
+      title: m[2].trim(),
+      fingerprint: fpM ? unquoteScalar(fpM[1]) : null,
+      enforcementTier: linkField(section, 'enforcement_tier') || null,
+      rule: extractBody(section),
+      contexts,
+      occurrenceCount: contexts.length,
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // argv parsing + dispatch
 // ---------------------------------------------------------------------------
 
@@ -1069,15 +1674,30 @@ function die(msg) {
 }
 
 // Parse `--flag value` / `--flag=value` / `--bool` into {flags, positionals}.
-const BOOL_FLAGS = new Set(['stdin', 'json']);
+//
+// Boolean-vs-valued is COMMAND-SCOPED because `--json` is overloaded: for the
+// output commands (reconcile/recall/promote-propose/reopen-scan/harvest) it is a
+// boolean output selector, but for `append` it carries the JSON record VALUE
+// (`append --json '{...}'`). When it was in a single global BOOL_FLAGS set,
+// `append --json '{...}'` set flags.json=true and dropped the JSON to a
+// positional, so cmdAppend later did `true.trim()` and threw "raw.trim is not a
+// function" (the documented --json path was dead). Scoping the bool set per
+// command fixes it without breaking `reconcile --json` (D-036 append bug).
+const DEFAULT_BOOL_FLAGS = new Set(['stdin', 'json', 'dry-run', 'no-graduate']);
+const COMMAND_BOOL_FLAGS = {
+  append: new Set(['stdin']), // --json is VALUED here (inline record JSON)
+};
 const FLAG_ALIASES = {
   'reopen-trigger': 'reopenTrigger',
   'enforcement-tier': 'enforcementTier',
   'human-approved': 'humanApproved',
   'context-dir': 'contextDir',
+  'artifacts-root': 'artifactsRoot',
+  'no-graduate': 'noGraduate',
+  'dry-run': 'dryRun',
 };
 
-function parseArgs(argv) {
+function parseArgs(argv, boolFlags = DEFAULT_BOOL_FLAGS) {
   const flags = {};
   const positionals = [];
   for (let i = 0; i < argv.length; i++) {
@@ -1088,7 +1708,7 @@ function parseArgs(argv) {
       const eq = key.indexOf('=');
       if (eq !== -1) { val = key.slice(eq + 1); key = key.slice(0, eq); }
       const norm = FLAG_ALIASES[key] || camel(key);
-      if (BOOL_FLAGS.has(key)) { flags[norm] = true; continue; }
+      if (boolFlags.has(key) && val === undefined) { flags[norm] = true; continue; }
       if (val === undefined) { val = argv[++i]; }
       flags[norm] = val;
     } else {
@@ -1102,7 +1722,8 @@ function camel(s) { return s.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); }
 
 function main(argv) {
   const cmd = argv[0];
-  const { flags, positionals } = parseArgs(argv.slice(1));
+  const boolFlags = COMMAND_BOOL_FLAGS[cmd] || DEFAULT_BOOL_FLAGS;
+  const { flags, positionals } = parseArgs(argv.slice(1), boolFlags);
   switch (cmd) {
     case 'append': return cmdAppend(flags);
     case 'set-status': return cmdSetStatus(positionals, flags);
@@ -1110,6 +1731,10 @@ function main(argv) {
     case 'task-event': return cmdTaskEvent(flags);
     case 'reconcile': return cmdReconcile(flags);
     case 'validate': return cmdValidate(flags);
+    case 'promote-propose': return cmdPromotePropose(positionals, flags);
+    case 'recall': return cmdRecall(positionals, flags);
+    case 'reopen-scan': return cmdReopenScan(flags);
+    case 'harvest': return cmdHarvest(flags);
     case undefined:
     case '--help':
     case '-h':
@@ -1133,11 +1758,22 @@ Usage:
   record.cjs task-event --task <id> --event <e> [--owner <n>] [--session <s>] [--detail "…"]
   record.cjs reconcile --tasklist <-|file> [--json] [--context-dir <dir>]
   record.cjs validate [--file <ledger.md>] [--context-dir <dir>]
+  record.cjs promote-propose <L-ID> [--artifacts-root <dir>] [--json]
+  record.cjs recall <query…> [--json] [--context-dir <dir>]
+  record.cjs reopen-scan [--against <file|text>] [--json] [--context-dir <dir>]
+  record.cjs harvest --from <dir|file> [--project <n>] [--dry-run] [--json]
 
 reconcile reads TaskList JSON (stdin with --tasklist -, or a file), diffs it
 against artifacts/context/task-ledger.md + project-brain.md frontmatter, and
 prints the re-wake / stuck / orphan / awaiting-human action list (--json for
 machine consumption).
+
+append is recurrence-aware: an L or F sharing a fingerprint folds the new
+sighting into the existing record (no duplicate) and auto-flags an L recurring
+on the 2nd distinct-project context. set-status R-x accepted graduates the
+recommendation into a D-record (source: swarm-advisory) unless --no-graduate.
+promote-propose emits a human-gated proposal with retro-catch evidence;
+promotion itself stays behind set-status … promoted --human-approved <D-ID>.
 
 Input is JSON (the shipped script carries no YAML dependency); the stored ledger
 format is fenced YAML. append prints the newly allocated ID.
@@ -1172,6 +1808,17 @@ module.exports = {
   parseTaskLedgerLine,
   parseFrontmatterLite,
   formatReconcile,
+  // knowledge-promotion surface (Stream K)
+  findSectionByFingerprint,
+  applyRecurrence,
+  projectsInProvenance,
+  appendOccurrenceToFlow,
+  extractBody,
+  sectionTitle,
+  linkField,
+  retroCatch,
+  parseHarvestLessons,
+  extractPromotedLessons,
   main,
 };
 
