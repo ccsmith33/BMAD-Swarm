@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bmad-generated:058c83f7
+// bmad-generated:bd7062ae
 // BMAD Swarm - record.cjs: the pinned, serialized-write channel for the unified
 // record ledger (ADR-021 / D-036 / D-049; phase2 design §3.2, §4.1).
 //
@@ -852,6 +852,19 @@ function readCharter(charterFile) {
   return fm && fm.night_charter && typeof fm.night_charter === 'object' ? fm.night_charter : null;
 }
 
+// The human is awake iff the wake marker exists AND carries THIS night's nonce
+// (NF-1: a touched/empty/forged marker without the nonce does NOT count — the
+// nonce is set only by the UserPromptSubmit hook, and .claude/** is write-denied
+// to agents during the night).
+function markerWoke(charter) {
+  const nonce = charter && charter.wake_nonce != null ? String(charter.wake_nonce) : '';
+  if (!nonce) return false;
+  try {
+    const p = humanWakeMarkerPath();
+    return fs.existsSync(p) && fs.readFileSync(p, 'utf8').includes(nonce);
+  } catch { return false; }
+}
+
 function cmdNightCharter(argv, flags) {
   const sub = argv[0];
   const deliveryDir = deliveryDirFrom(flags);
@@ -881,8 +894,11 @@ function cmdNightCharter(argv, flags) {
     const date = todayISO();
     const openedIso = new Date(now).toISOString();
     const target = nightCharterFile(deliveryDir, date);
+    // Per-night wake nonce: the floor lifts only for a wake marker carrying this
+    // value (NF-1). Only the UserPromptSubmit hook writes it into the marker.
+    const wakeNonce = require('node:crypto').randomBytes(16).toString('hex');
 
-    const body = renderCharter({ date, openedIso, ends: flags.ends, endsEpoch, graceMs, queue, initiative, extraDeny, escalation });
+    const body = renderCharter({ date, openedIso, ends: flags.ends, endsEpoch, graceMs, queue, initiative, extraDeny, escalation, wakeNonce });
 
     fs.mkdirSync(deliveryDir, { recursive: true });
     withFileLock(deliveryDir, target, () => body);
@@ -906,7 +922,7 @@ function cmdNightCharter(argv, flags) {
     const now = Date.now();
     const endsEpoch = Number.isFinite(ch.ends_epoch_ms) ? ch.ends_epoch_ms : Date.parse(ch.ends);
     const graceMs = Number.isFinite(ch.grace_ms) ? ch.grace_ms : DEFAULT_GRACE_MS;
-    const woke = fs.existsSync(humanWakeMarkerPath());
+    const woke = markerWoke(ch);
     const armed = !woke && (!Number.isFinite(endsEpoch) || now <= endsEpoch + graceMs);
     const remainMs = Number.isFinite(endsEpoch) ? endsEpoch - now : null;
     process.stdout.write(
@@ -926,7 +942,7 @@ function cmdNightCharter(argv, flags) {
     const ch = readCharter(charterFile);
     const now = Date.now();
     const endsEpoch = ch && Number.isFinite(ch.ends_epoch_ms) ? ch.ends_epoch_ms : (ch ? Date.parse(ch.ends) : NaN);
-    const woke = fs.existsSync(humanWakeMarkerPath());
+    const woke = markerWoke(ch);
     // Refuse an early close while the clock still runs UNLESS a human is awake
     // (the marker). This is the mechanical half of "the night never closes itself":
     // an agent cannot forge the marker (.claude/** is write-denied at night), so an
@@ -962,6 +978,7 @@ function renderCharter(c) {
     `  opened_at: ${c.openedIso}`,
     `  ends: ${emitScalar(c.ends)}`,
     `  ends_epoch_ms: ${c.endsEpoch}`,
+    `  wake_nonce: ${c.wakeNonce}`,
     `  grace_ms: ${c.graceMs}`,
     `  queue: ${q}`,
     `  initiative: ${c.initiative}`,

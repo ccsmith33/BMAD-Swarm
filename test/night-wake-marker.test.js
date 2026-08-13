@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { generateHooks } from '../generators/hooks-generator.js';
@@ -16,8 +16,11 @@ describe('user-prompt-submit human-wake marker', () => {
   const tmpDir = mkdtempSync(join(tmpdir(), 'wake-marker-'));
   const projectDir = join(tmpDir, 'project');
   let hooksDir;
-  const pointer = join(projectDir, 'artifacts', 'delivery', '.night-charter-current');
+  const deliveryDir = join(projectDir, 'artifacts', 'delivery');
+  const pointer = join(deliveryDir, '.night-charter-current');
+  const charterFile = join(deliveryDir, 'night-charter-x.md');
   const wakeMarker = join(projectDir, '.claude', 'hooks', '.human-wake');
+  const NONCE = 'abcdef0123456789abcdef0123456789';
 
   before(() => {
     mkdirSync(join(projectDir, 'artifacts', 'delivery'), { recursive: true });
@@ -43,11 +46,13 @@ describe('user-prompt-submit human-wake marker', () => {
     assert.ok(!existsSync(wakeMarker), 'no marker without an open night');
   });
 
-  it('sets the wake marker when a charter pointer is present', () => {
+  it('sets the wake marker carrying the charter nonce when a charter is open', () => {
+    writeFileSync(charterFile, `---\nnight_charter:\n  wake_nonce: ${NONCE}\n---\n`);
     writeFileSync(pointer, 'night-charter-x.md\n');
     rmSync(wakeMarker, { force: true });
     prompt();
     assert.ok(existsSync(wakeMarker), 'a human prompt during a night sets .human-wake');
+    assert.match(readFileSync(wakeMarker, 'utf8'), new RegExp(NONCE), 'marker carries the charter nonce (unforgeable lift)');
   });
 
   it('still emits the identity reminder on the first prompt (behavior preserved)', () => {

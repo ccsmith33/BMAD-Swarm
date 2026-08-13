@@ -37,6 +37,10 @@ const isoIn = (ms) => new Date(Date.now() + ms).toISOString();
 const deliveryDir = (proj) => join(proj, 'artifacts', 'delivery');
 const pointer = (proj) => join(deliveryDir(proj), '.night-charter-current');
 const wakeMarker = (proj) => join(proj, '.claude', 'hooks', '.human-wake');
+// The wake marker only lifts the floor / legitimizes close if it carries the
+// charter's per-night wake_nonce (NF-1). Extract it from the charter file.
+const nonceOf = (charterFile) => (/wake_nonce:\s*([0-9a-f]+)/.exec(readFileSync(charterFile, 'utf8')) || [])[1] || '';
+const wake = (proj, charterFile) => writeFileSync(wakeMarker(proj), nonceOf(charterFile) + ' woke\n');
 
 describe('night-charter open', () => {
   it('refuses to open when sleep is not enabled (H5-5 off-by-default)', () => {
@@ -180,8 +184,8 @@ describe('night-charter status', () => {
   it('reports the wake marker and a lifted floor after an early wake', () => {
     const proj = mkproj();
     try {
-      run(['night-charter', 'open', '--ends', isoIn(3600e3)], proj);
-      writeFileSync(wakeMarker(proj), 'human');
+      const file = run(['night-charter', 'open', '--ends', isoIn(3600e3)], proj).stdout.trim();
+      wake(proj, file);
       const r = run(['night-charter', 'status'], proj);
       assert.match(r.stdout, /human-wake marker: PRESENT/);
       assert.match(r.stdout, /floor: lifted/);
@@ -205,7 +209,7 @@ describe('night-charter close', () => {
     const proj = mkproj();
     try {
       const file = run(['night-charter', 'open', '--ends', isoIn(3600e3)], proj).stdout.trim();
-      writeFileSync(wakeMarker(proj), 'human');
+      wake(proj, file);
       const r = run(['night-charter', 'close'], proj);
       assert.equal(r.status, 0, r.stderr);
       assert.ok(!existsSync(pointer(proj)), 'pointer removed (floor disarmed)');

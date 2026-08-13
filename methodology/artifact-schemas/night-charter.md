@@ -47,6 +47,10 @@ night_charter:
                                                 #   reads THIS, never re-parsing an
                                                 #   ambiguous TZ string (anti clock/TZ
                                                 #   manipulation; see "Clock" below)
+  wake_nonce: 3f9a…                             # per-night secret (16 random bytes hex).
+                                                #   The floor lifts only for a wake marker
+                                                #   carrying THIS value — a touched/empty/
+                                                #   forged marker does not lift it (NF-1).
   grace_ms: 7200000                             # H5-2(d): floor persists until the
                                                 #   human-wake marker OR ends+grace,
                                                 #   whichever is first (default 2h)
@@ -88,11 +92,22 @@ Initiative: unrestrained. Extra denies tonight: none.
 `.claude/hooks/.human-wake` is written **only** by the `UserPromptSubmit` hook —
 a real human prompt arriving while a charter is open sets it. An agent **cannot**
 fire `UserPromptSubmit`, so the marker is human-authenticated by construction
-(no `escalation`-channel forgery, no agent self-wake). It lives under `.claude/**`,
-which the night floor write-denies for every agent, so it cannot be forged by
-Edit/Write or a shell redirect during the night either. `night-charter open`
-clears any stale marker so the night starts clean; its presence legitimizes an
-early `close` and flips the protocol to dawn synthesis.
+(no `escalation`-channel forgery, no agent self-wake). Two independent guarantees
+make it unforgeable (NF-1):
+
+1. **Content, not existence.** The floor (and `night-charter close`) lift only for
+   a marker whose content includes the charter's `wake_nonce`. A bare
+   `touch .human-wake` / `mkdir .human-wake` creates an empty marker with no nonce
+   and does **not** lift the floor. Only `UserPromptSubmit` reads the nonce (from
+   the charter) and writes it.
+2. **Un-writable by agents.** The marker lives under `.claude/**`, which the night
+   floor write-denies for **every** identity via realpath+cwd-resolved target
+   checks (so `touch`, `mkdir`, `ln`, a `cd .claude && > hooks/.human-wake`
+   redirect, and the Write tool are all denied).
+
+`night-charter open` clears any stale marker so the night starts clean; the
+marker's presence-with-nonce legitimizes an early `close` and flips the protocol
+to dawn synthesis.
 
 ## The clock (anti-manipulation)
 
