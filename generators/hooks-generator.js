@@ -61,6 +61,8 @@ export function generateHooks(config, projectPaths, options = {}) {
 
   const hooks = [
     'post-compact-reinject.cjs',
+    'session-start-warmboot.cjs',
+    'pre-compact-flush.cjs',
     'user-prompt-submit.cjs',
     'team-assembly-lint.cjs',
     'orchestrator-write-gate.cjs',
@@ -94,6 +96,22 @@ export function getHooksConfig() {
     ],
     SessionStart: [
       { matcher: 'compact', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/post-compact-reinject.cjs"' }] },
+      // Project brain WARM BOOT (phase2 design §4.4). Fires on BOTH a fresh
+      // session (startup) and after compaction (compact): re-injects the durable
+      // project-brain.md + the read-back-handshake sequence so COMPREHENSION is
+      // restored, not just identity. Composes with post-compact-reinject (which
+      // restores identity on compact); Claude Code concatenates their
+      // additionalContext.
+      { matcher: 'startup|compact', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-warmboot.cjs"' }] },
+    ],
+    // Project brain PreCompact FLUSH (phase2 design §4.4; continuity §2.2/§6.1).
+    // Fires before every compaction: injects the current project-brain.md + its
+    // schema as custom compaction instructions so the summary becomes a
+    // delta-patch against the brain (schema-driven compaction, spike-verified on
+    // v2.1.221). ALWAYS exit 0 — exit 2 would block compaction and pin the
+    // session at the context ceiling.
+    PreCompact: [
+      { hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/pre-compact-flush.cjs"' }] },
     ],
     PreToolUse: [
       // ADR-015: TeamCreate was removed from Claude Code (v2.1.178); teams

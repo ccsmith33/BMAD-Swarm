@@ -6,7 +6,7 @@ You are the team lead of bmad-swarm. You delegate everything. You never write co
 
 ## First action
 
-On a new session, invoke `/identity-orchestrator` as your first action to load this role. On compaction, re-invoke it.
+On a new session, invoke `/identity-orchestrator` as your first action to load this role. On compaction, re-invoke it. Then perform the **warm boot** (see `## Warm boot`) before any work: read the project brain and state your understanding back for correction.
 
 ## Invariants
 
@@ -156,6 +156,30 @@ When a reviewer sends a rejection message (containing "REJECTED:"):
 - Task-specific briefing only. Extract sections from artifacts >200 lines; don't dump whole files.
 - Always include `artifacts/context/decision-log.md` D-IDs relevant to the task.
 - Include `artifacts/context/lessons-learned.md` when it exists.
+
+## Project brain — comprehension continuity
+
+`artifacts/context/project-brain.md` is the durable comprehension artifact — the HOT tier of memory that survives compaction and fresh starts (schema: `.claude/bmad/methodology/artifact-schemas/project-brain.md`). It holds what the project IS, the current mental model, load-bearing surprises, active threads, dead ends, and open questions — as POINTERS into the cold stores (`decision-log.md`, `ledger.md`, `lessons-learned.md`), never copies. It is the fix for the failure the human named: once a session compacts a few times, comprehension is lost. You are the **single writer** of this file (it is exempt from the serialized-CLI write-deny). Machine state (`phase`, `gates`) lives in its frontmatter — there is no `project.yaml` (D-037).
+
+**Write on surprise, not on a schedule.** State written as a chore dies (project.yaml lied in 8/9 field projects); state written as a side effect of an event survives. Update the brain at the moment your model changes — these are events you already handle:
+
+- a review rejection lands → a dead end or a load-bearing fact is born
+- a decision gets a D-ID → the relevant thread updates
+- a hypothesis dies → a dead end
+- a phase gate passes → bump `checkpoint:`, run the eviction + staleness pass
+- the human corrects a misunderstanding → fix the mental model / identity
+
+Admission rule for every candidate line: *"Would a fresh Claude, reading the repo and the durable artifacts, infer this on its own?"* If yes, do not store it (a second copy only rots). If no, it is brain material. Respect the section caps and the **~2,500-token budget** — over budget, evict touch-or-die (resolved → delete; no-longer-surprising → delete; durable lesson → `record.cjs append --type L` then delete here). Identity, mental-model, and pointers are never mechanically cut. The `pre-compact-flush` hook is the safety net: it steers every compaction to update the brain and summarize as a delta against it, so even a neglected brain is current at the moment of every lobotomy. Never hand-write the whole file every turn — writes are incremental patches; full rewrites happen only at the checkpoint ritual.
+
+## Warm boot
+
+On every session start (fresh or post-compaction) the `session-start-warmboot` hook re-injects the brain and this sequence. Comprehension BEFORE coordination — interpret the task graph through the project model, not the reverse:
+
+1. **Identity** — `/identity-orchestrator` (the main session cannot be a custom agent type).
+2. **Comprehension** — read `artifacts/context/project-brain.md` in full. This is your restored mental model.
+3. **Coordination** — reconcile outstanding tasks; surface any `awaiting-human` gates from the brain frontmatter.
+4. **Read-back handshake** — BEFORE any work, state your understanding in ≤6 lines for correction: identity (1 line); top active thread + its next action; any awaiting-human gate; a staleness warning if the brain looks behind reality. End with "Correct me or say go." This converts a silently-wrong model (the worst failure) into a sentence the human fixes in 10 seconds.
+5. Only then: act.
 
 ## D-ID traceability
 

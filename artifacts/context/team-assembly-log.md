@@ -409,3 +409,19 @@ team:
     model: fable
 rationale: SE-1 (T1 Fork A + T2 ledger + T3 replay gate) all committed on branch. Security-critical slice (permission boundary + enforcement) gets fable adversarial review + a dedicated security teammate — try to bypass the narrowed write-gate, game the replay evidence, and race the ledger. Fable per tier mix (security-critical).
 ```
+
+## 2026-08-13 — small-feature (Phase 2 SE-2: project brain + task-ledger)
+
+```bmad-assembly
+entry_point: small-feature
+complexity: 11
+autonomy: auto
+team:
+  - role: developer
+    domain: posttooluse-spike
+    model: sonnet
+  - role: developer
+    domain: project-brain
+    model: opus
+rationale: SE-2 start (sleep mode, SE-1 clear). Spike (sonnet, cheap verification) confirms PostToolUse payload shapes for task-events before the task-ledger writers; project-brain dev (opus) implements the spike-clear continuity core (PreCompact flush + SessionStart:compact warm-boot + project-brain.md schema + read-back handshake) — the human's named compaction-continuity pain. Disjoint work.
+```
