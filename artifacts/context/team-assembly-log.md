@@ -452,3 +452,16 @@ team:
     model: opus
 rationale: SE-2 (project brain + task-ledger writers) committed on branch. Adversarial review — brain budget/eviction/PreCompact-flush/warm-boot correctness, task-ledger PostToolUse writer soundness (per verified spike), never-blocks discipline, 7-hook interactions, no SE-1 regression. Opus (continuity/coordination, not a security boundary).
 ```
+
+## 2026-08-13 — solo (Phase 2 merge recovery — orchestrator self-restricted by Fork A)
+
+```bmad-assembly
+entry_point: solo
+complexity: 6
+autonomy: auto
+team:
+  - role: devops
+    domain: merge-recovery
+    model: sonnet
+rationale: bmad-swarm update regenerated the live .claude/, activating Fork A's read-only gate on the orchestrator's own session — orchestrator can no longer run git-write. Delegate the merge to a teammate (passes the two-layer identity gate). Commit the regenerated scaffold sync, ff-merge phase2 to main, push.
+```

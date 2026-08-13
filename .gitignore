@@ -9,6 +9,7 @@ artifacts/**/diverge-*.md
 artifacts/**/spikes-*.md
 artifacts/**/knowledge-harvest-*.md
 artifacts/**/morning-report-*.md
+artifacts/**/spike-*.md
 # bmad-swarm (generated files)
 .claude/settings.local.json
 .session-active

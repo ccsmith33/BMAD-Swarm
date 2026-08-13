@@ -1,16 +1,20 @@
 {
-  "_bmadGenerated": "8f0cc6d5",
+  "_bmadGenerated": "f6bc666a",
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
-      "Bash(npm:*)",
-      "Bash(node:*)",
-      "Bash(npx:*)",
-      "Bash(git:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
       "Bash(ls:*)",
       "Bash(cat:*)",
-      "Bash(echo:*)",
       "Bash(pwd)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(npm test:*)",
+      "Bash(node .claude/bmad/bin/record.cjs:*)",
+      "Bash(node .claude/bmad/bin/replay-check.cjs:*)",
       "Read",
       "Write",
       "Edit",
@@ -66,6 +70,25 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-compact-reinject.cjs\""
           }
         ]
+      },
+      {
+        "matcher": "startup|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-warmboot.cjs\""
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-compact-flush.cjs\""
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -79,11 +102,51 @@
         ]
       },
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit|Bash|NotebookEdit",
         "hooks": [
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/orchestrator-write-gate.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-write-guard.cjs\""
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/replay-gate.cjs\""
+          }
+        ]
+      }
+    ],
+    "TaskCreated": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/replay-gate.cjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "TaskCreate|TaskUpdate|SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/task-ledger-writer.cjs\""
           }
         ]
       }
