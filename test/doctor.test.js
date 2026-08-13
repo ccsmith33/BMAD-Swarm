@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { mkdirSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -127,5 +127,44 @@ describe('Doctor Command', () => {
     writeBrain(dir, '- the log lives at artifacts/context/decision-log.md (D-1)');
     const out = execSync(`node "${CLI}" doctor`, { cwd: dir, encoding: 'utf8' });
     assert.match(out, /project brain pointers resolve/);
+  });
+
+  // Claim decay (Phase 4 Stream V): doctor reports stale `checked` claims, but the
+  // report is a CHECK, not a gate — it must never fail doctor.
+  it('reports "no claims tables" on a fresh scaffold and still passes', () => {
+    const dir = join(tmpDir, 'decay-none');
+    mkdirSync(dir, { recursive: true });
+    execSync(`node "${CLI}" init -y`, { cwd: dir, encoding: 'utf8' });
+    const out = execSync(`node "${CLI}" doctor`, { cwd: dir, encoding: 'utf8' });
+    assert.match(out, /claim decay: no claims tables found/);
+    assert.match(out, /All checks passed/);
+  });
+
+  it('flags a stale checked-claim but does NOT fail doctor (flags, does not gate)', () => {
+    const dir = join(tmpDir, 'decay-stale');
+    mkdirSync(dir, { recursive: true });
+    execSync(`node "${CLI}" init -y`, { cwd: dir, encoding: 'utf8' });
+    const g = (...a) => execSync(`git ${a.join(' ')}`, { cwd: dir, encoding: 'utf8' });
+    g('init', '-q');
+    g('config', 'user.email', 't@t.t');
+    g('config', 'user.name', 't');
+    g('add', '-A');
+    g('commit', '-q', '-m', 'c1');
+    const pin = g('rev-parse', 'HEAD').trim();
+    // A design artifact whose checked claim pins `pin` and monitors swarm.yaml.
+    const claimsDoc = `# Design note\n\nThe generated config shape is fixed [C-1].\n\n` +
+      `| C-ID | Claim | Status | Backing |\n|------|-------|--------|---------|\n` +
+      `| C-1 | config shape fixed | checked | E-1 @ commit ${pin} — swarm.yaml |\n` +
+      `| C-2 | uses opus by default | cited | swarm.yaml |\n` +
+      `| C-3 | artifacts under ./artifacts | assumed | convention |\n`;
+    writeFileSync(join(dir, 'artifacts', 'design', 'claims-note.md'), claimsDoc);
+    // Mutate the monitored file AFTER the pin.
+    writeFileSync(join(dir, 'swarm.yaml'), readFileSync(join(dir, 'swarm.yaml'), 'utf8') + '\n# touched\n');
+    g('add', '-A');
+    g('commit', '-q', '-m', 'c2');
+
+    const out = execSync(`node "${CLI}" doctor`, { cwd: dir, encoding: 'utf8' }); // exit 0 = not gated
+    assert.match(out, /C-1 was checked at .* swarm\.yaml has changed since/);
+    assert.match(out, /All checks passed/);
   });
 });

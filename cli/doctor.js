@@ -1,10 +1,17 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { getProjectPaths } from '../utils/paths.js';
 import { loadSwarmConfig, getAgentNames } from '../utils/config.js';
 import { readFileSafe } from '../utils/fs-helpers.js';
 import { METHODOLOGY_SHIP_LIST } from '../utils/scaffold-paths.js';
 import { validateBrain, extractPointers } from '../utils/project-brain.js';
+
+// The claim-decay pass lives in the self-contained replay engine (bin/replay-check.cjs)
+// so doctor and any future gate replay the same deterministic check — the single-
+// sourcing utils/evidence.js uses over the same engine (no mirror to drift).
+const require = createRequire(import.meta.url);
+const { checkClaimDecay } = require('../bin/replay-check.cjs');
 
 export function registerDoctorCommand(program) {
   program
@@ -163,6 +170,13 @@ async function runDoctor() {
   // is optional: absence is informational, not a failure.
   if (checkProjectBrain(paths)) hasIssues = true;
 
+  // 8.6. Claim decay (Phase 4 Stream V). A `checked` claim pins the commit it was
+  // verified at; when a monitored file changes after that commit, the claim is
+  // stale. Deterministic + replayable (git diff), so this is honestly a CHECK —
+  // but it FLAGS, it does not gate (diverge-verification §2.3): a stale claim is
+  // a prompt to re-verify, not a build break. It never flips hasIssues.
+  reportClaimDecay(paths);
+
   // 9. Orphaned overrides
   if (existsSync(paths.overridesAgentsDir)) {
     const overrides = readdirSync(paths.overridesAgentsDir).filter(f => f.endsWith('.md'));
@@ -242,6 +256,62 @@ function collectDecisionIds(decisionLogPath) {
   const ids = new Set();
   for (const m of content.matchAll(/\bD-\d+\b/g)) ids.add(m[0]);
   return ids;
+}
+
+// Recursively collect .md files under a directory (artifact tree walk).
+function findMarkdownFiles(dir) {
+  const files = [];
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return files;
+  }
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...findMarkdownFiles(full));
+    else if (entry.name.endsWith('.md')) files.push(full);
+  }
+  return files;
+}
+
+/**
+ * Advisory claim-decay report. Walks the artifact tree, runs the deterministic
+ * decay pass over every claims table, and prints stale (and un-pinnable) checked
+ * claims. Never flips hasIssues — this flags, it does not gate.
+ * @param {object} paths - Project paths
+ */
+function reportClaimDecay(paths) {
+  if (!existsSync(paths.artifactsDir)) return;
+  const files = findMarkdownFiles(paths.artifactsDir);
+  let checkedTotal = 0;
+  let artifactsWithClaims = 0;
+  const flagged = []; // { file, finding }
+
+  for (const file of files) {
+    const text = readFileSafe(file) || '';
+    const { checkedCount, claimCount, findings } = checkClaimDecay(text, { projectRoot: paths.root });
+    if (claimCount > 0) artifactsWithClaims++;
+    checkedTotal += checkedCount;
+    for (const f of findings) flagged.push({ file, finding: f });
+  }
+
+  if (artifactsWithClaims === 0) {
+    console.log('  ℹ claim decay: no claims tables found (nothing to monitor)');
+    return;
+  }
+
+  const stale = flagged.filter((x) => x.finding.kind === 'stale');
+  if (flagged.length === 0) {
+    check(true, `claim decay: ${checkedTotal} checked claim(s) across ${artifactsWithClaims} artifact(s), none stale`);
+    return;
+  }
+
+  console.log(`  ℹ claim decay: ${stale.length} stale + ${flagged.length - stale.length} un-checkable of ${checkedTotal} checked claim(s)`);
+  for (const { file, finding } of flagged) {
+    const rel = file.startsWith(paths.root) ? file.slice(paths.root.length).replace(/^[\\/]/, '') : file;
+    console.log(`    - ${rel}: ${finding.message}`);
+  }
 }
 
 function check(pass, message, fix) {

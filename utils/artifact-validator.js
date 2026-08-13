@@ -1,7 +1,15 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { createRequire } from 'node:module';
 import yaml from 'js-yaml';
 import { PACKAGE_METHODOLOGY_DIR } from './paths.js';
+
+// The claims-table parser + vocabulary are single-sourced from the self-contained
+// replay engine (bin/replay-check.cjs), so the advisory claims lint and the
+// cli/doctor decay pass agree on what a claims table IS (no mirror to drift —
+// the pattern utils/evidence.js uses over the same engine).
+const require = createRequire(import.meta.url);
+const { parseClaimsTable, CLAIM_STATUSES, extractCommit } = require('../bin/replay-check.cjs');
 
 /**
  * The machine projection of the artifact schemas. This is the ONE structural
@@ -77,9 +85,10 @@ function findMarkdownFiles(dir) {
 
 function validateSingleArtifact(filePath) {
   const issues = [];
+  const warnings = [];
 
   if (!existsSync(filePath)) {
-    return { file: filePath, status: 'fail', issues: ['File does not exist'] };
+    return { file: filePath, status: 'fail', issues: ['File does not exist'], warnings };
   }
 
   const content = readFileSync(filePath, 'utf8');
@@ -89,8 +98,12 @@ function validateSingleArtifact(filePath) {
 
   checkSections(content, effective.required_sections, issues);
   checkPatterns(content, effective.required_patterns, issues);
+  checkConditionalPatterns(content, effective.conditional_patterns, issues);
+  // Claims table is an ADVISORY lint (warnings, never issues): a file-shape check
+  // is gameable by its author, so it cannot be an honest hard gate (D-039).
+  checkClaimsTable(content, warnings);
 
-  return { file: filePath, status: issues.length === 0 ? 'pass' : 'fail', issues };
+  return { file: filePath, status: issues.length === 0 ? 'pass' : 'fail', issues, warnings };
 }
 
 /**
@@ -166,6 +179,85 @@ function checkPatterns(content, patterns, issues) {
       if (content.trim().length < p.min_length) {
         issues.push(p.message || `Content appears too short (< ${p.min_length} chars)`);
       }
+    }
+  }
+}
+
+/**
+ * Optional-field format checks: if `if_regex` matches, `must_regex` must too.
+ * A file where the field is absent passes untouched — this is how the spec
+ * expresses "optional, but well-formed when present" (e.g. story Depends-On).
+ *
+ * Self-implemented here in the exact shape of the `conditional_patterns`
+ * capability staged on the l5-parallelism-promotion branch, which is NOT on this
+ * baseline (94b2fe8) — so a later L-5 merge is a trivial dedupe of one identical
+ * function, not a re-integration (Phase 4 §3.3 named dependency 3, fallback path).
+ */
+export function checkConditionalPatterns(content, patterns, issues) {
+  if (!patterns) return;
+  for (const p of patterns) {
+    if (!new RegExp(p.if_regex, 'm').test(content)) continue;
+    if (!new RegExp(p.must_regex, 'm').test(content)) {
+      issues.push(p.message || `Malformed optional field: ${p.name}`);
+    }
+  }
+}
+
+/**
+ * Advisory claims-table lint (Phase 4 Stream V — diverge-verification §2). A
+ * claims table is OPTIONAL; when present it must be well-formed. Every finding is
+ * a WARNING, never an issue — the claim table's presence and shape are gameable
+ * by the artifact's own author, so treating them as a hard gate would launder
+ * exactly the theater D-039 warns against. The load-bearing verification is the
+ * reviewer attacking the claims (Tier 1) and the deterministic decay pass.
+ *
+ * Checks: 3–7 claim budget, statuses in the {checked,cited,attested,assumed}
+ * vocabulary, `checked` claims pin a commit, no duplicate C-IDs, and inline
+ * [C-NNN] markers resolve to a table row.
+ *
+ * @param {string} content - artifact markdown
+ * @param {string[]} warnings - advisory sink (mutated)
+ */
+export function checkClaimsTable(content, warnings) {
+  const rows = parseClaimsTable(content);
+  const inline = new Set();
+  for (const m of content.matchAll(/\[(C-\d+)\]/gi)) inline.add(m[1].toUpperCase());
+
+  if (rows.length === 0) {
+    if (inline.size > 0) {
+      warnings.push(`Claims lint: ${inline.size} inline C-ID marker(s) but no claims table — add a footer table (| C-ID | Claim | Status | Backing |) so the markers resolve`);
+    }
+    return; // no table, no claims — claims tables are optional
+  }
+
+  // Budget: 3–7 load-bearing claims (§2.1). Over drowns the signal; under hints
+  // either an under-claimed artifact or a table not worth keeping.
+  if (rows.length > 7) {
+    warnings.push(`Claims lint: ${rows.length} claims exceed the 3–7 budget — a table this long trains readers to skim; keep only load-bearing claims`);
+  } else if (rows.length < 3) {
+    warnings.push(`Claims lint: ${rows.length} claim(s) is below the 3–7 budget — either surface more load-bearing assertions or drop the table`);
+  }
+
+  const seen = new Set();
+  for (const row of rows) {
+    if (seen.has(row.cid)) {
+      warnings.push(`Claims lint: duplicate ${row.cid} in the claims table`);
+    }
+    seen.add(row.cid);
+
+    if (!CLAIM_STATUSES.includes(row.status)) {
+      const what = row.status ? `unknown status '${row.status}'` : 'no status';
+      warnings.push(`Claims lint: ${row.cid} has ${what} — use one of ${CLAIM_STATUSES.join(' | ')}`);
+    } else if (row.status === 'checked' && !extractCommit(row.backing)) {
+      warnings.push(`Claims lint: ${row.cid} is 'checked' but its Backing pins no commit — a checked claim must record the commit it was verified at`);
+    }
+  }
+
+  // Inline markers with no table row are unresolved references.
+  const tableIds = new Set(rows.map((r) => r.cid));
+  for (const id of inline) {
+    if (!tableIds.has(id)) {
+      warnings.push(`Claims lint: ${id} is referenced inline but absent from the claims table`);
     }
   }
 }

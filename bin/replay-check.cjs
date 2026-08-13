@@ -561,6 +561,155 @@ function runItemCheck(item, ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// Claim decay (Phase 4 Stream V — diverge-verification §2.3). A `checked` claim
+// records the commit it was verified at; when a file it monitors changes after
+// that commit, the claim is stale. Everything here is deterministic and
+// replayable (git diff over a pinned SHA), so cli/doctor may honestly present it
+// as a CHECK, not enforcement — it flags, it never gates. This machinery also
+// backs the validator's advisory claims lint (shared parser, no mirror — the
+// same single-sourcing utils/evidence.js uses over this engine).
+// ---------------------------------------------------------------------------
+
+// The claim-status vocabulary (diverge-verification §2.2). `checked` is the only
+// decay-bearing status: it is the one backed by replayable evidence at a commit.
+const CLAIM_STATUSES = ['checked', 'cited', 'attested', 'assumed'];
+
+// Split one markdown table line into trimmed cells, or null if it is not a table
+// row. Leading/trailing pipes are optional-tolerant.
+function parseTableRow(line) {
+  const t = String(line || '').trim();
+  if (!t.startsWith('|')) return null;
+  return t.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+}
+
+// A separator row (`|---|:--:|`) carries no data.
+function isSeparatorRow(cells) {
+  return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c));
+}
+
+/**
+ * Parse the footer claims table out of an artifact's markdown. Recognizes a
+ * pipe table whose header row contains the C-ID, Claim and Status columns (the
+ * Backing column is optional in the header but read when present). Returns
+ * [{ cid, claim, status, backing }] for every row whose C-ID cell is a C-NNN
+ * marker; rows outside that shape are skipped rather than guessed at.
+ */
+function parseClaimsTable(markdown) {
+  const lines = String(markdown || '').split('\n');
+  const rows = [];
+  let header = null;
+  for (const line of lines) {
+    const cells = parseTableRow(line);
+    if (!cells) { header = null; continue; }
+    const norm = cells.map((c) => c.toLowerCase());
+    if (!header) {
+      if (norm.includes('c-id') && norm.includes('claim') && norm.includes('status')) {
+        header = norm;
+      }
+      continue;
+    }
+    if (isSeparatorRow(cells)) continue;
+    const at = (name) => {
+      const idx = header.indexOf(name);
+      return idx >= 0 && idx < cells.length ? cells[idx] : '';
+    };
+    const cid = at('c-id');
+    if (!/^C-\d+$/i.test(cid)) continue;
+    rows.push({
+      cid: cid.toUpperCase(),
+      claim: at('claim'),
+      status: at('status').toLowerCase(),
+      backing: at('backing'),
+    });
+  }
+  return rows;
+}
+
+// Pull the commit a `checked` claim pins from its Backing cell. Prefers an
+// anchored form (`commit ab12ef`, `@ ab12ef`, `sha ab12ef`); falls back to any
+// bare 7–40 char hex token. Returns a lowercased SHA or null.
+function extractCommit(backing) {
+  const s = String(backing || '');
+  const anchored = /(?:@|\bcommit\b|\bsha\b)\s*([0-9a-f]{7,40})\b/i.exec(s);
+  if (anchored) return anchored[1].toLowerCase();
+  const bare = /\b([0-9a-f]{7,40})\b/i.exec(s);
+  return bare ? bare[1].toLowerCase() : null;
+}
+
+// Pull repo-relative path-like tokens (a slashed path or a bare `name.ext`) from
+// a Backing cell. The caller filters these against on-disk existence, so an
+// over-match that names no real file is harmless.
+function extractPaths(backing) {
+  const s = String(backing || '');
+  const re = /([\w.-]+(?:\/[\w.-]+)+(?:\.[\w]+)?|[\w-]+\.[a-z][\w]{0,4})/gi;
+  const out = new Set();
+  let m;
+  while ((m = re.exec(s))) out.add(m[1]);
+  return [...out];
+}
+
+// Is `sha` a commit object in the repo at `cwd`? (git is the trust anchor; a
+// claim pinning a SHA the repo has never seen cannot be decay-checked.)
+function gitCommitExists(sha, cwd) {
+  const r = spawnSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd, encoding: 'utf8' });
+  return r.status === 0;
+}
+
+// Has `file` changed between `sha` and HEAD? true/false, or null when git could
+// not answer (no repo, unknown path) — the caller treats null as "cannot tell".
+function gitFileChangedSince(sha, file, cwd) {
+  const r = spawnSync('git', ['diff', '--quiet', sha, 'HEAD', '--', file], { cwd, encoding: 'utf8' });
+  if (r.status === 0) return false;
+  if (r.status === 1) return true;
+  return null;
+}
+
+/**
+ * Run the decay pass over one artifact's markdown. For each `checked` claim:
+ *   - no pinned commit           → finding kind 'unpinned'
+ *   - commit not in the repo     → finding kind 'unknown-commit'
+ *   - pinned but names no file   → finding kind 'no-files'
+ *   - a monitored file changed   → finding kind 'stale' (the headline signal)
+ * Non-`checked` claims never decay. Returns { claimCount, checkedCount, findings }.
+ *
+ * @param {string} markdown - the artifact body
+ * @param {object} opts - { projectRoot }
+ */
+function checkClaimDecay(markdown, opts) {
+  const cwd = path.resolve((opts && opts.projectRoot) || process.cwd());
+  const rows = parseClaimsTable(markdown);
+  const findings = [];
+  let checkedCount = 0;
+  for (const row of rows) {
+    if (row.status !== 'checked') continue;
+    checkedCount++;
+    const sha = extractCommit(row.backing);
+    if (!sha) {
+      findings.push({ cid: row.cid, kind: 'unpinned',
+        message: `${row.cid} is 'checked' but its Backing pins no commit — a checked claim must record the commit it was verified at` });
+      continue;
+    }
+    if (!gitCommitExists(sha, cwd)) {
+      findings.push({ cid: row.cid, kind: 'unknown-commit', sha,
+        message: `${row.cid} pins commit ${sha}, which this repo does not contain — decay cannot be checked` });
+      continue;
+    }
+    const files = extractPaths(row.backing).filter((f) => fs.existsSync(path.join(cwd, f)));
+    if (files.length === 0) {
+      findings.push({ cid: row.cid, kind: 'no-files', sha,
+        message: `${row.cid} pins ${sha} but names no on-disk file to monitor — decay cannot be checked` });
+      continue;
+    }
+    const changed = files.filter((f) => gitFileChangedSince(sha, f, cwd) === true);
+    if (changed.length) {
+      findings.push({ cid: row.cid, kind: 'stale', sha, files: changed,
+        message: `${row.cid} was checked at ${sha}; ${changed.join(', ')} has changed since — re-verify or downgrade to 'assumed'` });
+    }
+  }
+  return { claimCount: rows.length, checkedCount, findings };
+}
+
+// ---------------------------------------------------------------------------
 // Bundle evaluation — the verdict
 // ---------------------------------------------------------------------------
 
@@ -734,6 +883,12 @@ module.exports = {
   evaluateBundle,
   formatVerdict,
   main,
+  // Claim decay + shared claims-table parser (Stream V)
+  CLAIM_STATUSES,
+  parseClaimsTable,
+  extractCommit,
+  extractPaths,
+  checkClaimDecay,
 };
 
 function camel(s) { return s.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); }
