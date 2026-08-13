@@ -944,7 +944,7 @@ describe('Hooks (process-spawn contract)', () => {
       ['git reset --soft', 'git reset --soft HEAD~1'],
       ['git reset (default/mixed)', 'git reset HEAD~1'],
       ['git -C <path> checkout main (the -C bug: subcommand must resolve to checkout)', 'git -C /tmp checkout main'],
-      ['git -c core.pager=cat log', 'git -c core.pager=cat log --oneline'],
+      ['git -c commit.gpgsign=false commit (benign non-exec config)', 'git -c commit.gpgsign=false commit -m x'],
     ];
     for (const [label, cmd] of GIT_ALLOWED) {
       it(`git-matrix: ALLOWS ${label}`, () => {
@@ -974,6 +974,13 @@ describe('Hooks (process-spawn contract)', () => {
       ['git update-ref', 'git update-ref refs/heads/x HEAD'],
       ['git -c alias shell-escape', "git -c alias.x='!sh' x"],
       ['git --exec-path binary substitution', 'git --exec-path=/tmp/evil status'],
+      // F-INT-4: path-valued exec-affecting `-c` config keys (value-agnostic).
+      ['git -c core.pager= (pager exec)', 'git -c core.pager=/tmp/evil log'],
+      ['git -c core.pager=cat (value-agnostic — still an exec key)', 'git -c core.pager=cat log --oneline'],
+      ['git -c core.hooksPath= (hook dir exec)', 'git -c core.hooksPath=/tmp/evil commit -m x'],
+      ['git -c core.fsmonitor= (fsmonitor exec)', 'git -c core.fsmonitor=/tmp/evil status'],
+      ['git -c core.sshCommand= (ssh driver exec)', 'git -c core.sshCommand=/tmp/evil fetch'],
+      ['git -c uploadpack.packObjectsHook= (*.hook-ish exec)', 'git -c uploadpack.packObjectsHook=/tmp/evil fetch'],
     ];
     for (const [label, cmd] of GIT_DENIED) {
       it(`git-matrix: DENIES ${label}`, () => {

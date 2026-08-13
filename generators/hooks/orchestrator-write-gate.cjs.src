@@ -15,10 +15,15 @@
 // matches Edit|Write|MultiEdit|Bash|NotebookEdit and, for the orchestrator
 // identity only:
 //   - confines the file tools to the writable set;
-//   - denies write-shaped shell (redirection, tee/dd/sed -i/cp/mv/install/
-//     truncate/ln, WRITE-VECTOR + DESTRUCTIVE git, editors, and any interpreter
-//     that is not one of the two pinned scripts), scanning quote-aware and
-//     recursing into command substitutions.
+//   - runs Bash through a FAIL-CLOSED allowlist (ADR-017 Amendment 2): any
+//     leading binary that is not explicitly known-good — coordination git, the
+//     pinned node scripts, npm test/run, cargo build-family, read-only
+//     inspection (ls/cat/head/tail/wc/grep/rg/pwd/echo/printf), bmad-swarm — is
+//     DENIED, as is any env prefix outside the benign-build allowlist and any
+//     write-shaped redirection. Wrappers (strace/timeout/parallel/sudo/…),
+//     interpreters, write/destructive utils and package runners all fall to the
+//     default-deny. Scanning is quote-aware and recurses into command
+//     substitutions.
 //
 // git (ADR-017 Amendment 1): coordination git is ALLOWED (commit, push, fetch,
 // merge --ff-only, checkout/switch branch-form, branch, tag) — the settings.json
@@ -58,18 +63,35 @@ const SERIALIZED_FILES = [
   'artifacts/context/decision-log.md',
   'artifacts/context/task-ledger.md',
 ];
-// Binaries denied outright as a tripwire: interpreters/exec-wrappers (a running
-// shell should never reach these — the allow-list already refuses them), plus
-// editors. node/nodejs are handled separately (pinned-script exception).
-const DENY_BINARIES = new Set([
-  'python', 'python2', 'python3', 'perl', 'ruby', 'php',
-  'bash', 'sh', 'zsh', 'dash', 'ksh',
-  'awk', 'gawk', 'mawk',
-  'xargs', 'find',
-  'ed', 'ex', 'vi', 'vim', 'nano', 'emacs', 'patch',
+// FAIL-CLOSED / ALLOWLIST (ADR-017 Amendment 2). The gate no longer enumerates
+// binaries to DENY with an allow fall-through (that was F-016 / F-INT-1 /
+// F-INT-2: `strace node -e`, `script -qc "rm -rf src"`, `parallel`, `rlwrap`,
+// `HOME=/tmp/evil git log`, `PAGER=…` all slipped past because they were simply
+// not on the denylist). Instead, for an identified orchestrator, an
+// UNRECOGNIZED leading binary is DENIED. Only the known-good allowlist below —
+// mirrored EXACTLY in utils/orchestrator-allow.js and pinned by
+// test/orchestrator-allow.test.js — passes: coordination git, the pinned node
+// scripts, npm test/run, cargo build-family, read-only inspection
+// (ls/cat/head/tail/wc/grep/rg/pwd/echo/printf) and the first-party bmad-swarm
+// CLI. So `strace node -e`, `HOME=… git log`, `parallel …`, `tee src/x`,
+// `rm -rf src`, `curl -o …` all DENY because their real leading target is not
+// known-good.
+//
+// Flat known-good leading binaries — allowed with any arguments (their
+// redirection targets are still vetted separately). Pinned EQUAL to the
+// validator's KNOWN_GOOD_BINARIES.
+const KNOWN_GOOD_BINARIES = new Set([
+  'ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'pwd', 'echo', 'printf',
+  'bmad-swarm',
 ]);
-// Binaries whose write destination we vet against the writable set.
-const WRITE_UTILS = new Set(['tee', 'dd', 'cp', 'mv', 'install', 'rsync', 'ln', 'truncate']);
+// npm / cargo are allowed ONLY for these non-fetching, non-download-exec
+// subcommands. Pinned EQUAL to the validator's NPM_ALLOWED_SUBCMDS /
+// CARGO_ALLOWED_SUBCMDS.
+const NPM_ALLOWED_SUBCMDS = new Set(['test', 'run', 'run-script']);
+const CARGO_ALLOWED_SUBCMDS = new Set([
+  'build', 'check', 'test', 'bench', 'clippy', 'fmt', 'doc',
+  'run', 'tree', 'metadata', 'version',
+]);
 // git subcommands that rewrite working-tree FILES from an arbitrary source (a
 // code-write vector). checkout/switch are NOT here — they are branch-safe and
 // only denied in their PATHSPEC form (inspectGit). Deliberately NOT
@@ -82,42 +104,34 @@ const GIT_WRITE_SUBCMDS = new Set(['apply', 'restore', 'am', 'stash', 'mv', 'rm'
 // before the subcommand is resolved, or `git -C /path apply x` reads `/path` as
 // the subcommand and the deny-set never matches (the -C bug).
 const GIT_GLOBAL_OPTS_WITH_ARG = new Set(['-C', '--git-dir', '--work-tree', '--namespace']);
-// Launcher-wrappers: binaries whose only job is to exec a following program.
-// DENIED OUTRIGHT when they lead a command — the orchestrator never needs to
-// wrap a coordination op, and the wrapped program (`timeout node -e …`,
-// `timeout rm -rf src`, `setsid python evil.py`) would otherwise run
-// un-inspected. Argument-aware re-inspection is deliberately avoided; deny is
-// simpler and strictly safer. Pinned EQUAL to the validator's WRAPPER_BINARIES
-// by test/orchestrator-allow.test.js (F-INT-1).
-const LAUNCHER_WRAPPERS = new Set([
-  'env', 'command', 'builtin', 'exec', 'sudo', 'doas',
-  'nice', 'nohup', 'time', 'stdbuf', 'xargs', 'find',
-  'timeout', 'setsid', 'flock', 'chrt', 'ionice',
-  'unbuffer', 'setarch', 'catchsegv', 'watch',
-]);
-// Execution-affecting environment variables. An env prefix (`VAR=val cmd`) that
-// sets any of these — or a GIT_CONFIG*/DYLD_*/LD_* family member
-// (isExecAffectingEnvVar) — turns an allowed coordination command into arbitrary
-// execution (git diff/pager/ssh drivers, GIT_CONFIG* alias/core.pager, the
-// dynamic loader, node/perl/python/ruby preload hooks, PATH/IFS hijack) and is
-// DENIED. Benign build vars (RUSTFLAGS, CI, CARGO_*, …) are absent and pass.
-// Pinned EQUAL to the validator's EXEC_AFFECTING_ENV_VARS by the consistency
-// test (F-INT-2).
-const EXEC_AFFECTING_ENV_VARS = new Set([
-  'GIT_EXTERNAL_DIFF', 'GIT_SSH_COMMAND', 'GIT_SSH', 'GIT_PAGER', 'GIT_EDITOR',
-  'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS',
-  'GIT_PROXY_COMMAND', 'GIT_ASKPASS', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  'NODE_OPTIONS', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT',
-  'PERL5OPT', 'PERL5LIB', 'PYTHONSTARTUP', 'PYTHONPATH', 'RUBYOPT', 'RUBYLIB',
-  'BASH_ENV', 'ENV', 'IFS', 'PATH', 'SHELLOPTS', 'BASHOPTS',
-]);
-// True iff an env-var NAME is execution-affecting (denylist + prefix families).
-// Identical predicate to the validator's; the exact-name Set is pinned equal.
-function isExecAffectingEnvVar(name) {
-  if (EXEC_AFFECTING_ENV_VARS.has(name)) return true;
-  if (name.startsWith('GIT_CONFIG')) return true; // GIT_CONFIG* family
-  if (name.startsWith('DYLD_')) return true;       // macOS dyld injection
-  if (name.startsWith('LD_')) return true;         // ELF loader injection
+// Benign build-time env vars (exact names) + the CARGO_ prefix MINUS the cargo
+// exec-override sub-family (…RUSTC…/…LINKER…/…RUNNER…/…RUSTDOC… and CARGO_HOME,
+// which redirect the compiler/linker/test-runner/config to an arbitrary
+// program). FAIL CLOSED: any env prefix not matched here (HOME, PAGER, MANPAGER,
+// LESSOPEN, GIT_*, NODE_OPTIONS, LD_*/DYLD_*, PATH, IFS, …) is DENIED. Pinned
+// EQUAL to the validator's BENIGN_ENV_VARS + isBenignEnvVar.
+const BENIGN_ENV_VARS = new Set(['CI', 'RUSTFLAGS']);
+const CARGO_EXEC_OVERRIDE_RE = /RUSTC|LINKER|RUNNER|RUSTDOC/i;
+// True iff an env-var NAME is a benign build var. Identical predicate to the
+// validator's isBenignEnvVar; the exact-name Set + CARGO_ rule are pinned equal.
+function isBenignEnvVar(name) {
+  if (BENIGN_ENV_VARS.has(name)) return true;
+  if (name === 'CARGO_HOME') return false;
+  if (name.startsWith('CARGO_') && !CARGO_EXEC_OVERRIDE_RE.test(name)) return true;
+  return false;
+}
+// Exec-affecting git `-c <key>=<value>` config keys (F-INT-4). A path/program
+// value to any of these keys makes git exec it (hooks dir, pager, fsmonitor,
+// editor, ssh/askpass driver, external diff, sequence editor, or any
+// *.command/*.helper/*.process key). Denied VALUE-AGNOSTICALLY, in addition to
+// the alias.* / `!`-shell-escape vectors.
+function isExecAffectingGitConfig(kv) {
+  const key = String(kv == null ? '' : kv).split('=')[0].toLowerCase();
+  if (key.startsWith('alias.')) return true;
+  if (/^core\.(hookspath|pager|fsmonitor|editor|sshcommand|askpass|gitproxy)$/.test(key)) return true;
+  if (key === 'diff.external' || key === 'sequence.editor') return true;
+  if (/^(uploadpack|receivepack)\./.test(key)) return true;
+  if (/\.(command|helper|process)$/.test(key)) return true;
   return false;
 }
 
@@ -374,42 +388,45 @@ function inspectSub(tokens, projectRoot) {
   }
   if (!words.length) return { deny: false };
 
-  // 2) env-var prefixes (`VAR=val cmd`): vet each assignment. An
-  //    execution-affecting variable (GIT_EXTERNAL_DIFF, GIT_SSH_COMMAND,
-  //    NODE_OPTIONS, LD_PRELOAD, GIT_CONFIG_GLOBAL, …) turns the following
-  //    coordination command into arbitrary execution and is denied outright.
+  // 2) env-var prefixes (`VAR=val cmd`): FAIL CLOSED. Only the benign-build
+  //    allowlist (CI / RUSTFLAGS / most CARGO_*) passes; every other prefix
+  //    (HOME, PAGER, MANPAGER, LESSOPEN, GIT_*, NODE_OPTIONS, LD_*/DYLD_*, PATH,
+  //    IFS, CARGO_*_RUNNER, …) can redirect the following command into arbitrary
+  //    execution and is denied outright.
   let bi = 0;
   for (; bi < words.length; bi++) {
     const u = unquote(words[bi]);
     const em = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(u);
     if (!em) break;
-    if (isExecAffectingEnvVar(em[1])) {
-      return { deny: true, reason: shellReason('execution-affecting env prefix ' + em[1] + '=') };
+    if (!isBenignEnvVar(em[1])) {
+      return { deny: true, reason: shellReason('non-benign env prefix ' + em[1] + '= (only CI / RUSTFLAGS / most CARGO_* pass)') };
     }
   }
-  if (bi >= words.length) return { deny: false }; // only assignments, no command
+  if (bi >= words.length) return { deny: false }; // only benign assignments, no command
 
-  // 3) launcher-wrappers (timeout/setsid/flock/…): deny outright — never
-  //    stripped-then-inspected, so the wrapped program can't slip through.
+  // 3) KNOWN-GOOD ALLOWLIST. After env prefixes are stripped, the leading binary
+  //    must be explicitly sanctioned; anything else (wrappers strace/timeout/
+  //    parallel/sudo/…, interpreters, write/destructive utils, package runners)
+  //    is DENIED fail-closed — its real target is never inspected, so it cannot
+  //    smuggle a wrapped program through.
   const base = unquote(words[bi]).replace(/.*\//, '');
-  if (LAUNCHER_WRAPPERS.has(base)) {
-    return { deny: true, reason: shellReason('launcher-wrapper "' + base + '" (executes an arbitrary following program)') };
-  }
-
   const binWords = words.slice(bi);
   const args = binWords.slice(1).map(unquote);
 
   if (base === 'node' || base === 'nodejs') return inspectNode(binWords, projectRoot);
-  if (DENY_BINARIES.has(base)) return { deny: true, reason: shellReason(base + ' (interpreter/editor/exec-wrapper)') };
-  if (base === 'sed') {
-    if (args.some((a) => a === '-i' || a.startsWith('-i') || a === '--in-place' || a.startsWith('--in-place'))) {
-      return { deny: true, reason: shellReason('sed -i (in-place edit)') };
-    }
-    return { deny: false };
-  }
   if (base === 'git') return inspectGit(args);
-  if (WRITE_UTILS.has(base)) return inspectWriteUtil(base, args, projectRoot);
-  return { deny: false };
+  if (base === 'npm') return inspectSubcommand('npm', args, NPM_ALLOWED_SUBCMDS);
+  if (base === 'cargo') return inspectSubcommand('cargo', args, CARGO_ALLOWED_SUBCMDS);
+  if (KNOWN_GOOD_BINARIES.has(base)) return { deny: false };
+  return { deny: true, reason: shellReason('"' + base + '" is not in the orchestrator known-good allowlist (wrapper / interpreter / package-runner / write-util / unknown binary)') };
+}
+
+// npm / cargo: allowed only for a closed set of build/test subcommands. The
+// first non-flag operand is the subcommand.
+function inspectSubcommand(bin, args, allowed) {
+  const sub = args.find((a) => a && !a.startsWith('-'));
+  if (sub && allowed.has(sub)) return { deny: false };
+  return { deny: true, reason: shellReason(bin + ' ' + (sub || '(no subcommand)') + ' — only ' + [...allowed].join('/') + ' are allowed') };
 }
 
 // Inspect a `git` invocation. `args` is everything after the `git` token
@@ -423,16 +440,16 @@ function inspectGit(args) {
   while (i < args.length) {
     const a = args[i];
     if (a === '-c') {
-      const val = args[i + 1] || '';
-      if (/^alias\./i.test(val) || val.includes('!')) {
-        return { deny: true, reason: shellReason('git -c ' + stripQuotes(val) + ' (alias/shell-escape)') };
+      const val = stripQuotes(args[i + 1] || '');
+      if (val.includes('!') || isExecAffectingGitConfig(val)) {
+        return { deny: true, reason: shellReason('git -c ' + val + ' (alias / exec-affecting config: hooksPath/pager/fsmonitor/editor/ssh/external-diff/*.command)') };
       }
       i += 2; continue;
     }
     if (a.startsWith('-c') && a.length > 2) {
-      const val = a.slice(2);
-      if (/^alias\./i.test(val) || val.includes('!')) {
-        return { deny: true, reason: shellReason('git -c (alias/shell-escape)') };
+      const val = stripQuotes(a.slice(2));
+      if (val.includes('!') || isExecAffectingGitConfig(val)) {
+        return { deny: true, reason: shellReason('git -c ' + val + ' (alias / exec-affecting config: hooksPath/pager/fsmonitor/editor/ssh/external-diff/*.command)') };
       }
       i += 1; continue;
     }
@@ -493,41 +510,6 @@ function inspectGit(args) {
     return { deny: true, reason: shellReason('git gc --prune (object pruning)') };
   }
   return { deny: false };                                        // coordination + read subcommands pass
-}
-
-function inspectWriteUtil(base, args, projectRoot) {
-  const operands = args.filter((a) => a && !a.startsWith('-'));
-  if (base === 'dd') {
-    const of = args.find((a) => a.startsWith('of='));
-    if (of && !isShellWritable(of.slice(3), projectRoot)) return { deny: true, reason: shellReason('dd of=' + stripQuotes(of.slice(3))) };
-    return { deny: false };
-  }
-  if (base === 'tee') {
-    for (const f of operands) if (!isShellWritable(f, projectRoot)) return { deny: true, reason: shellReason('tee → ' + stripQuotes(f)) };
-    return { deny: false };
-  }
-  if (base === 'truncate') {
-    for (const f of operands.filter((a) => !/^\d+[kKmMgG]?$/.test(a))) {
-      if (!isShellWritable(f, projectRoot)) return { deny: true, reason: shellReason('truncate → ' + stripQuotes(f)) };
-    }
-    return { deny: false };
-  }
-  if (base === 'ln') {
-    // ln [-s] TARGET LINK — deny if the LINK dest, or (for -s) the TARGET the
-    // symlink would point at, escapes the writable set.
-    const symlink = args.some((a) => a === '-s' || (a.startsWith('-') && a.includes('s')));
-    const dest = operands[operands.length - 1];
-    if (dest && !isShellWritable(dest, projectRoot)) return { deny: true, reason: shellReason('ln → ' + stripQuotes(dest)) };
-    if (symlink && operands.length >= 2) {
-      const linkTarget = operands[operands.length - 2];
-      if (!isShellWritable(linkTarget, projectRoot)) return { deny: true, reason: shellReason('ln -s pointing outside the writable set: ' + stripQuotes(linkTarget)) };
-    }
-    return { deny: false };
-  }
-  // cp / mv / install / rsync — last operand is the destination.
-  const dest = operands[operands.length - 1];
-  if (dest && !isShellWritable(dest, projectRoot)) return { deny: true, reason: shellReason(base + ' → ' + stripQuotes(dest)) };
-  return { deny: false };
 }
 
 function inspectBash(command, projectRoot, depth) {
