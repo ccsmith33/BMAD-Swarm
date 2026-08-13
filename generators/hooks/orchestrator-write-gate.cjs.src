@@ -58,6 +58,12 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const PINNED_SCRIPT_RE = /(^|\/)\.claude\/bmad\/bin\/(record|replay-check)\.cjs$/;
+// F-FINAL-1: the ONLY /dev/ redirect targets allowed by the fast-path. Never the
+// whole /dev/ tree — that would allow `/dev/tcp/<host>/<port>` and
+// `/dev/udp/<host>/<port>` (bash exfil sockets) and `/dev/../` traversal into
+// the source tree. /dev/fd/<n> is matched separately (DEV_FD_RE).
+const SAFE_DEV_TARGETS = new Set(['/dev/null', '/dev/stdout', '/dev/stderr']);
+const DEV_FD_RE = /^\/dev\/fd\/\d+$/;
 const SERIALIZED_FILES = [
   'artifacts/context/ledger.md',
   'artifacts/context/decision-log.md',
@@ -252,12 +258,41 @@ function isShellWritable(rawPath, projectRoot) {
   return isAllowedWrite(rawPath, projectRoot);
 }
 
+// F-FINAL-1: confirm a lexically-under-/tmp target is GENUINELY under /tmp after
+// symlink resolution. The caller has already rejected any `..` segment, so the
+// only remaining escape is a symlinked ancestor (e.g. /tmp/x -> /repo/src). We
+// realpath the nearest existing ancestor and require it to still sit under the
+// real /tmp. `norm` is guaranteed to be `/tmp` or start with `/tmp/`.
+function tmpTargetWithin(norm) {
+  let realTmp;
+  try { realTmp = normalizeSlashes(fs.realpathSync('/tmp')); } catch { realTmp = '/tmp'; }
+  let dir = norm;
+  const seen = new Set();
+  while (dir && dir !== '/' && !seen.has(dir)) {
+    seen.add(dir);
+    let real;
+    try { real = normalizeSlashes(fs.realpathSync(dir)); }
+    catch { dir = path.posix.dirname(dir); continue; }
+    return real === realTmp || real.startsWith(realTmp + '/');
+  }
+  return true; // nothing resolved — lexical /tmp check held and there is no `..`
+}
+
 function redirectTargetOk(target, projectRoot) {
   const t = stripQuotes(target);
   if (!t) return true;
   const norm = normalizeSlashes(t);
-  if (norm === '/dev/null' || norm.startsWith('/dev/')) return true;
-  if (norm === '/tmp' || norm.startsWith('/tmp/')) return true;
+  // F-FINAL-1: a `..` path SEGMENT disqualifies every fast-path. Route it through
+  // the confinement logic below (resolveTarget rejects `..` outright), so
+  // `/dev/../<repo>/src/x.js` and `/tmp/../<repo>/src/x.js` can no longer write
+  // into the source tree.
+  if (!norm.split('/').includes('..')) {
+    // /dev/ is allowed ONLY for an explicit safe set (never the whole tree —
+    // this kills /dev/tcp/*, /dev/udp/* exfil sockets and /dev/../ traversal).
+    if (SAFE_DEV_TARGETS.has(norm) || DEV_FD_RE.test(norm)) return true;
+    // /tmp targets: normalize (realpath) and confirm still under the real /tmp.
+    if (norm === '/tmp' || norm.startsWith('/tmp/')) return tmpTargetWithin(norm);
+  }
   return isShellWritable(t, projectRoot);
 }
 
