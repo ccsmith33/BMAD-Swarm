@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, readdirSync, writeFileSync, copyFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -72,9 +72,14 @@ describe('workflows-generator', () => {
     const body = readFileSync(join(workflowsDir, 'bug-fix.js'), 'utf8');
     // Escalation is script logic (spike-3: no `escalate: agentic` primitive).
     assert.match(body, /escalateToTeam/, 'must define a script-logic escalation path');
-    // The router-miss is logged via record.cjs task-event — the calibration stream.
-    assert.match(body, /record\.cjs task-event --task/, 'escalation must log a router-miss task-event');
-    assert.match(body, /router-miss/, 'must name the router-miss event');
+    // The router-miss is emitted DETERMINISTICALLY from script logic (a
+    // child_process exec of record.cjs), not delegated to an agent's prompt.
+    assert.match(body, /async function emitRouterMiss/, 'must have a script-level emitter');
+    assert.match(body, /node:child_process/, 'must exec record.cjs from script logic');
+    assert.match(body, /spawnSync/, 'deterministic emission uses spawnSync (array args, no shell)');
+    assert.match(body, /await emitRouterMiss\(/, 'escalation must call the deterministic emitter');
+    assert.match(body, /record\.cjs['"],?\s*'task-event'|record\.cjs task-event/, 'escalation must log a router-miss task-event');
+    assert.match(body, /'router-miss'|router-miss/, 'must name the router-miss event');
     // Worktree isolation on the fix node.
     assert.match(body, /isolation: 'worktree'/, 'fix node must isolate in a worktree');
     // Named workflow (not inline) — meta name matches the file.
@@ -85,6 +90,59 @@ describe('workflows-generator', () => {
     }
     // The review gate is regime-invariant — a reviewer node runs inside the pipeline.
     assert.match(body, /agentType: 'reviewer'/, 'pilot must run an adversarial reviewer node');
+  });
+
+  it('the escalation path emits the router-miss DETERMINISTICALLY from script logic', async () => {
+    // The router-miss must be logged by the workflow SCRIPT, not delegated to
+    // the escalation agent's prompt — a skipped agent call would silently lose
+    // the calibration signal. This test executes the real escalation path with a
+    // STUB agent that never touches record.cjs, and asserts the event still lands
+    // in the ledger. If it lands, the script emitted it; the agent could not have.
+    generateWorkflows(config, paths, { force: true });
+
+    // A throwaway project the workflow's `record.cjs task-event` writes into.
+    const proj = realpathSync(mkdtempSync(join(tmpdir(), 'wf-routermiss-')));
+    mkdirSync(join(proj, '.claude', 'bmad', 'bin'), { recursive: true });
+    mkdirSync(join(proj, 'artifacts', 'context'), { recursive: true });
+    copyFileSync(join(repoRoot, 'bin', 'record.cjs'), join(proj, '.claude', 'bmad', 'bin', 'record.cjs'));
+
+    // Load the generated workflow body the way the runtime does: strip the
+    // meta export (extracted separately) and the trailing marker, then wrap the
+    // remainder — which uses top-level `await run()` and `agent`/`args` globals —
+    // in an async function we can drive with a stub agent.
+    let body = readFileSync(join(workflowsDir, 'bug-fix.js'), 'utf8');
+    body = body.replace(/\n\/\/ bmad-generated:[a-f0-9]+\n$/, '\n');
+    body = body.replace(/^export const meta = \{[\s\S]*?\n\};\n/, '');
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const runWorkflow = new AsyncFunction('agent', 'args', body);
+
+    // Stub agent: fails reproduction on the first node (triggers escalation
+    // immediately), returns a canned team result on the escalation node. It
+    // NEVER runs record.cjs — so any router-miss in the ledger came from script.
+    let agentCalls = 0;
+    const stubAgent = async () => {
+      agentCalls += 1;
+      if (agentCalls === 1) return { reproduced: false };
+      return { resolved: true, files_changed: [] };
+    };
+
+    const prevCwd = process.cwd();
+    const prevProjEnv = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = proj; // record.cjs default context dir root
+    process.chdir(proj);
+    try {
+      await runWorkflow(stubAgent, { taskId: 'T-ROUTER-MISS', report: 'repro fails' });
+    } finally {
+      process.chdir(prevCwd);
+      if (prevProjEnv === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = prevProjEnv;
+    }
+
+    assert.ok(agentCalls >= 2, 'the escalation path should have run (repro fail → escalate)');
+    const ledger = readFileSync(join(proj, 'artifacts', 'context', 'task-ledger.md'), 'utf8');
+    assert.match(ledger, /event=router-miss/, 'router-miss must be recorded by the workflow script');
+    assert.match(ledger, /task=T-ROUTER-MISS/, 'the router-miss must carry the task id');
+    rmSync(proj, { recursive: true, force: true });
   });
 
   it('regeneration is idempotent (byte-identical on a second run)', () => {

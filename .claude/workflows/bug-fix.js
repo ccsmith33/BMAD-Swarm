@@ -23,20 +23,42 @@ export const meta = {
 const taskId = (args && args.taskId) || 'unknown';
 const report = (args && args.report) || 'No bug report supplied in args.report.';
 
-// Fallback: route the remainder of the task to a full agentic team, and record
-// the router-miss so the complexity rubric stays empirically tunable (vision
-// §4.6; no tuner is built this phase). This IS the "deterministic tier escalates
-// to agentic" behavior — implemented as script logic per spike 3.
+// Deterministic router-miss emission — SCRIPT LOGIC, not an agent prompt. The
+// calibration signal is the whole point of the router-miss (it feeds the
+// self-tuning rubric, vision §4.6), so it must NOT depend on an escalation agent
+// remembering to run a command. We exec record.cjs directly from the workflow at
+// the moment escalation fires. record.cjs task-event is the serialized-write
+// channel (the only legal ledger writer), invoked with array args (no shell, no
+// injection surface). If the runtime sandboxes child_process (import throws or
+// the spawn fails), we degrade honestly to a best-effort instruction in the
+// escalation agent's prompt — never silently.
+async function emitRouterMiss(reason) {
+  try {
+    const { spawnSync } = await import('node:child_process');
+    const r = spawnSync('node', [
+      '.claude/bmad/bin/record.cjs', 'task-event',
+      '--task', String(taskId), '--event', 'router-miss', '--detail', String(reason),
+    ], { encoding: 'utf8' });
+    return r.status === 0;
+  } catch (_e) {
+    return false;
+  }
+}
+
+// Route the remainder of the task to a full agentic team. This IS the
+// "deterministic tier escalates to agentic" behavior — script logic per spike 3
+// (there is no `escalate: agentic` primitive).
 async function escalateToTeam(reason) {
+  const telemetryEmitted = await emitRouterMiss(reason);
+  const telemetryLine = telemetryEmitted
+    ? 'The router-miss calibration event has ALREADY been logged deterministically by the workflow — do NOT log it again. '
+    : 'The workflow could not log the router-miss itself (sandboxed runtime); as a fallback, FIRST run from the repo root: node .claude/bmad/bin/record.cjs task-event --task ' + taskId + ' --event router-miss --detail ' + JSON.stringify(reason) + ' — then ';
   return await agent({
     agentType: 'developer',
     prompt:
-      'The deterministic bug-fix workflow could not complete this task and is ' +
-      'escalating to an agentic team. FIRST, log the router-miss event by running ' +
-      'this exact command from the repo root:\n\n' +
-      '  node .claude/bmad/bin/record.cjs task-event --task ' + taskId +
-      ' --event router-miss --detail ' + JSON.stringify(reason) + '\n\n' +
-      'THEN take over the task agentically end to end: fix the bug, add or update ' +
+      'The deterministic bug-fix workflow escalated to an agentic team. ' +
+      telemetryLine +
+      'take over the task agentically end to end: fix the bug, add or update ' +
       'tests, run the full suite, and produce the replay-evidence bundle the gated ' +
       'task requires. Report the files changed and the final test status.\n\n' +
       'Bug report:\n' + report,
@@ -49,7 +71,7 @@ async function escalateToTeam(reason) {
         files_changed: { type: 'array', items: { type: 'string' } },
         notes: { type: 'string' },
       },
-      required: ['router_miss_logged', 'resolved'],
+      required: ['resolved'],
     },
   });
 }
@@ -198,4 +220,4 @@ return {
 }
 
 await run();
-// bmad-generated:04d28474
+// bmad-generated:f8310619
