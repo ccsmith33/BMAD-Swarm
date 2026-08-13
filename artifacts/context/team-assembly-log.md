@@ -328,3 +328,29 @@ team:
     model: opus
 rationale: Both Phase 1 tracks landed; combined tree 470/470 + validate 109/0. Adversarial review before merge — scrutinize the AC-regex widening (gate-weakening?), gitignore v2 REPLACE (data-loss?), CB-1 references-resolve soundness, and that deletions removed nothing load-bearing. Reviewer on opus per tier mix.
 ```
+
+## 2026-08-13 — small-feature (Phase 2: enforcement + resilience — design)
+
+```bmad-assembly
+entry_point: small-feature
+complexity: 13
+autonomy: auto
+team:
+  - role: architect
+    domain: phase2-enforcement-resilience
+    model: fable
+rationale: Phase 2 of the reinvention (forks ratified D-042, spikes green). Architect (fable per tier mix) decomposes the phase — unified record ledger (D-036/ADR-021), replay gate (ADR-022, TaskCompleted exit-2 spike-verified), liveness+task-ledger (ADR-018), project brain, Fork A permission narrowing (ADR-017) — into implementable tracks and recommends the first sub-epic. Design before devs, per the Phase 1 pattern that worked.
+```
+
+## 2026-08-13 — bug-fix (Phase 2 SE-1 prep: split inline hook sources)
+
+```bmad-assembly
+entry_point: bug-fix
+complexity: 7
+autonomy: auto
+team:
+  - role: developer
+    domain: hooks-source-split
+    model: opus
+rationale: Prep refactor before SE-1's 3 parallel tracks — split generators/hooks-generator.js inline hook sources into per-file generators/hooks/<name>.cjs.src with a byte-identity test, so T1/T2/T3 own disjoint hook files with no collision. Pure refactor, zero behavior change.
+```
