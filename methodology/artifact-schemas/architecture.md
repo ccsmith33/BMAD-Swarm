@@ -2,6 +2,8 @@
 
 The architecture document translates PRD requirements into technical design. It is the authoritative reference for all technology selections, system structure, data models, API contracts, and key design decisions. Developers and the strategist (during story decomposition) use this document to ensure implementation follows the intended design. Every architectural decision must trace to a PRD requirement.
 
+> Optional: track the architecture's load-bearing, non-obvious assertions in a **claims table** (C-IDs) — see [`claims-table.md`](claims-table.md). The claims lint is advisory.
+
 ## Expected Structure
 
 ```markdown

@@ -10,11 +10,21 @@
 # into generated projects (see phase1 design §3.3), so scaffolds cannot drift from it.
 #
 # Matching semantics:
-#   required_sections  — matched against Markdown headings (tolerant of `## 2.`-style
-#                        numbering and bold), NOT substring-anywhere.
-#   required_patterns  — regex (multiline) / min_length checks over the whole file.
-#   variants           — the variant whose discriminator regex matches the content is
-#                        used; the discriminator-less variant is the default.
+#   required_sections     — matched against Markdown headings (tolerant of `## 2.`-style
+#                           numbering and bold), NOT substring-anywhere.
+#   required_patterns     — regex (multiline) / min_length checks over the whole file.
+#   conditional_patterns  — "optional, but well-formed when present": if `if_regex`
+#                           matches, `must_regex` must too; an absent field passes
+#                           untouched. (Capability self-implemented from the
+#                           l5-parallelism-promotion branch, not yet on this baseline;
+#                           no artifact declares it here — L-5 adds the story entry.)
+#   variants              — the variant whose discriminator regex matches the content is
+#                           used; the discriminator-less variant is the default.
+#
+# The advisory CLAIMS-TABLE lint (utils/artifact-validator.js checkClaimsTable, see
+# claims-table.md) is cross-cutting, not spec-driven: it runs on every artifact and
+# only ever WARNS. It is deliberately not expressed here — a hard, spec-gated shape
+# check on an author-supplied table would launder theater (D-039).
 
 artifacts:
   prd:
