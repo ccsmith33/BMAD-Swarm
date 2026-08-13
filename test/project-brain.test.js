@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import {
   parseBrain,
   validateBrain,
@@ -307,38 +308,71 @@ describe('project-brain: M-2 token agreement (validate vs evict)', () => {
 // The two-brain probe, mechanical form (continuity §5.3): a reader given ONLY
 // the brain + the cold stores must be able to answer key comprehension
 // questions, and every pointer must resolve. This is the brain's unit test.
+//
+// Hermeticity (F-28): these read the real shipped artifacts/context/project-brain.md
+// (a tracked file), so they are reproducible on any real checkout. Two guards keep
+// them from turning a fresh/partial checkout RED: (1) if the brain is absent, the
+// whole block skips rather than throwing (skip-if-absent); (2) the pointer-resolution
+// check tolerates targets that git ignores — private working docs (spike-*, audit-*,
+// …) legitimately do not exist on a fresh clone, so requiring them to resolve would
+// be a non-hermetic false failure.
 describe('project-brain: two-brain probe (the shipped brain)', () => {
   const brainPath = join(REPO_ROOT, 'artifacts', 'context', 'project-brain.md');
+  const brainAbsent = !existsSync(brainPath);
+  const skipReason = brainAbsent
+    ? 'no shipped project-brain.md on this checkout — ship-gate skipped (F-28 hermeticity)'
+    : false;
 
-  it('the repo ships a project-brain.md', () => {
+  // A pointer target that git ignores is a private working doc: absent on a fresh
+  // clone by design, so it must NOT be required to resolve. Returns true when the
+  // path is gitignored; false when tracked/committed or when git can't be consulted
+  // (in which case the caller falls back to the strict existence check).
+  function isGitIgnored(relPath) {
+    try {
+      // --no-index matches against the .gitignore PATTERNS alone, ignoring whether
+      // the path is currently tracked: a private-doc-shaped pointer must be tolerated
+      // even if someone force-committed the file. Exit 0 = ignored, 1 = not ignored.
+      execFileSync('git', ['check-ignore', '--no-index', '-q', '--', relPath], { cwd: REPO_ROOT, stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  it('the repo ships a project-brain.md', { skip: false }, () => {
+    // This ship-gate is intentionally strict: project-brain.md is a tracked,
+    // shippable artifact, so its absence is a genuine release defect, not a
+    // checkout artifact. (It is not gitignored — see .gitignore.)
     assert.ok(existsSync(brainPath), 'artifacts/context/project-brain.md must exist');
   });
 
-  it('the shipped brain validates and is in budget', () => {
+  it('the shipped brain validates and is in budget', { skip: skipReason }, () => {
     const result = validateBrain(readFileSync(brainPath, 'utf8'));
     assert.equal(result.ok, true, result.errors.join('; '));
     assert.ok(result.tokens <= BUDGET_TOKENS, `brain is ${result.tokens} tokens (cap ${BUDGET_TOKENS})`);
   });
 
-  it('answers: what is the current phase? (frontmatter)', () => {
+  it('answers: what is the current phase? (frontmatter)', { skip: skipReason }, () => {
     const { frontmatter } = parseBrain(readFileSync(brainPath, 'utf8'));
     assert.ok(frontmatter.phase, 'phase must be answerable from frontmatter');
   });
 
-  it('answers: what was tried and abandoned? (dead ends non-empty, pointered)', () => {
+  it('answers: what was tried and abandoned? (dead ends non-empty, pointered)', { skip: skipReason }, () => {
     const parsed = parseBrain(readFileSync(brainPath, 'utf8'));
     const dead = parsed.sectionMap.get('dead ends');
     assert.ok(dead && dead.items.length >= 1, 'at least one dead end must be recorded');
   });
 
-  it('every file-path pointer in the shipped brain resolves on disk', () => {
+  it('every tracked file-path pointer in the shipped brain resolves on disk', { skip: skipReason }, () => {
     const raw = readFileSync(brainPath, 'utf8');
     // Extract artifacts/... path tokens (the cold-store pointers).
     const paths = new Set();
     for (const m of raw.matchAll(/\b(artifacts\/[\w./-]+\.\w{2,4})\b/g)) paths.add(m[1]);
     assert.ok(paths.size >= 1, 'brain should point at cold stores');
     for (const p of paths) {
-      assert.ok(existsSync(join(REPO_ROOT, p)), `brain points at a non-existent path: ${p} (fabrication guard)`);
+      // Private working docs (gitignored) are absent on a fresh clone by design.
+      if (isGitIgnored(p)) continue;
+      assert.ok(existsSync(join(REPO_ROOT, p)), `brain points at a non-existent tracked path: ${p} (fabrication guard)`);
     }
   });
 });
