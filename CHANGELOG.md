@@ -6,9 +6,42 @@ All notable changes to bmad-swarm.
 
 > **⚠ Human sign-off required — version and publish.** The `3.0.0` bump and the npm publish are human sign-offs, not automated: ADR-020 is **PROPOSED, awaiting human approval** (D-033), and the phase-3 ship-prep design (`artifacts/design/parallel-execution-2026-08-13.md` §5) recommends `3.0.0` but defers the confirm to the publish gate. `npm publish --dry-run` has been run and attached as release evidence — **no package was published.** This is a **semver-major** release: it deletes documented features (the facade ring, ADR-020) and removes `project.yaml` (Stream B / D-037), both breaking, documented behavior.
 
-<!-- INTEGRATOR: insert Stream A entries from artifacts/delivery/changelog-entries-stream-a.md immediately below this line -->
-<!-- INTEGRATOR: insert Stream B entries from artifacts/delivery/changelog-entries-stream-b.md immediately below this line -->
-<!-- Stream C entries are already landed inline below (see artifacts/delivery/changelog-entries-stream-c.md — that file is the protocol copy; do NOT re-concatenate it). -->
+#### Stream A — project-aware orchestrator allow-list (ADR-017 Amendment 1)
+
+##### Added
+- **Project-aware orchestrator allow-list** (`permissions.orchestrator_allow` in `swarm.yaml`). Each project can declare the read-only + coordination commands its orchestrator needs prompt-free, e.g. `Bash(cargo check:*)`. Entries are merged onto a widened safe default by the settings generator. (ADR-017 Amendment 1)
+- **Widened safe default:** scaffolded projects now get coordination git (`git commit`/`push`/`fetch`/`merge --ff-only`/`checkout`/`switch`/`branch`/`tag`) and the read-only `bmad-swarm` CLI (`validate`/`doctor`/`status`/`scan`) in the orchestrator allow-list — no more prompts for routine coordination. The write-gate still denies the write/destructive vectors inside those shapes.
+- **`bmad-swarm update --swap-live-hooks`** flag to explicitly regenerate `.claude/hooks/` + `settings.json` while a session is live (off by default).
+
+##### Changed
+- **Orchestrator write-gate git inspection** now distinguishes coordination git from tree/history rewrites. Denies write-vector git (`apply`, `restore`, `am`, `stash`, `mv`, `rm`, `checkout`/`switch` with a pathspec) and destructive git (`reset --hard/--merge/--keep`, `clean`, `push --force`-family, non-`--ff-only` `merge`, `pull` without `--ff-only`, `rebase`, `filter-branch`, `update-ref`, `-c alias.*`, `--exec-path`). Allows the coordination set.
+- **`bmad-swarm update` no longer hot-swaps live enforcement.** While `.claude/hooks/.session-active` exists, it skips regenerating `.claude/hooks/` and `settings.json` (this wedged the 2026-08-13 merge). `--force` does not override the skip — use `--swap-live-hooks`.
+- **Invalid `permissions.orchestrator_allow` entries fail config load loudly** — every `loadSwarmConfig` caller (`init`, `update`, `validate`, `doctor`, `start`) surfaces the error rather than silently dropping the entry.
+
+##### Fixed
+- **Git subcommand parsing in the write-gate** misread `git -C /path <subcommand>`: the argument to `-C` was taken as the subcommand, so `git -C . apply evil.patch` slipped past the deny-set. Option-with-argument globals (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`) are now consumed before subcommand resolution; `-c alias.*`/`-c …!` and `--exec-path` are denied outright.
+
+##### Removed
+- **`project.yaml` removed from the orchestrator writable set** (D-037 retires the file; the Stream B cutover relies on this). Phase writes flow through the CLI.
+
+Security posture (ADR-017) is preserved by construction: the validator's deny sets and the gate's deny sets are pinned to each other by a source-parsing consistency test, and a validator escape still cannot grant writes (the runtime write-gate is an independent layer).
+
+#### Stream B — SE-3 resilience (reconcile / liveness / project.yaml retirement)
+
+##### Added
+- **Reconcile-on-start (ADR-018 / RES-2/RES-3/RES-4/RES-5).** New `record.cjs reconcile --tasklist <-|file> [--json]` subcommand. It diffs the `TaskList` tool output against `artifacts/context/task-ledger.md` and the project-brain `gates:` frontmatter, and prints a machine-generated coordination action list: **re-wake** unwoken `pending` tasks (a `pending` task with no durable `in_progress` wake-ack was never woken), respawn **orphans** (in the ledger but gone from `TaskList` — a dead owner / lost task), ping-then-respawn **stuck** `in_progress` tasks with no recent ledger activity, and surface **awaiting-human** gates first. The `session-start-warmboot` hook now instructs the orchestrator to run `TaskList` and pipe it to this subcommand on every warm boot. Pure logic lives in `bin/record.cjs` (self-contained, ships to `.claude/bmad/bin/`) and is re-exported by `utils/reconcile.js`.
+- **Wake-ack protocol (RES-3).** Every generated teammate is now instructed that its first tool call on wake is `TaskUpdate → in_progress`; a PostToolUse hook writes that transition to the durable task ledger, making "`pending` with no `in_progress` row = never woken" authoritative for reconciliation.
+- **Liveness carve-out (RES-1).** The orchestrator identity documents event-driven reconciliation (one liveness ping, then respawn against the same task pointer for an unresponsive owner) as the sole exception to the no-status-check rule — without reverting the single-wake channel (D-028).
+- **`gates:` frontmatter contract (D-037 / ADR-018 point 5).** The project-brain frontmatter now REQUIRES a `gates:` map (the awaiting-human home). `validate` and `doctor` enforce its shape; each gate's `status` must be one of `pending | awaiting-human | approved | passed | failed | skipped` (`skipped` marks a gate a project deliberately does not apply).
+
+##### Changed
+- **RES-9 rejection flow.** On a blocking review rejection the orchestrator now creates a fix task (assigned to the original developer) AND a re-review task (assigned to the reviewer, blocked on the fix task) — replacing the dead "block the fix on the already-completed review task" edge.
+- **Machine-state home relocated to the project-brain frontmatter (D-037).** `phase` (and a `phase_history`) now live in `artifacts/context/project-brain.md` frontmatter. `utils/phase-machine.js`, `cli/phase.js`, `cli/status.js`, and `cli/doctor.js` read/write the brain frontmatter instead of `project.yaml`.
+
+##### Removed / Migrated (BREAKING)
+- **`project.yaml` is retired (D-037 / WS-11).** It was a prompted chore-file with no guaranteed reader (lied in 8/9 field projects). `bmad-swarm init` no longer creates it. `bmad-swarm update` gains **step 4.2**: an idempotent migration that folds a legacy `project.yaml`'s `phase` into the brain frontmatter (creating a minimal brain if none exists), then deletes `project.yaml`. This migration runs even when a live session is active (migrating a user-owned file is not a hook swap — it sits outside the live-swap guard).
+
+#### Stream C — Phase 3 ship-prep (facade kill list, F-023, packaging)
 
 ### Removed (facade kill list — ADR-020, audit CB-7)
 
