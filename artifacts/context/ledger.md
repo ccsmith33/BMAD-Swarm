@@ -561,3 +561,18 @@ record:
 body: |
   generators/hooks/team-assembly-lint.cjs.src loaded js-yaml via a try/catch that exit-0'd on the resolve failure, then used it to parse swarm.yaml and the bmad-assembly block for Pass 2 (fixed-mode routing). Scaffolded user projects are not npm packages and carry no node_modules, so js-yaml is unresolvable there — the require caught and Pass 2 SILENTLY NO-OPPED in every real project (latent-dead-hook class, same as the removed TeamCreate gate). It also caused 4 non-hermetic test failures (team-assembly-lint AC4/AC5/AC8 + routing-deny) in worktrees without npm ci, because the spawned-hook harness (test/hooks.test.js runHookInCwd) pinned NODE_PATH to the checkout's own node_modules, which worktrees lack. FIX (reinvention/phase3-integration): made the hook self-contained — parseYamlLite parses both shapes with node built-ins only (block maps, block sequences with inline-key map items, flow collections, scalars; throws on structurally broken input to preserve the js-yaml fail-open posture). Regenerated the committed .claude/hooks/team-assembly-lint.cjs (byte-identity guard). Hardened the harness to resolve NODE_PATH to the nearest ANCESTOR node_modules that exists (omitting it when none), so nested-worktree runs resolve up to the main repo. Added regression tests proving both passes enforce with js-yaml unresolvable (NODE_PATH stripped) plus a guard that the generated hook carries no js-yaml require. Verified: 847/847 node --test green on the populated checkout; the 4 formerly-failing tests + 4 new regression tests pass in a nested worktree WITHOUT npm ci.
 ```
+
+## L-6 — A PreToolUse:Bash hook cannot sandbox arbitrary in-tree code execution
+
+```yaml
+record:
+  id: L-6
+  type: lesson
+  status: observed
+  fingerprint: pretooluse-bash-hook-cannot-sandbox-in-tree-code
+  provenance: {role: developer, project: bmad-swarm, date: 2026-08-13, occurrences: [security-phase5-reverify-2026-08-13.md]}
+  evidence: []
+  links: {}
+body: |
+  A PreToolUse:Bash hook cannot sandbox arbitrary in-tree CODE execution. A fail-closed allowlist of BINARIES still admits interpreters/build tools (node <file>, node --test, npm test / npm run <script>, make, pytest, cargo test) that spawn child processes running arbitrary in-tree JS/native code the hook NEVER observes — those processes can fs-write out of tree, open network sockets, forge a marker via a direct fs-write, or execSync('git push') to a live remote. Therefore a hook is a strong GUARDRAIL against DIRECT shelled escapes (interpreters, redirects, obfuscation, out-of-tree writes) but NOT a containment BOUNDARY, and worktree-isolation + never-merge is not genuine containment for a determined agent. A true unattended-night security boundary needs an OS/credential layer: remove the push remote + strip credentials from night worktrees, OS-level filesystem and network egress deny. Do not market a Bash hook as a sandbox. Generalizes the fail-closed-allowlist lesson (a binary allowlist bounds WHICH programs start, not what those programs then do).
+```

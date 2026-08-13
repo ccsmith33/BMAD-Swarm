@@ -151,7 +151,13 @@ describe('night-floor.cjs (fail-closed)', () => {
   // --- NF-7: newline/flag-separated node eval ------------------------------
   describe('NF-7 — node eval across flags/newlines', () => {
     before(() => arm());
-    for (const cmd of ['node --require ./x -e "code"', 'node -r ./x --eval "code"', 'node --experimental-vm-modules -p "1"', 'node --require ./x \\\n -e "code"']) {
+    for (const cmd of [
+      'node --require ./x -e "code"', 'node -r ./x --eval "code"', 'node --experimental-vm-modules -p "1"',
+      'node --require ./x \\\n -e "code"',
+      // S1-NF7 re-verify: backslash-newline GLUED to -e (no space) — bash strips
+      // the continuation and runs `node -e`. Must DENY after the collapse fix.
+      'node \\\n-e "console.log(1)"', 'node \\\n--eval "1"', 'node --require ./x \\\n-e "1"', 'node \\\r\n-e "1"',
+    ]) {
       it(`denied: ${cmd}`, () => assert.ok(denied(bashT(cmd)), cmd));
     }
   });
