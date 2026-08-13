@@ -398,6 +398,26 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(sab), 0, 0, ms);
 }
 
+// Age (ms) at which a lock with no readable/parseable owner is considered
+// abandoned and stealable, using the lock dir's own mtime as the clock (shorter
+// than LOCK_STALE_MS because an owner-less lock is already anomalous — the DoS
+// vector is pre-creating `.ledger.lock/` with no owner file, M-lock-DoS).
+const LOCK_OWNERLESS_GRACE_MS = 5000;
+
+// Decide whether an existing lock is stale enough to steal.
+function lockIsStale(lockDir, ownerFile) {
+  try {
+    const raw = fs.readFileSync(ownerFile, 'utf8').trim().split(/\s+/);
+    const ts = parseInt(raw[1], 10);
+    if (Number.isFinite(ts)) return Date.now() - ts > LOCK_STALE_MS;
+  } catch { /* owner missing or mid-write — fall through to the mtime fallback */ }
+  // Owner-less or unparseable: fall back to the lock dir's mtime so a wedged /
+  // hand-created lock can never block writers forever.
+  try {
+    return Date.now() - fs.statSync(lockDir).mtimeMs > LOCK_OWNERLESS_GRACE_MS;
+  } catch { return false; }
+}
+
 function acquireLock(contextDir) {
   const lockDir = path.join(contextDir, '.ledger.lock');
   const ownerFile = path.join(lockDir, 'owner');
@@ -409,17 +429,20 @@ function acquireLock(contextDir) {
       return lockDir;
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      // Steal a stale lock (pid+timestamp older than LOCK_STALE_MS).
-      try {
-        const raw = fs.readFileSync(ownerFile, 'utf8').trim().split(/\s+/);
-        const ts = parseInt(raw[1], 10);
-        if (Number.isFinite(ts) && Date.now() - ts > LOCK_STALE_MS) {
-          try { fs.rmSync(lockDir, { recursive: true, force: true }); } catch { /* raced */ }
-          continue;
-        }
-      } catch { /* owner file mid-write; treat as held */ }
+      if (lockIsStale(lockDir, ownerFile)) {
+        // Rename-then-remove instead of rm-in-place (M8 TOCTOU): the rename is
+        // atomic, so exactly one racer captures the stale dir; losers get ENOENT
+        // and simply retry mkdir. This prevents two stealers both rm-ing and
+        // both then mkdir-ing (a double-grant).
+        const grave = `${lockDir}.stale.${process.pid}.${Math.random().toString(36).slice(2)}`;
+        try {
+          fs.renameSync(lockDir, grave);
+          fs.rmSync(grave, { recursive: true, force: true });
+        } catch { /* another racer won the rename; retry */ }
+        continue;
+      }
       if (Date.now() > deadline) {
-        throw new Error(`could not acquire ledger lock at ${lockDir} within ${LOCK_TIMEOUT_MS}ms`);
+        throw new Error(`could not acquire ledger lock at ${lockDir} within ${LOCK_TIMEOUT_MS}ms (held by another writer)`);
       }
       sleepSync(LOCK_RETRY_MS);
     }
@@ -456,10 +479,40 @@ function withFileLock(contextDir, filePath, fn) {
 // Files
 // ---------------------------------------------------------------------------
 
+// Realpath the nearest EXISTING ancestor of `p` (p itself may not exist yet),
+// then re-append the un-created tail. Catches a symlinked ancestor that lexical
+// resolution alone would miss (F-017 symlink discipline).
+function realpathAnchored(p) {
+  let cur = path.resolve(p);
+  const tail = [];
+  for (;;) {
+    try { return path.join(fs.realpathSync(cur), ...tail.reverse()); }
+    catch (e) {
+      if (e.code !== 'ENOENT') return path.resolve(p);
+      const parent = path.dirname(cur);
+      if (parent === cur) return path.resolve(p); // reached root, nothing real
+      tail.push(path.basename(cur));
+      cur = parent;
+    }
+  }
+}
+
+// Resolve the context dir, CONFINED under <projectRoot>/artifacts/ (F2-H, the
+// unconfined-context-dir write). `record.cjs` is allow-listed as a pinned
+// command, so an unconfined --context-dir would let an agent write ledger.md /
+// decision-log.md / task-ledger.md anywhere (e.g. src/ledger.md). Default and
+// explicit paths alike must live inside artifacts/; symlink escapes are caught
+// by realpath-anchoring both the candidate and the boundary.
 function contextDirFrom(opts) {
-  if (opts.contextDir) return path.resolve(opts.contextDir);
   const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  return path.join(root, 'artifacts', 'context');
+  const artifactsRoot = realpathAnchored(path.join(root, 'artifacts'));
+  const candidate = opts.contextDir
+    ? realpathAnchored(opts.contextDir)
+    : path.join(artifactsRoot, 'context');
+  if (candidate !== artifactsRoot && !candidate.startsWith(artifactsRoot + path.sep)) {
+    die(`--context-dir must be under ${artifactsRoot} (got ${candidate}); refusing to write serialized files outside artifacts/`);
+  }
+  return candidate;
 }
 
 const LEDGER_HEADER = `# Ledger
@@ -531,6 +584,19 @@ function cmdAppend(flags) {
     try { input = JSON.parse(raw); } catch (e) { die(`input is not valid JSON: ${e.message}`); }
   }
   if (flags.body != null) input.body = flags.body;
+
+  // The append door must honor the SAME constitutional gate as set-status
+  // (F-27 / F2-H3): otherwise `append --type L --status promoted` mints a
+  // promoted lesson with no human ratification. An L-record may only ENTER at
+  // observed or recurring (the migration needs recurring); any later stage on
+  // the append door requires --human-approved <D-ID>, and promoted stays the
+  // non-negotiable human gate (ADR-021).
+  if (type === 'L') {
+    const requested = flags.status != null ? flags.status : (input.status != null ? input.status : INITIAL_STATUS.L);
+    if (!['observed', 'recurring'].includes(requested) && !flags.humanApproved) {
+      die(`append --type L may only enter at observed|recurring; status ${JSON.stringify(requested)} requires --human-approved <D-ID> (ADR-021 human gate)`);
+    }
+  }
 
   const contextDir = contextDirFrom(flags);
 

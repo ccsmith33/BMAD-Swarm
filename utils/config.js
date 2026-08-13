@@ -110,12 +110,15 @@ function applyDefaults(raw) {
   // defaults; these mirror it so package-side consumers see one shape (D-036).
   config.replay = config.replay || {};
   if (!Array.isArray(config.replay.allowed_commands)) {
-    config.replay.allowed_commands = ['npm test', 'npm run test'];
+    config.replay.allowed_commands = ['npm test', 'npm run test', 'node --test'];
   }
   if (config.replay.timeout_seconds === undefined) config.replay.timeout_seconds = 300;
   if (!config.replay.url_citations) config.replay.url_citations = 'advisory';
   if (!Array.isArray(config.replay.gated_task_classes)) {
     config.replay.gated_task_classes = ['story', 'bug-fix', 'review'];
+  }
+  if (!config.replay.gated_owner_pattern) {
+    config.replay.gated_owner_pattern = '^(dev|reviewer|security)';
   }
 
   // Team block defaults (wide-team specialization — D-005, ADR-004)

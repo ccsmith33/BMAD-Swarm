@@ -68,11 +68,18 @@ export function validateConfig(config) {
     if (r.timeout_seconds !== undefined && (!Number.isFinite(r.timeout_seconds) || r.timeout_seconds <= 0)) {
       errors.push(`replay.timeout_seconds must be a positive number, got: ${r.timeout_seconds}`);
     }
-    if (r.url_citations !== undefined && !['advisory', 'blocking', 'skip'].includes(r.url_citations)) {
-      errors.push(`replay.url_citations "${r.url_citations}" is invalid. Valid options: advisory, blocking, skip`);
+    if (r.url_citations !== undefined && !['advisory', 'skip'].includes(r.url_citations)) {
+      // `blocking` is reserved but NOT yet implemented (no HEAD fetch is
+      // performed) — reject it rather than silently degrading to advisory
+      // (F2-L5: the knob must match the behavior).
+      const extra = r.url_citations === 'blocking' ? ' ("blocking" is reserved but not yet implemented — no URL fetch is performed)' : '';
+      errors.push(`replay.url_citations "${r.url_citations}" is invalid. Valid options: advisory, skip${extra}`);
     }
     if (r.gated_task_classes !== undefined && !Array.isArray(r.gated_task_classes)) {
       errors.push(`replay.gated_task_classes must be an array, got: ${typeof r.gated_task_classes}`);
+    }
+    if (r.gated_owner_pattern !== undefined && typeof r.gated_owner_pattern !== 'string') {
+      errors.push(`replay.gated_owner_pattern must be a string (a regex), got: ${typeof r.gated_owner_pattern}`);
     }
   }
 

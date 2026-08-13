@@ -60,13 +60,21 @@ function fieldValue(block, field) {
 }
 
 function parseDecisionTrail(block) {
-  const m = /- \*\*Decision trail:\*\*\s*([\s\S]*?)(?=\n## |$)/.exec(block);
+  // Consume the rest of the "Decision trail:**" line and its newline ONLY, so
+  // the capture begins at the first sub-entry line WITH its leading indentation
+  // intact. The previous greedy `\s*` ate that indentation and the inner
+  // `^\s+-` then failed on the first entry, dropping it (F-25 / F2-H1 data loss).
+  const m = /- \*\*Decision trail:\*\*[^\n]*\n([\s\S]*?)(?=\n## |$)/.exec(block);
   if (!m) return [];
   const out = [];
-  const re = /^\s+-\s+(\d{4}-\d{2}-\d{2})\s+—\s+by\s+([^\s—]+)\s+—\s+([^\s—]+)/gm;
+  const re = /^\s+-\s+(\d{4}-\d{2}-\d{2})\s+—\s+by\s+([^\s—]+)\s+—\s+([^\s—]+)\s+—\s+([\s\S]*?)(?=\n\s+-\s+\d{4}-\d{2}-\d{2}|\n\s*$|$)/gm;
   let e;
   while ((e = re.exec(m[1])) !== null) {
-    out.push({ project: 'bmad-swarm', date: e[1], ref: e[3] });
+    const detail = e[4] || '';
+    const dIds = extractDIds(detail);
+    const occ = { project: 'bmad-swarm', date: e[1], ref: `${e[3]} (by ${e[2]})` };
+    if (dIds.length) occ.d_ids = dIds;
+    out.push(occ);
   }
   return out;
 }

@@ -60,8 +60,11 @@ replay:
     - npm run test
     - node --test
   timeout_seconds: 300
-  url_citations: advisory        # advisory | blocking | skip
+  url_citations: advisory        # advisory | skip
   gated_task_classes:
     - story
     - bug-fix
     - review
+  # Owner names (the completing teammate) that must produce gated work — the
+  # coverage signal the completing agent cannot rename around.
+  gated_owner_pattern: "^(dev|reviewer|security)"

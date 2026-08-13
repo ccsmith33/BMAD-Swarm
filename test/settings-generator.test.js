@@ -125,7 +125,7 @@ describe('Settings Generator', () => {
     }
   });
 
-  it('ADR-017/D-049: orchestrator keeps read-inspection + the pinned ledger helper', () => {
+  it('ADR-017/D-049: orchestrator keeps read-inspection + BOTH pinned helpers', () => {
     const { config, paths } = makeProject('settings-pinned-helper');
     generateSettings(config, paths);
     const allow = JSON.parse(readFileSync(paths.settingsJson, 'utf8')).permissions.allow;
@@ -133,11 +133,20 @@ describe('Settings Generator', () => {
       'Bash(git status:*)',
       'Bash(git log:*)',
       'Bash(git diff:*)',
+      'Bash(git show:*)',
       'Bash(ls:*)',
       'Bash(npm test:*)',
       'Bash(node .claude/bmad/bin/record.cjs:*)',
+      'Bash(node .claude/bmad/bin/replay-check.cjs:*)', // F2-M4: BOTH scripts pinned
     ]) {
       assert.ok(allow.includes(expected), `allow-list must include ${expected}`);
+    }
+    // F2-M4: the unpinned, teammate-writable repo-root bin/ path must be gone.
+    assert.ok(!allow.includes('Bash(node bin/bmad-swarm.js:*)'),
+      'must NOT grant the unpinned repo-root bin/ script (teammate-writable escape)');
+    // No allow entry may name the repo-root bin/ interpreter path.
+    for (const entry of allow) {
+      assert.ok(!/^Bash\(node\s+bin\//.test(entry), `unpinned bin/ node grant: ${entry}`);
     }
   });
 

@@ -320,10 +320,11 @@ function buildSwarmYaml(answers) {
     // ONLY these command shapes (prefix match) — no agent-invented command is
     // ever executed. Widen allowed_commands to your test runner.
     replay: {
-      allowed_commands: ['npm test', 'npm run test'],
+      allowed_commands: ['npm test', 'npm run test', 'node --test'],
       timeout_seconds: 300,
       url_citations: 'advisory',
       gated_task_classes: ['story', 'bug-fix', 'review'],
+      gated_owner_pattern: '^(dev|reviewer|security)',
     },
   };
 

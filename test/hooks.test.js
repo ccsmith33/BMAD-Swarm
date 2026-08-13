@@ -862,6 +862,29 @@ describe('Hooks (process-spawn contract)', () => {
       ['fd redirect 2> to a code file', 'echo x 2> src/err.log'],
       ['truncate-via-redirect (: > file)', ': > src/x.js'],
       ['no-space redirect', 'echo x >src/z.js'],
+      // F-016 reopened: subshell / wrapper / stdin-fed interpreter bypasses.
+      ['command substitution running node -e', 'true $(node -e \'require("fs").writeFileSync("code2.js","x")\')'],
+      ['backtick substitution running node -e', 'echo `node -e "1"`'],
+      ['pipe into xargs node -e', 'echo x | xargs node -e \'require("fs").writeFileSync("c.js","x")\''],
+      ['pipe into node /dev/stdin', 'echo "code" | node /dev/stdin'],
+      ['find -exec node -e', 'find . -name x -exec node -e \'1\' {} ;'],
+      ['node running a non-pinned script', 'node bin/bmad-swarm.js status'],
+      ['python interpreter', 'python3 script.py'],
+      // Medium: git tree-mutations + misc write-shape binaries (tripwire deny).
+      ['git apply a patch', 'git apply /tmp/x.patch'],
+      ['git checkout -- path', 'git checkout HEAD~3 -- src/foo.js'],
+      ['git restore', 'git restore src/foo.js'],
+      ['git stash apply', 'git stash apply'],
+      ['patch', 'patch -p0 -i /tmp/x.patch'],
+      ['ed in-place', 'ed -s code.js'],
+      ['awk internal redirect', 'awk \'{print > "src/x.js"}\' /etc/hosts'],
+      ['base64 decode into a file', 'base64 -d in.b64 > src/x.js'],
+      // Security HIGH: raw shell writes to the serialized ledger files.
+      ['append to ledger.md', 'echo garbage >> artifacts/context/ledger.md'],
+      ['redirect to decision-log.md', 'echo x > artifacts/context/decision-log.md'],
+      ['tee to task-ledger.md', 'echo x | tee artifacts/context/task-ledger.md'],
+      // F-017 reopened: symlink whose target escapes the writable set.
+      ['ln -s pointing outside the writable set', 'ln -s /outside artifacts/esc'],
     ];
     for (const [label, cmd] of BLOCKED_BASH) {
       it(`F-016: DENIES ${label}`, () => {
@@ -876,14 +899,19 @@ describe('Hooks (process-spawn contract)', () => {
       ['ls', 'ls -la src/'],
       ['grep', 'grep -rn foo src/'],
       ['npm test', 'npm test'],
-      ['the pinned ledger helper', 'node .claude/bmad/bin/record.cjs append --type F --stdin'],
+      ['the pinned record helper', 'node .claude/bmad/bin/record.cjs append --type F --stdin'],
+      ['the pinned replay-check helper', 'node .claude/bmad/bin/replay-check.cjs artifacts/x.evidence.yaml'],
       ['echo with no redirect', "echo 'just printing'"],
       ['redirect to /dev/null', 'ls -la > /dev/null'],
       ['redirect to /tmp (scratchpad)', 'echo x > /tmp/scratch.txt'],
       ['fd dup (not a file write)', 'npm test 2>&1'],
       ['redirect INTO artifacts (writable set)', 'echo note > artifacts/context/scratch.md'],
       ['cat for reading', 'cat swarm.yaml'],
-      ['the pinned CLI', 'node bin/bmad-swarm.js status'],
+      // F2-H2: quoted `>` / `->` must NOT be read as redirection (false positives).
+      ['rg with quoted > in the pattern', 'rg "value > 5" src/'],
+      ['git commit with -> in the message', 'git commit -m "rename a -> b"'],
+      ['git log with > in --grep', 'git log --grep="foo>bar"'],
+      ['grep with quoted >', "grep -rn 'a > b' src/"],
     ];
     for (const [label, cmd] of ALLOWED_BASH) {
       it(`F-016: ALLOWS ${label}`, () => {

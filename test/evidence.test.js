@@ -12,6 +12,7 @@ import {
   evaluateBundle,
   DEFAULT_REPLAY_CONFIG,
 } from '../utils/evidence.js';
+import { loadSwarmConfig } from '../utils/config.js';
 
 // The Tier-0 evidence engine is the trust anchor of the whole reinvention
 // (verification-as-product §8): its correctness must not depend on an LLM. These
@@ -80,12 +81,18 @@ describe('evidence: constrained YAML reader', () => {
 });
 
 describe('evidence: command allow-list + tokenizer', () => {
-  it('prefix-matches the allow-list', () => {
+  it('matches the allow-list on EXACT tokens, not loose string prefix', () => {
     const allowed = ['npm test', 'npm run test'];
     assert.equal(commandAllowed('npm test', allowed), true);
-    assert.equal(commandAllowed('npm run test:unit', allowed), true);
+    assert.equal(commandAllowed('npm test --watch', allowed), true, 'trailing args allowed');
+    assert.equal(commandAllowed('npm run test', allowed), true);
     assert.equal(commandAllowed('rm -rf /', allowed), false);
     assert.equal(commandAllowed('node evil.js', allowed), false);
+    // The loose-prefix bug the review found: `npm testfoo` must NOT match `npm test`.
+    assert.equal(commandAllowed('npm testfoo', allowed), false);
+    // A token-prefix entry matches deeper tokens; equality is per-token.
+    assert.equal(commandAllowed('npm run test:unit', ['npm run']), true);
+    assert.equal(commandAllowed('npm run test:unit', ['npm run test']), false, 'test !== test:unit');
   });
 
   it('tokenizes respecting quotes, no shell interpretation', () => {
@@ -127,6 +134,22 @@ describe('evidence: config loading', () => {
     assert.deepEqual(cfg.allowed_commands, ['npm test', 'pytest']);
     assert.equal(cfg.timeout_seconds, 120);
     assert.equal(cfg.url_citations, 'skip');
+  });
+});
+
+describe('evidence: config drift (L-003 — the engine cannot import package code)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ev-drift-'));
+  after(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('utils/config.js replay defaults match the engine DEFAULT_REPLAY_CONFIG', () => {
+    const p = join(dir, 'swarm.yaml');
+    writeFileSync(p, 'project:\n  name: drift\n');
+    const cfg = loadSwarmConfig(p).replay;
+    assert.deepEqual(cfg.allowed_commands, DEFAULT_REPLAY_CONFIG.allowed_commands);
+    assert.equal(cfg.timeout_seconds, DEFAULT_REPLAY_CONFIG.timeout_seconds);
+    assert.equal(cfg.url_citations, DEFAULT_REPLAY_CONFIG.url_citations);
+    assert.deepEqual(cfg.gated_task_classes, DEFAULT_REPLAY_CONFIG.gated_task_classes);
+    assert.equal(cfg.gated_owner_pattern, DEFAULT_REPLAY_CONFIG.gated_owner_pattern);
   });
 });
 
@@ -269,6 +292,61 @@ describe('evidence: evaluateBundle', () => {
     // file-exists is priority 1, so it is the first failure even though it is
     // declared second — the existence pre-pass runs before any exec.
     assert.equal(v.firstFailure.id, 'E-file');
+  });
+
+  it('BLOCKS a forged expect.exit — success is exit 0, the bundle cannot declare its own pass code', () => {
+    const p = writeBundle('forge.evidence.yaml', [
+      'evidence_bundle:',
+      '  items:',
+      '    - id: E-1',
+      '      kind: command',
+      '      cmd: "node -e process.exit(1)"',
+      '      expect: {exit: 1}',       // a failing suite tries to declare 1 as "pass"
+    ].join('\n'));
+    const v = evaluateBundle(p, { projectRoot: repo, config: { ...DEFAULT_REPLAY_CONFIG, allowed_commands: ['node -e'] } });
+    assert.equal(v.ok, false, 'attacker-supplied expect.exit must be ignored');
+    assert.match(v.firstFailure.reason, /exit 1 != expected 0/);
+  });
+
+  it('BLOCKS an empty bundle (items: []) — proves nothing', () => {
+    const p = writeBundle('empty.evidence.yaml', [
+      'evidence_bundle:',
+      '  items: []',
+    ].join('\n'));
+    const v = evaluateBundle(p, { projectRoot: repo, config: DEFAULT_REPLAY_CONFIG });
+    assert.equal(v.ok, false);
+    assert.match(v.error, /no items|empty bundle/i);
+  });
+
+  it('BLOCKS a bundle whose path is outside the repo (no /tmp self-satisfying)', () => {
+    // An absolute path outside projectRoot must be refused, not resolved.
+    const v = evaluateBundle('/tmp/foreign.evidence.yaml', { projectRoot: repo, config: DEFAULT_REPLAY_CONFIG });
+    assert.equal(v.ok, false);
+    assert.match(v.error, /escapes the repo|not found/);
+  });
+
+  it('with requireExecutable, BLOCKS a story bundle that has no test-run/command item (green-check theater)', () => {
+    const p = writeBundle('static.evidence.yaml', [
+      'evidence_bundle:',
+      '  items:',
+      '    - id: E-1',
+      '      kind: file-exists',
+      '      paths: [src/a.js]',
+    ].join('\n'));
+    const v = evaluateBundle(p, { projectRoot: repo, config: DEFAULT_REPLAY_CONFIG, requireExecutable: true });
+    assert.equal(v.ok, false);
+    assert.match(v.firstFailure.reason, /at least one test-run\/command/);
+  });
+
+  it('rejects prototype-polluting keys in a crafted bundle', () => {
+    const p = writeBundle('proto.evidence.yaml', [
+      'evidence_bundle:',
+      '  items: [{id: E-1, kind: file-exists, __proto__: {polluted: true}}]',
+    ].join('\n'));
+    const v = evaluateBundle(p, { projectRoot: repo, config: DEFAULT_REPLAY_CONFIG });
+    assert.equal(v.ok, false);
+    assert.match(v.error, /parse|dangerous key/i);
+    assert.equal(({}).polluted, undefined, 'global Object prototype not polluted');
   });
 
   it('treats an empty reviewer_addendum as advisory, never a block', () => {

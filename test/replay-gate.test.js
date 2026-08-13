@@ -60,6 +60,7 @@ describe('replay-gate hook', () => {
   });
 
   it('PASSES (exit 0) a gated task whose evidence is fully satisfied', () => {
+    // story class => requireExecutable, so the bundle carries a re-run command.
     writeBundle('good.evidence.yaml', [
       'evidence_bundle:',
       '  artifact: artifacts/story-1.md',
@@ -67,6 +68,9 @@ describe('replay-gate hook', () => {
       '    - id: E-1',
       '      kind: file-exists',
       '      paths: [src/real.js]',
+      '    - id: E-2',
+      '      kind: command',
+      '      cmd: "node -e process.exit(0)"',
     ].join('\n'));
     const r = runHook({
       hook_event_name: 'TaskCompleted',
@@ -82,6 +86,9 @@ describe('replay-gate hook', () => {
       'evidence_bundle:',
       '  artifact: artifacts/story-2.md',
       '  items:',
+      '    - id: E-0',
+      '      kind: command',
+      '      cmd: "node -e process.exit(0)"',
       '    - id: E-1',
       '      kind: file-exists',
       '      paths: [src/fabricated.js]',
@@ -161,12 +168,81 @@ describe('replay-gate hook', () => {
     assert.equal(r.status, 0, r.stderr);
   });
 
-  it('TaskCreated: ignores non-story coordination tasks (exit 0)', () => {
+  it('TaskCreated: refuses a bug-fix task with no replay marker (exit 2)', () => {
     const r = runHook({
       hook_event_name: 'TaskCreated',
-      task_id: '19',
-      task_subject: 'review the architecture doc',
-      task_description: 'read and comment',
+      task_id: '20',
+      task_subject: 'bug-fix the login redirect',
+      task_description: 'fix it',
+    });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /BLOCKED \(replay marker\)/);
+  });
+
+  it('TaskCreated: refuses a review-verdict task with no replay marker (D-049(e))', () => {
+    const r = runHook({
+      hook_event_name: 'TaskCreated',
+      task_id: '25',
+      task_subject: 'Review: story-8 implementation',
+      task_description: 'adversarial review of the diff',
+    });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /BLOCKED \(replay marker\)/);
+  });
+
+  it('coverage-by-OWNER: a developer completing a non-story-subject task with no marker is BLOCKED', () => {
+    // Subject dodges the story/bug-fix/review regexes, but the OWNER is a
+    // developer — the completing agent cannot rename around the gate (security
+    // critical 3). No marker => refused at completion.
+    const r = runHook({
+      hook_event_name: 'TaskCompleted',
+      task_id: '21',
+      task_subject: 'Implement auth module',
+      task_description: 'build login',
+      teammate_name: 'dev-auth',
+    });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /gated "story"-class task but carries no|no `gate: replay` marker/);
+  });
+
+  it('solo (no owner) ungated task with a dodging subject still passes (exit 0)', () => {
+    // With no teammate_name and no class-matching subject, the task is ungated —
+    // solo sessions rely on the orchestrator-added marker.
+    const r = runHook({
+      hook_event_name: 'TaskCompleted',
+      task_id: '22',
+      task_subject: 'Implement auth module',
+      task_description: 'build login',
+    });
+    assert.equal(r.status, 0, r.stderr);
+  });
+
+  it('FAILS CLOSED (exit 2) when the engine throws on a gated task', () => {
+    // A NUL byte in a cmd makes spawnSync throw synchronously inside the engine;
+    // the gate must block, not fall through to exit 0 (security critical 2).
+    writeBundle('throw.evidence.yaml', [
+      'evidence_bundle:',
+      '  items:',
+      '    - id: E-1',
+      '      kind: command',
+      '      cmd: "node -e   bad"',   // a REAL NUL byte → spawnSync throws synchronously
+    ].join('\n'));
+    const r = runHook({
+      hook_event_name: 'TaskCompleted',
+      task_id: '23',
+      task_subject: 'story-9 do a thing',
+      task_description: 'gate: replay\nevidence: throw.evidence.yaml',
+    });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /fail-closed|errored/i);
+  });
+
+  it('TaskCreated: ignores non-gated coordination tasks (exit 0)', () => {
+    const r = runHook({
+      hook_event_name: 'TaskCreated',
+      task_id: '24',
+      task_subject: 'coordinate the epic kickoff',
+      task_description: 'assign owners',
     });
     assert.equal(r.status, 0, r.stderr);
   });

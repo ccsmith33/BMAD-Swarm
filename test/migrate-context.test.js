@@ -31,11 +31,28 @@ describe('migrate-context-files: findings parser', () => {
     }
   });
 
-  it('preserves provenance (date, role) and carries decision-trail as occurrences', () => {
+  it('preserves EVERY decision-trail entry as an occurrence (F2-H1 regression — exact counts)', () => {
+    // The greedy-\s* bug dropped each finding's FIRST trail entry. Pin exact
+    // counts so a regression cannot hide behind a >=1 assertion, and assert no
+    // finding lost its trail entirely.
+    const byId = Object.fromEntries(records.map((r) => [r.id, r.provenance.occurrences.length]));
+    assert.equal(byId['F-001'], 2, 'F-001 has initial + reconfirm');
+    assert.equal(byId['F-009'], 3, 'F-009 has initial + resolved + reconfirm');
+    assert.equal(byId['F-017'], 1, 'F-017 has a single initial entry (would be dropped by the bug)');
+    // No finding that HAS a decision trail in the source may migrate with zero
+    // occurrences (the source: every finding carries at least one trail line).
+    const zero = records.filter((r) => r.provenance.occurrences.length === 0).map((r) => r.id);
+    assert.deepEqual(zero, [], `findings that lost all occurrences: ${zero.join(', ')}`);
+  });
+
+  it('preserves the first occurrence object (date + role) faithfully', () => {
     const f1 = records.find((r) => r.id === 'F-001');
     assert.equal(f1.provenance.role, 'reviewer');
     assert.equal(f1.provenance.date, '2026-04-29');
-    assert.ok(Array.isArray(f1.provenance.occurrences) && f1.provenance.occurrences.length >= 1);
+    const occ0 = f1.provenance.occurrences[0];
+    assert.equal(occ0.project, 'bmad-swarm');
+    assert.equal(occ0.date, '2026-04-29');
+    assert.match(occ0.ref, /initial/);
   });
 
   it('extracts referenced D-IDs into links', () => {

@@ -76,11 +76,36 @@ describe('ledger-write-guard.cjs', () => {
     assert.ok(!denied(runGuard({ file_path: 'src/index.js' })));
   });
 
-  it('is registered in the hooks config on the file-writing matcher (no Bash)', () => {
+  it('is registered in the hooks config and matches Bash (all-identity backstop)', () => {
     const cfg = getHooksConfig();
     const entry = cfg.PreToolUse.find((e) => e.hooks.some((h) => /ledger-write-guard\.cjs/.test(h.command)));
     assert.ok(entry, 'ledger-write-guard must be registered under PreToolUse');
     assert.match(entry.matcher, /Edit\|Write\|MultiEdit\|NotebookEdit/);
-    assert.ok(!/Bash/.test(entry.matcher), 'guard must NOT match Bash (record.cjs runs via Bash)');
+    assert.match(entry.matcher, /Bash/, 'guard must match Bash to backstop the shell-redirect bypass');
+  });
+
+  // --- Bash branch: the shell-redirect bypass (security HIGH) --------------
+  function runGuardBash(command, extraEvent = {}) {
+    return runGuard({ command }, extraEvent);
+  }
+
+  it('denies a Bash redirect append to ledger.md — for orchestrator AND teammate', () => {
+    assert.ok(denied(runGuardBash('echo garbage >> artifacts/context/ledger.md')), 'orchestrator');
+    assert.ok(denied(runGuardBash('echo garbage >> artifacts/context/ledger.md', { agent_id: 'dev-1', agent_type: 'developer' })), 'teammate');
+  });
+
+  it('denies write-binary and interpreter-eval writes to the protected files', () => {
+    assert.ok(denied(runGuardBash('echo x | tee artifacts/context/decision-log.md')));
+    assert.ok(denied(runGuardBash('sed -i s/a/b/ artifacts/context/ledger.md')));
+    assert.ok(denied(runGuardBash("node -e 'require(1)' artifacts/context/task-ledger.md")));
+    assert.ok(denied(runGuardBash('cp /tmp/x artifacts/context/ledger.md')));
+  });
+
+  it('ALLOWS reads and the pinned CLI (no write-shape) and non-protected siblings', () => {
+    assert.ok(!denied(runGuardBash('cat artifacts/context/ledger.md')));
+    assert.ok(!denied(runGuardBash('git diff artifacts/context/ledger.md')));
+    assert.ok(!denied(runGuardBash('grep foo artifacts/context/ledger.md')));
+    assert.ok(!denied(runGuardBash('node .claude/bmad/bin/record.cjs append --type F --context-dir artifacts/context')));
+    assert.ok(!denied(runGuardBash('echo x >> artifacts/context/ledger.md.bak')));
   });
 });

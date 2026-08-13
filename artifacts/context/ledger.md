@@ -16,7 +16,7 @@ record:
   type: finding
   status: open
   fingerprint: defaults-model-is-unvalidated-against-the-model-enum
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-29, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: reconfirm}]}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-29, occurrences: [{project: bmad-swarm, date: 2026-04-29, ref: "initial (by reviewer)"}, {project: bmad-swarm, date: 2026-06-09, ref: "reconfirm (by reviewer)", d_ids: [D-023]}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-WT-1-swarm-yaml-schema.md}
   links: {d_ids: [D-023]}
@@ -32,7 +32,7 @@ record:
   type: finding
   status: open
   fingerprint: team-fallback-role-is-not-enum-validated
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-29, occurrences: []}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-29, occurrences: [{project: bmad-swarm, date: 2026-04-29, ref: "initial (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-WT-1-swarm-yaml-schema.md}
   links: {d_ids: []}
@@ -48,7 +48,7 @@ record:
   type: finding
   status: open
   fingerprint: teamcreate-gate-cjs-duplicates-utils-config-js-fallback
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-29, occurrences: [{project: bmad-swarm, date: 2026-08-11, ref: reconfirm}]}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-29, occurrences: [{project: bmad-swarm, date: 2026-04-29, ref: "initial (by reviewer)"}, {project: bmad-swarm, date: 2026-08-11, ref: "reconfirm (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-WT-5-teamcreate-gate-extension.md}
   links: {d_ids: [D-012]}
@@ -64,7 +64,7 @@ record:
   type: finding
   status: open
   fingerprint: domain-map-heading-regex-duplicated-between-cli-scaffold
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-29, occurrences: []}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-29, occurrences: [{project: bmad-swarm, date: 2026-04-29, ref: "initial (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-RT-2-scaffold-team-cli.md}
   links: {d_ids: []}
@@ -80,7 +80,7 @@ record:
   type: finding
   status: open
   fingerprint: readme-scaffold-team-transcript-trails-live-cli-by
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-30, occurrences: []}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-04-30, occurrences: [{project: bmad-swarm, date: 2026-04-30, ref: "initial (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-RT-4-retrofit-docs.md}
   links: {d_ids: []}
@@ -96,7 +96,7 @@ record:
   type: finding
   status: open
   fingerprint: cost-estimator-opus-baseline-stale-15-75-inverting
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: []}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: "initial (by reviewer)", d_ids: [D-025]}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-fable-support-1.md}
   links: {d_ids: [D-023, D-025]}
@@ -112,7 +112,7 @@ record:
   type: finding
   status: open
   fingerprint: agents-name-model-is-not-enum-validated-f
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: []}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: "initial (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-fable-support-1.md}
   links: {d_ids: []}
@@ -128,7 +128,7 @@ record:
   type: finding
   status: resolved
   fingerprint: artifacts-context-team-assembly-log-md-untracked-git
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: resolved}]}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: "initial (by reviewer)"}, {project: bmad-swarm, date: 2026-06-09, ref: "resolved (by orchestrator)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-fable-support-1.md}
   links: {d_ids: []}
@@ -144,7 +144,7 @@ record:
   type: finding
   status: resolved
   fingerprint: teamcreate-gate-pass-3-silently-rejects-assembly-blocks
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: resolved}, {project: bmad-swarm, date: 2026-06-09, ref: reconfirm}]}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: "initial (by reviewer)"}, {project: bmad-swarm, date: 2026-06-09, ref: "resolved (by developer)", d_ids: [D-028]}, {project: bmad-swarm, date: 2026-06-09, ref: "reconfirm (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-fable-support-1.md}
   links: {d_ids: [D-028]}
@@ -160,7 +160,7 @@ record:
   type: finding
   status: open
   fingerprint: claude-md-generator-hardcodes-default-model-is-opus
-  provenance: {role: orchestrator, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: reconfirm}]}
+  provenance: {role: orchestrator, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: "initial (by orchestrator)", d_ids: [D-027]}, {project: bmad-swarm, date: 2026-06-09, ref: "reconfirm (by reviewer)"}]}
   evidence: []
   links: {d_ids: [D-027, D-023]}
 body: |
@@ -175,7 +175,7 @@ record:
   type: finding
   status: resolved
   fingerprint: teamcreate-gate-accepts-the-previous-handshake-block-when
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-10, ref: resolved}]}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: "initial (by reviewer)"}, {project: bmad-swarm, date: 2026-06-10, ref: "resolved (by developer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-v3-coordination-1.md}
   links: {d_ids: []}
@@ -191,7 +191,7 @@ record:
   type: finding
   status: resolved
   fingerprint: generated-workflow-commands-still-instruct-emit-this-assembly
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-10, ref: resolved}]}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: "initial (by reviewer)"}, {project: bmad-swarm, date: 2026-06-10, ref: "resolved (by developer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-v3-coordination-1.md}
   links: {d_ids: []}
@@ -207,7 +207,7 @@ record:
   type: finding
   status: open
   fingerprint: generated-orchestrator-md-carries-registration-frontmatter-making-orchestrator
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: []}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: "initial (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-v3-coordination-1.md}
   links: {d_ids: []}
@@ -223,7 +223,7 @@ record:
   type: finding
   status: open
   fingerprint: marker-search-lines-10-silently-degrades-modification-protection
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: []}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-06-09, occurrences: [{project: bmad-swarm, date: 2026-06-09, ref: "initial (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-v3-coordination-1.md}
   links: {d_ids: []}
@@ -239,7 +239,7 @@ record:
   type: finding
   status: open
   fingerprint: orchestrator-write-gate-blocks-the-harness-memory-directory
-  provenance: {role: orchestrator, project: bmad-swarm, date: 2026-06-10, occurrences: [{project: bmad-swarm, date: 2026-08-11, ref: reconfirm}]}
+  provenance: {role: orchestrator, project: bmad-swarm, date: 2026-06-10, occurrences: [{project: bmad-swarm, date: 2026-06-10, ref: "initial (by orchestrator)"}, {project: bmad-swarm, date: 2026-08-11, ref: "reconfirm (by reviewer)"}]}
   evidence: []
   links: {d_ids: []}
 body: |
@@ -254,7 +254,7 @@ record:
   type: finding
   status: open
   fingerprint: orchestrator-write-gate-only-matches-edit-write-multiedit
-  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: []}
+  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: [{project: bmad-swarm, date: 2026-08-11, ref: "initial (by security)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/audit-2026-08-11-security.md}
   links: {d_ids: []}
@@ -270,7 +270,7 @@ record:
   type: finding
   status: open
   fingerprint: write-gate-allow-list-uses-unanchored-substring-suffix
-  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: []}
+  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: [{project: bmad-swarm, date: 2026-08-11, ref: "initial (by security)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/audit-2026-08-11-security.md}
   links: {d_ids: []}
@@ -286,7 +286,7 @@ record:
   type: finding
   status: open
   fingerprint: allow-list-grants-arbitrary-code-execution-node-npx
-  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: []}
+  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: [{project: bmad-swarm, date: 2026-08-11, ref: "initial (by security)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/audit-2026-08-11-security.md}
   links: {d_ids: []}
@@ -302,7 +302,7 @@ record:
   type: finding
   status: open
   fingerprint: destructive-pattern-deny-list-is-trivially-evadable
-  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: []}
+  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: [{project: bmad-swarm, date: 2026-08-11, ref: "initial (by security)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/audit-2026-08-11-security.md}
   links: {d_ids: []}
@@ -318,7 +318,7 @@ record:
   type: finding
   status: open
   fingerprint: orchestrator-may-write-settings-local-json-the-file
-  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: []}
+  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: [{project: bmad-swarm, date: 2026-08-11, ref: "initial (by security)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/audit-2026-08-11-security.md}
   links: {d_ids: []}
@@ -334,7 +334,7 @@ record:
   type: finding
   status: open
   fingerprint: plugin-agents-loaded-as-identity-text-with-no
-  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: []}
+  provenance: {role: security, project: bmad-swarm, date: 2026-08-11, occurrences: [{project: bmad-swarm, date: 2026-08-11, ref: "initial (by security)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/audit-2026-08-11-security.md}
   links: {d_ids: []}
@@ -350,7 +350,7 @@ record:
   type: finding
   status: open
   fingerprint: teamcreate-gate-freshness-guard-is-one-directional-a
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-11, occurrences: [{project: bmad-swarm, date: 2026-08-12, ref: resolved}]}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-11, occurrences: [{project: bmad-swarm, date: 2026-08-11, ref: "initial (by reviewer)"}, {project: bmad-swarm, date: 2026-08-12, ref: "resolved (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/audit-2026-08-11-hooks-gates.md}
   links: {d_ids: []}
@@ -366,7 +366,7 @@ record:
   type: finding
   status: open
   fingerprint: generated-github-ci-workflow-pins-npm-install-g
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-12, occurrences: []}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-12, occurrences: [{project: bmad-swarm, date: 2026-08-12, ref: "initial (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-honest-foundation-2026-08-12.md}
   links: {d_ids: []}
@@ -382,7 +382,7 @@ record:
   type: finding
   status: open
   fingerprint: honest-foundation-p0-epic-s-decision-log-entry
-  provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-12, occurrences: []}
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-12, occurrences: [{project: bmad-swarm, date: 2026-08-12, ref: "initial (by reviewer)"}]}
   evidence:
     - {kind: citation, status: cited, ref: artifacts/reviews/review-honest-foundation-2026-08-12.md}
   links: {d_ids: []}
@@ -452,4 +452,52 @@ record:
   links: {d_ids: []}
 body: |
   Implementing a schema- or hook-adjacent feature reliably makes the reviewer surface "while we're here" validation/coverage gaps in code touched but not owned by the story (F-001/F-002/F-003 shape). Detection: ensure the findings register exists before the first review so these do not fall on the floor; log them advisory, do not scope-creep the story.
+```
+
+## F-25 — migration drops first decision-trail entry of every finding
+
+```yaml
+record:
+  id: F-25
+  type: finding
+  status: open
+  fingerprint: migration-drops-first-decision-trail-entry
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-13, occurrences: []}
+  evidence:
+    - {kind: citation, status: cited, ref: artifacts/reviews/review-se1-2026-08-13.md}
+  links: {d_ids: [D-036]}
+body: |
+  scripts/migrate-context-files.js parseDecisionTrail: the greedy \s* after **Decision trail:** consumed the newline AND the leading indentation of the first trail line, so the inner ^\s+- per-entry regex failed on it. Every finding lost its FIRST decision-trail entry; the 15 single-entry findings migrated with occurrences: []. The committed ledger.md carried the loss. Fixed by consuming only the rest of the Decision-trail line + its newline so the capture retains leading indentation; ledger.md regenerated from the 9c00390 source with exact occurrence counts.
+```
+
+## F-26 — write-gate denies legitimate commands with quoted > in arguments
+
+```yaml
+record:
+  id: F-26
+  type: finding
+  status: open
+  fingerprint: write-gate-quoted-redirect-false-positive
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-13, occurrences: []}
+  evidence:
+    - {kind: citation, status: cited, ref: artifacts/reviews/review-se1-2026-08-13.md}
+  links: {d_ids: [D-049]}
+body: |
+  generators/hooks/orchestrator-write-gate.cjs.src: the Bash redirect detector fires on > inside QUOTED arguments, hard-denying legitimate allow-listed commands (rg "value > 5", git commit -m "a -> b", git log --grep="x>y") — verified empirically. False-positive that blocks real work. Owned by dev-fork-a (write-gate track).
+```
+
+## F-27 — append --status bypasses the L-to-promoted human gate
+
+```yaml
+record:
+  id: F-27
+  type: finding
+  status: open
+  fingerprint: append-status-bypasses-human-gate
+  provenance: {role: reviewer, project: bmad-swarm, date: 2026-08-13, occurrences: []}
+  evidence:
+    - {kind: citation, status: cited, ref: artifacts/reviews/review-se1-2026-08-13.md}
+  links: {d_ids: [D-036]}
+body: |
+  bin/record.cjs buildRecord honored flags.status/input.status with no gate: append --type L --status promoted minted a promoted lesson with NO --human-approved, bypassing the ADR-021 constitutional human gate (the set-status seatbelt did not cover the append door). Verified empirically. Fixed: append --type L may only ENTER at observed|recurring; any later stage requires --human-approved <D-ID>.
 ```

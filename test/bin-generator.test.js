@@ -40,6 +40,7 @@ describe('bin-generator', () => {
     const r = spawnSync('node', [shipped, 'append', '--type', 'F', '--title', 't', '--fingerprint', 'fp', '--context-dir', ctx], {
       input: JSON.stringify({ provenance: { role: 'reviewer', project: 'p', date: '2026-08-13', occurrences: [] }, body: 'b' }),
       encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
     });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(r.stdout.trim(), 'F-1');

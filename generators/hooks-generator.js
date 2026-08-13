@@ -109,8 +109,10 @@ export function getHooksConfig() {
       // ADR-021 / D-049: the serialized-write channel. Denies DIRECT edits to
       // ledger.md / task-ledger.md / decision-log.md for EVERY agent, forcing
       // all writes through node .claude/bmad/bin/record.cjs (RES-6 fix). Bash is
-      // deliberately absent from this matcher so the pinned CLI still runs.
-      { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-write-guard.cjs"' }] },
+      // matched too (all-identity backstop for the shell-redirect bypass); the
+      // guard denies only WRITE/redirect shapes onto the protected files, so the
+      // pinned CLI (which never names those basenames in argv) still runs.
+      { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-write-guard.cjs"' }] },
     ],
     // ADR-022 / D-040 / D-049: the replay gate. TaskCompleted is the blocking
     // trigger (exit 2 re-runs declared evidence before "done" lands); TaskCreated

@@ -34,11 +34,21 @@ const { spawnSync } = require('node:child_process');
 // ---------------------------------------------------------------------------
 
 const DEFAULT_REPLAY_CONFIG = {
-  allowed_commands: ['npm test', 'npm run test'],
+  allowed_commands: ['npm test', 'npm run test', 'node --test'],
   timeout_seconds: 300,
   url_citations: 'advisory', // advisory | blocking | skip
   gated_task_classes: ['story', 'bug-fix', 'review'],
+  // Owner-name pattern (matched against the completing teammate) that MUST
+  // produce gated work — the non-renameable coverage signal (F2-M3 / security
+  // critical 3): a developer/reviewer completing an implementation task cannot
+  // escape the gate by choosing a subject that dodges the class regexes.
+  gated_owner_pattern: '^(dev|reviewer|security)',
 };
+
+// Keys a crafted bundle/swarm.yaml must never be allowed to set on a parsed
+// object (prototype-pollution gadget, security medium). Rejected loudly by the
+// YAML reader rather than silently assigned.
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 // The evidence-item kinds the engine understands (phase2 §4.1 frozen schema;
 // identical vocabulary to bin/record.cjs EVIDENCE_KINDS).
@@ -207,6 +217,7 @@ function parseFlowMap(str, i) {
     }
     const key = unquote(str.slice(kStart, i).trim());
     if (str[i] !== ':') throw new Error(`flow map: expected ':' near ${JSON.stringify(str.slice(kStart))}`);
+    if (FORBIDDEN_KEYS.has(key)) throw new Error(`refusing dangerous key in flow map: ${key}`);
     i++; // consume :
     const r = parseFlowAt(str, i);
     obj[key] = r.value;
@@ -283,6 +294,7 @@ function parseMap(lines, i, indent) {
     const kv = splitKeyValue(lines[i].content);
     if (!kv) throw new Error(`line ${lines[i].lineNo}: not a map entry: ${JSON.stringify(lines[i].content)}`);
     const [key, rest] = kv;
+    if (FORBIDDEN_KEYS.has(key)) throw new Error(`line ${lines[i].lineNo}: refusing dangerous key: ${key}`);
     i++;
     if (rest === '') {
       // Nested block: a child map/seq at greater indent, OR a sequence at the
@@ -340,6 +352,7 @@ function loadReplayConfig(swarmYamlPath) {
   if (Number.isFinite(r.timeout_seconds)) cfg.timeout_seconds = r.timeout_seconds;
   if (typeof r.url_citations === 'string') cfg.url_citations = r.url_citations;
   if (Array.isArray(r.gated_task_classes)) cfg.gated_task_classes = r.gated_task_classes.map(String);
+  if (typeof r.gated_owner_pattern === 'string') cfg.gated_owner_pattern = r.gated_owner_pattern;
   return cfg;
 }
 
@@ -351,6 +364,8 @@ function normSlashes(p) { return String(p == null ? '' : p).replace(/\\/g, '/');
 
 // Resolve `rawPath` (relative -> against root) to an absolute path WITHOUT
 // touching the filesystem, rejecting any `..` segment. Returns null on traversal.
+// This is the LEXICAL half of confinement; realpathConfined() below is the
+// physical half (symlinked-ancestor escape, security HIGH F-017).
 function confinedResolve(rawPath, root) {
   const norm = normSlashes(rawPath);
   if (norm === '') return null;
@@ -360,6 +375,31 @@ function confinedResolve(rawPath, root) {
   const nroot = path.normalize(root);
   if (abs !== nroot && !abs.startsWith(nroot + path.sep)) return null;
   return abs;
+}
+
+// Physical confinement: after lexical resolution, resolve symlinks on the path
+// (or its nearest existing ancestor) and re-check the prefix against the repo's
+// realpath. Catches a symlink whose lexical path is inside artifacts/ but whose
+// physical target escapes the repo (security HIGH). Returns true when confined.
+function realpathConfined(abs, root) {
+  let realRoot;
+  try { realRoot = fs.realpathSync(path.normalize(root)); } catch { return true; } // no root to anchor on; lexical check stands
+  let target;
+  try {
+    target = fs.realpathSync(abs);
+  } catch {
+    // abs itself does not exist yet; check its nearest existing ancestor.
+    let dir = path.dirname(abs);
+    for (;;) {
+      try { target = fs.realpathSync(dir); break; }
+      catch {
+        const parent = path.dirname(dir);
+        if (parent === dir) return true; // nothing exists to resolve; lexical stands
+        dir = parent;
+      }
+    }
+  }
+  return target === realRoot || target.startsWith(realRoot + path.sep);
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +415,7 @@ function checkFileExists(item, ctx) {
     let st;
     try { st = fs.statSync(abs); } catch { return { ok: false, reason: `${p} does not exist` }; }
     if (!st.isFile() && !st.isDirectory()) return { ok: false, reason: `${p} is neither a file nor a directory` };
+    if (!realpathConfined(abs, ctx.projectRoot)) return { ok: false, reason: `${p} resolves outside the repo via a symlink` };
   }
   return { ok: true };
 }
@@ -399,9 +440,18 @@ function tokenizeCommand(cmd) {
   return argv;
 }
 
+// Exact-TOKEN prefix match (security medium): the command's argv must begin with
+// the allow-list entry's argv, token for token. `npm test` allows `npm test` and
+// `npm test --watch`, but NOT `npm testfoo` (a loose string startsWith would let
+// that through) and NOT `npm test; rm -rf x` (which tokenizes to a different
+// third token anyway). No metacharacter interpretation — spawn is shell:false.
 function commandAllowed(cmd, allowed) {
-  const c = String(cmd).trim();
-  return (allowed || []).some((prefix) => c === prefix || c.startsWith(String(prefix)));
+  const argv = tokenizeCommand(cmd);
+  return (allowed || []).some((prefix) => {
+    const p = tokenizeCommand(String(prefix));
+    if (p.length === 0 || p.length > argv.length) return false;
+    return p.every((tok, i) => tok === argv[i]);
+  });
 }
 
 function checkCommand(item, ctx) {
@@ -417,15 +467,20 @@ function checkCommand(item, ctx) {
   const argv = tokenizeCommand(cmd);
   if (argv.length === 0) return { ok: false, reason: 'command tokenized to empty argv' };
 
-  // cwd confined inside the repo (realpath prefix check via confinedResolve).
+  // cwd confined inside the repo (lexical + realpath).
   let cwd = ctx.projectRoot;
   if (item.cwd != null && item.cwd !== '' && item.cwd !== '.') {
     const abs = confinedResolve(item.cwd, ctx.projectRoot);
     if (!abs) return { ok: false, reason: `cwd escapes the repo: ${item.cwd}` };
+    if (!realpathConfined(abs, ctx.projectRoot)) return { ok: false, reason: `cwd resolves outside the repo via a symlink: ${item.cwd}` };
     cwd = abs;
   }
 
-  const expectExit = item.expect && Number.isFinite(item.expect.exit) ? item.expect.exit : 0;
+  // SUCCESS IS EXIT 0, ALWAYS (security critical 1): the bundle author is the
+  // same agent claiming "done", so an item-supplied `expect.exit` would let a
+  // failing suite declare itself passing (`expect: {exit: 1}`). We ignore any
+  // attacker-supplied expected code — a test/command passes iff it exits 0.
+  const expectExit = 0;
   const timeoutMs = Math.max(1, (ctx.config.timeout_seconds || 300)) * 1000;
 
   const res = spawnSync(argv[0], argv.slice(1), {
@@ -464,6 +519,7 @@ function checkCitation(item, ctx) {
   const line = m[2] ? parseInt(m[2], 10) : null;
   const abs = confinedResolve(filePart, ctx.projectRoot);
   if (!abs) return { ok: false, reason: `citation path escapes the repo or is a traversal: ${filePart}` };
+  if (!realpathConfined(abs, ctx.projectRoot)) return { ok: false, reason: `citation resolves outside the repo via a symlink: ${filePart}` };
   let content;
   try { content = fs.readFileSync(abs, 'utf8'); } catch { return { ok: false, reason: `citation target does not exist: ${filePart}` }; }
   if (line != null) {
@@ -514,17 +570,26 @@ function runItemCheck(item, ctx) {
  * `result` ∈ pass | fail | advisory. `ok` is true iff no check failed.
  *
  * @param {string} bundlePath
- * @param {object} opts - { projectRoot, config }
+ * @param {object} opts - { projectRoot, config, requireExecutable }
  * @returns {object}
  */
 function evaluateBundle(bundlePath, opts) {
   const projectRoot = path.resolve((opts && opts.projectRoot) || process.cwd());
   const config = (opts && opts.config) || DEFAULT_REPLAY_CONFIG;
+  const requireExecutable = !!(opts && opts.requireExecutable);
   const ctx = { projectRoot, config };
 
-  const absBundle = confinedResolve(bundlePath, projectRoot) || path.resolve(bundlePath);
+  // The bundle itself must live inside the repo — a gated task cannot point at
+  // /tmp/empty.yaml to self-satisfy (security HIGH: unconfined bundle path).
+  const absBundle = confinedResolve(bundlePath, projectRoot);
+  if (!absBundle) {
+    return fail(bundlePath, `evidence bundle path escapes the repo or is a traversal: ${bundlePath}. The bundle must live inside the project, like the paths it cites.`);
+  }
   if (!fs.existsSync(absBundle)) {
     return fail(bundlePath, `evidence bundle not found: ${bundlePath}. A gated task MUST declare evidence: <path/to/bundle.yaml> and the bundle must exist.`);
+  }
+  if (!realpathConfined(absBundle, projectRoot)) {
+    return fail(bundlePath, `evidence bundle resolves outside the repo via a symlink: ${bundlePath}`);
   }
   let doc;
   try { doc = parseYaml(fs.readFileSync(absBundle, 'utf8')); } catch (e) {
@@ -538,6 +603,11 @@ function evaluateBundle(bundlePath, opts) {
   if (!items) {
     return fail(bundlePath, 'evidence bundle malformed: evidence_bundle.items must be a list');
   }
+  // An empty bundle proves nothing — reject it rather than passing zero checks
+  // (security HIGH: trivially-satisfiable gate).
+  if (items.length === 0) {
+    return fail(bundlePath, 'evidence bundle declares no items: an empty bundle cannot satisfy the gate. Declare the file paths, test commands, and citations that prove the work.');
+  }
 
   // Schema pre-pass: every item names a known kind + a stable id.
   for (let n = 0; n < items.length; n++) {
@@ -545,6 +615,17 @@ function evaluateBundle(bundlePath, opts) {
     if (!it || typeof it !== 'object') return fail(bundlePath, `items[${n}] is not a map`);
     if (!EVIDENCE_KINDS.includes(it.kind)) {
       return fail(bundlePath, `items[${n}].kind ${JSON.stringify(it.kind)} not in {${EVIDENCE_KINDS.join(', ')}}`);
+    }
+  }
+
+  // Anti-green-check-theater (security HIGH): a story/bug-fix bundle whose only
+  // item is `file-exists: [swarm.yaml]` replays clean but proves nothing about
+  // the diff. Require at least one re-executed test-run/command item for these
+  // classes (the hook sets requireExecutable; review-verdict tasks do not).
+  if (requireExecutable) {
+    const hasExec = items.some((it) => it.kind === 'test-run' || it.kind === 'command');
+    if (!hasExec) {
+      return fail(bundlePath, 'this task class requires at least one test-run/command evidence item (a re-executed test), not only static file/citation checks.');
     }
   }
 

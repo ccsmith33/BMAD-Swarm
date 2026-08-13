@@ -10,26 +10,40 @@
 // D-002 SUPERSESSION: D-002 (2026-04-16) deleted an advisory `npm test`
 // TaskCompleted hook — the trigger-on-trust shape it was right to kill, and an
 // L-2 code-execution surface. What returns here is NOT that. This hook re-runs
-// only DECLARED evidence commands that prefix-match swarm.yaml
+// only DECLARED evidence commands that exact-token prefix-match swarm.yaml
 // replay.allowed_commands (no agent-invented command ever runs), spawned
-// shell:false with a timeout and cwd confined to the repo. The engine lives in
-// the pinned, self-contained .claude/bmad/bin/replay-check.cjs; this hook is a
-// thin adapter over it, so the blocking gate and the degradation CLI produce
-// identical verdicts. Verified live on Claude Code v2.1.221: TaskCompleted exit
-// 2 blocks the status change and the stderr reaches the completing agent.
+// shell:false with a timeout and cwd confined to the repo, and a test/command
+// passes ONLY on exit 0 (the bundle cannot declare its own pass code). The
+// engine lives in the pinned, self-contained .claude/bmad/bin/replay-check.cjs;
+// this hook is a thin adapter over it, so the blocking gate and the degradation
+// CLI produce identical verdicts. Verified live on Claude Code v2.1.221:
+// TaskCompleted exit 2 blocks the status change and the stderr reaches the agent.
 //
-// Two event registrations, one file:
-//   TaskCompleted — the gate. A task is GATED iff its description carries a
-//     `gate: replay` line; a gated task MUST also carry `evidence: <path>`. On a
-//     failed replay the hook exits 2 (blocks completion) AND appends an F-record
-//     via record.cjs — "the ledger of what it refused".
-//   TaskCreated — the marker enforcement. A dev-story task (`story-<n>` subject)
-//     created WITHOUT the `gate: replay` marker is refused (exit 2), so gate
-//     coverage is deterministic instead of protocol-dependent.
+// FAIL-CLOSED (security critical 2): once a task is determined to be gated, ANY
+// exception in the gate path exits 2 — a thrown engine error must never let
+// unproven work through. Only ungated paths fail open.
+//
+// COVERAGE IS NOT RENAMEABLE (security critical 3): a task is gated by its CLASS
+// (story / bug-fix / review, from swarm.yaml replay.gated_task_classes) AND by
+// its OWNER (the completing teammate, via replay.gated_owner_pattern) — not by a
+// subject substring the completing agent controls. A developer-owned task
+// carrying no `gate: replay` marker is refused at completion, so the marker
+// cannot be dropped to dodge verification.
+//
+// Two event registrations, one file, branching on hook_event_name:
+//   TaskCompleted — the gate.
+//   TaskCreated   — enforces the `gate: replay` marker on gated-class tasks.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+
+// Fallback config if the engine (which reads swarm.yaml) is unavailable at
+// TaskCreated time. Mirrors the engine's DEFAULT_REPLAY_CONFIG for these keys.
+const FALLBACK_CFG = {
+  gated_task_classes: ['story', 'bug-fix', 'review'],
+  gated_owner_pattern: '^(dev|reviewer|security)',
+};
 
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -45,31 +59,108 @@ process.stdin.on('end', () => {
     if (name === 'TaskCreated') return onTaskCreated(event, projectRoot);
     if (name === 'TaskCompleted') return onTaskCompleted(event, projectRoot);
   } catch (e) {
-    // An engine/infra error on a NON-gated path must not block; a gated path
-    // that throws is handled inside onTaskCompleted (fail-closed there).
+    // Fail-closed backstop: if anything escaped the inner handling AND this is a
+    // gated completion, block. Otherwise fail open (do not wedge coordination).
+    if (name === 'TaskCompleted' && isGatedCompletion(event, projectRoot)) {
+      process.stderr.write(
+        'BLOCKED (replay gate): the gate errored while verifying this task ('
+        + (e && e.message ? e.message : String(e)) + '). Completion refused (fail-closed). '
+        + 'Run `node .claude/bmad/bin/replay-check.cjs <bundle>` to diagnose.\n',
+      );
+      process.exit(2);
+    }
     process.stderr.write('replay-gate: ' + (e && e.message ? e.message : String(e)) + '\n');
     process.exit(0);
   }
   process.exit(0);
 });
 
+// --- config + classification -----------------------------------------------
+
+function loadConfig(projectRoot) {
+  const engine = loadEngine(projectRoot);
+  if (engine) {
+    try { return { engine, cfg: engine.loadReplayConfig(path.join(projectRoot, 'swarm.yaml')) }; }
+    catch { /* fall through */ }
+  }
+  return { engine, cfg: FALLBACK_CFG };
+}
+
+// Compiled detector for a configured class name (matched against subject+desc).
+function classRegex(cls) {
+  switch (String(cls)) {
+    case 'story': return /\bstory[-\s]?\d+\b/i;
+    case 'bug-fix': return /\bbug[-\s]?fix\b/i;
+    case 'review': return /\breview\b/i;
+    default: return null;
+  }
+}
+
+// Classify a task into a gated class, or null. Signals, in order:
+//   1. subject/description matches a configured class regex
+//   2. the OWNER name matches gated_owner_pattern (developers => story-class
+//      implementation work; reviewers/security => review-class) — the signal the
+//      completing agent cannot rename around.
+// Only classes present in cfg.gated_task_classes are returned.
+function classifyTask(subject, desc, owner, cfg) {
+  const text = String(subject || '') + '\n' + String(desc || '');
+  const classes = Array.isArray(cfg.gated_task_classes) ? cfg.gated_task_classes : FALLBACK_CFG.gated_task_classes;
+
+  for (const cls of classes) {
+    const re = classRegex(cls);
+    if (re && re.test(text)) return cls;
+  }
+
+  const ownerPat = cfg.gated_owner_pattern || FALLBACK_CFG.gated_owner_pattern;
+  if (owner && ownerPat) {
+    let re;
+    try { re = new RegExp(ownerPat, 'i'); } catch { re = null; }
+    if (re && re.test(String(owner))) {
+      // Reviewer/security owners produce review-verdict work; everyone else
+      // matching the pattern (developers) produces implementation work.
+      if (/review|security/i.test(String(owner))) {
+        if (classes.includes('review')) return 'review';
+      } else if (classes.includes('story')) {
+        return 'story';
+      }
+    }
+  }
+  return null;
+}
+
+// A class whose completion evidence must include a re-executed test/command.
+function classRequiresExecutable(cls) {
+  return cls === 'story' || cls === 'bug-fix';
+}
+
+// Best-effort re-derivation used only by the outer fail-closed backstop.
+function isGatedCompletion(event, projectRoot) {
+  const subject = String(event.task_subject || '');
+  const desc = String(event.task_description || '');
+  if (hasGateMarker(subject + '\n' + desc)) return true;
+  try {
+    const { cfg } = loadConfig(projectRoot);
+    return classifyTask(subject, desc, event.teammate_name, cfg) !== null;
+  } catch { return false; }
+}
+
 // --- marker enforcement (TaskCreated) --------------------------------------
 
 function onTaskCreated(event, projectRoot) {
   const subject = String(event.task_subject || '');
   const desc = String(event.task_description || '');
-  const text = subject + '\n' + desc;
+  // Owner is not reliably in the TaskCreated payload (teammate_name here is the
+  // creator, not the assignee), so creation-time enforcement keys on the class
+  // regexes; owner-based coverage is enforced at completion.
+  const { cfg } = loadConfig(projectRoot);
+  const cls = classifyTask(subject, desc, null, cfg);
+  if (!cls) process.exit(0);
 
-  // Reliable signal: a story-class subject. (Owner is not in the TaskCreated
-  // payload, so we do not key on it — subject/description is authoritative.)
-  const looksLikeStory = /\bstory-\d+\b/i.test(subject) || /\bbug[- ]?fix\b/i.test(subject);
-  if (!looksLikeStory) process.exit(0);
-
-  if (!hasGateMarker(text)) {
+  if (!hasGateMarker(subject + '\n' + desc)) {
     process.stderr.write(
-      'BLOCKED (replay marker): this looks like a story/bug-fix task but carries no '
-      + '`gate: replay` marker. Story and bug-fix tasks MUST declare the replay gate so '
-      + 'completion is verified deterministically (ADR-022). Recreate the task with two '
+      'BLOCKED (replay marker): this task matches the gated class "' + cls + '" but carries no '
+      + '`gate: replay` marker. Story, bug-fix, and review tasks MUST declare the replay gate so '
+      + 'completion is verified deterministically (ADR-022 / D-049). Recreate the task with two '
       + 'lines in its description:\n'
       + '    gate: replay\n'
       + '    evidence: <path/to/artifact.evidence.yaml>\n',
@@ -84,50 +175,83 @@ function onTaskCreated(event, projectRoot) {
 function onTaskCompleted(event, projectRoot) {
   const subject = String(event.task_subject || '');
   const desc = String(event.task_description || '');
+  const owner = event.teammate_name || null;
   const text = subject + '\n' + desc;
 
+  const { engine, cfg } = loadConfig(projectRoot);
+  const cls = classifyTask(subject, desc, owner, cfg);
+  const marked = hasGateMarker(text);
+
   // Ungated tasks (coordination, research, etc.) pass through untouched.
-  if (!hasGateMarker(text)) process.exit(0);
+  if (!marked && !cls) process.exit(0);
 
-  const evPath = extractEvidencePath(text);
-  if (!evPath) {
+  // From here the task IS gated: any failure below blocks (fail-closed).
+  try {
+    // Coverage: a gated-class task that dropped its marker is refused, so the
+    // marker cannot be omitted to dodge the gate (security critical 3).
+    if (!marked) {
+      process.stderr.write(
+        'BLOCKED (replay gate): this is a gated "' + cls + '"-class task but carries no '
+        + '`gate: replay` marker, so it has no evidence to verify. Recreate it with:\n'
+        + '    gate: replay\n'
+        + '    evidence: <path/to/artifact.evidence.yaml>\n',
+      );
+      process.exit(2);
+    }
+
+    const evPath = extractEvidencePath(text);
+    if (!evPath) {
+      process.stderr.write(
+        'BLOCKED (replay gate): this task declares `gate: replay` but no `evidence:` path. '
+        + 'A gated task MUST point at its evidence bundle. Add a line:\n'
+        + '    evidence: <path/to/artifact.evidence.yaml>\n'
+        + 'See .claude/bmad/methodology/artifact-schemas/replay-evidence-bundle.md.\n',
+      );
+      process.exit(2);
+    }
+
+    if (!engine) {
+      // Fail CLOSED on a gated task: a broken install must not let unproven work
+      // through.
+      process.stderr.write(
+        'BLOCKED (replay gate): the replay engine is not installed at '
+        + '.claude/bmad/bin/replay-check.cjs. Run `bmad-swarm update` to restore it, '
+        + 'then retry completion.\n',
+      );
+      process.exit(2);
+    }
+
+    const config = engine.loadReplayConfig(path.join(projectRoot, 'swarm.yaml'));
+    const verdict = engine.evaluateBundle(evPath, {
+      projectRoot,
+      config,
+      requireExecutable: classRequiresExecutable(cls),
+    });
+
+    if (verdict.ok) process.exit(0);
+
+    // Rejection: append the F-record receipt (best-effort), then block.
+    recordRejection(projectRoot, event, evPath, verdict);
     process.stderr.write(
-      'BLOCKED (replay gate): this task declares `gate: replay` but no `evidence:` path. '
-      + 'A gated task MUST point at its evidence bundle. Add a line:\n'
-      + '    evidence: <path/to/artifact.evidence.yaml>\n'
-      + 'The bundle declares the file paths, test commands, and citations the gate re-runs. '
-      + 'See .claude/bmad/methodology/artifact-schemas/replay-evidence-bundle.md.\n',
+      'BLOCKED (replay gate): evidence did not replay clean for '
+      + (verdict.artifact || evPath) + '.\n'
+      + engine.formatVerdict(verdict) + '\n'
+      + 'Fix the evidence (create the missing path, make the test pass at exit 0, resolve the '
+      + 'citation) or correct the bundle, then retry completion. This rejection was recorded '
+      + 'to the ledger.\n',
+    );
+    process.exit(2);
+  } catch (e) {
+    // process.exit() above terminates synchronously and never reaches here, so
+    // only a genuine throw (e.g. spawnSync on a malformed cmd) lands in this
+    // catch — and on a gated task it must block (fail-closed).
+    process.stderr.write(
+      'BLOCKED (replay gate): the gate errored while verifying this task ('
+      + (e && e.message ? e.message : String(e)) + '). Completion refused (fail-closed). '
+      + 'Run `node .claude/bmad/bin/replay-check.cjs <bundle>` to diagnose.\n',
     );
     process.exit(2);
   }
-
-  const engine = loadEngine(projectRoot);
-  if (!engine) {
-    // Fail CLOSED on a gated task: a broken install must not let unproven work
-    // through. (Ungated tasks already returned above.)
-    process.stderr.write(
-      'BLOCKED (replay gate): the replay engine is not installed at '
-      + '.claude/bmad/bin/replay-check.cjs. Run `bmad-swarm update` to restore it, '
-      + 'then retry completion.\n',
-    );
-    process.exit(2);
-  }
-
-  const config = engine.loadReplayConfig(path.join(projectRoot, 'swarm.yaml'));
-  const verdict = engine.evaluateBundle(evPath, { projectRoot, config });
-
-  if (verdict.ok) process.exit(0);
-
-  // Rejection: append the F-record receipt (best-effort), then block.
-  recordRejection(projectRoot, event, evPath, verdict);
-  process.stderr.write(
-    'BLOCKED (replay gate): evidence did not replay clean for '
-    + (verdict.artifact || evPath) + '.\n'
-    + engine.formatVerdict(verdict) + '\n'
-    + 'Fix the evidence (create the missing path, make the test pass, resolve the citation) '
-    + 'or correct the bundle, then retry completion. This rejection was recorded to the ledger.\n',
-  );
-  process.exit(2);
 }
 
 // --- helpers ---------------------------------------------------------------

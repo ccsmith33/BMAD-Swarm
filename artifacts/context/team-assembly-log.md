@@ -393,3 +393,19 @@ team:
     model: opus
 rationale: SE-1 track T3 (sequential, on committed T2 base). Blocking TaskCompleted exit-2 replay gate (ADR-022, spike-verified) — deterministic evidence-bundle re-run before task completion; appends rejection F-records via T2's record.cjs; Tier-0 engine utils/evidence.js + replay-check degradation script + gated classes story/bug-fix/review (D-049). Supersede D-002. Opus per tier mix.
 ```
+
+## 2026-08-13 — audit (Phase 2 SE-1 adversarial review — security-critical)
+
+```bmad-assembly
+entry_point: audit
+complexity: 12
+autonomy: auto
+team:
+  - role: security
+    model: fable
+  - role: reviewer
+    domain: se1
+    lenses: [code-quality, security, test-coverage]
+    model: fable
+rationale: SE-1 (T1 Fork A + T2 ledger + T3 replay gate) all committed on branch. Security-critical slice (permission boundary + enforcement) gets fable adversarial review + a dedicated security teammate — try to bypass the narrowed write-gate, game the replay evidence, and race the ledger. Fable per tier mix (security-critical).
+```
