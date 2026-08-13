@@ -9,6 +9,7 @@ import {
   GIT_COORDINATION_SUBCMDS,
   DENY_LEADING_BINARIES,
   WRAPPER_BINARIES,
+  EXEC_AFFECTING_ENV_VARS,
 } from '../utils/orchestrator-allow.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,6 +42,8 @@ describe('orchestrator-allow validator', () => {
       'Bash(node .claude/bmad/bin/record.cjs:*)',     // pinned-script exception
       'Bash(node .claude/bmad/bin/replay-check.cjs:*)',
       'Bash(RUSTFLAGS=-D cargo check:*)',             // env-var prefix, real command follows
+      'Bash(CI=1 npm test:*)',                        // benign env prefix stays allowed
+      'Bash(CARGO_TERM_COLOR=always cargo build:*)',  // benign CARGO_* env prefix
     ];
     for (const entry of ACCEPT) {
       it(`accepts ${entry}`, () => {
@@ -82,6 +85,30 @@ describe('orchestrator-allow validator', () => {
       ['sudo wrapper', 'Bash(sudo make install:*)'],
       ['xargs wrapper', 'Bash(xargs rm:*)'],
       ['find wrapper', 'Bash(find . -delete:*)'],
+      // F-INT-1 launcher-wrapper family — grantable-then-invisible bypass.
+      ['timeout bare launcher', 'Bash(timeout:*)'],
+      ['timeout node -e launcher', 'Bash(timeout node -e 1:*)'],
+      ['timeout rm launcher', 'Bash(timeout rm -rf src:*)'],
+      ['setsid launcher', 'Bash(setsid python3 evil.py:*)'],
+      ['flock launcher', 'Bash(flock /tmp/l sh:*)'],
+      ['chrt launcher', 'Bash(chrt 1 node build.js:*)'],
+      ['ionice launcher', 'Bash(ionice node build.js:*)'],
+      ['nice launcher', 'Bash(nice node build.js:*)'],
+      ['unbuffer launcher', 'Bash(unbuffer node build.js:*)'],
+      ['setarch launcher', 'Bash(setarch x86_64 sh:*)'],
+      ['catchsegv launcher', 'Bash(catchsegv node build.js:*)'],
+      ['watch launcher', 'Bash(watch node build.js:*)'],
+      // F-INT-2 execution-affecting env-var prefixes.
+      ['GIT_EXTERNAL_DIFF exec env prefix', 'Bash(GIT_EXTERNAL_DIFF=/tmp/evil git diff:*)'],
+      ['GIT_SSH_COMMAND exec env prefix', 'Bash(GIT_SSH_COMMAND=/tmp/evil git fetch:*)'],
+      ['GIT_PAGER exec env prefix', 'Bash(GIT_PAGER=/tmp/evil git log:*)'],
+      ['GIT_CONFIG_GLOBAL exec env prefix', 'Bash(GIT_CONFIG_GLOBAL=/tmp/evil git commit:*)'],
+      ['GIT_CONFIG_COUNT exec env prefix', 'Bash(GIT_CONFIG_COUNT=1 git commit:*)'],
+      ['NODE_OPTIONS exec env prefix', 'Bash(NODE_OPTIONS=--require=/tmp/x.js npm test:*)'],
+      ['LD_PRELOAD exec env prefix', 'Bash(LD_PRELOAD=/tmp/x.so git status:*)'],
+      ['DYLD_INSERT_LIBRARIES exec env prefix', 'Bash(DYLD_INSERT_LIBRARIES=/tmp/x.dylib git status:*)'],
+      ['PATH hijack env prefix', 'Bash(PATH=/tmp git commit:*)'],
+      ['IFS hijack env prefix', 'Bash(IFS=x git commit:*)'],
       ['GIT_DIR env-prefix smuggling a git write', 'Bash(GIT_DIR=x git apply:*)'],
       ['non-Bash tool grant (WebFetch)', 'WebFetch'],
       ['non-Bash tool grant (mcp)', 'mcp__foo__bar'],
@@ -122,6 +149,18 @@ describe('validator ↔ gate set consistency (§3.6)', () => {
   );
   const gateWriteSubcmds = extractSetLiteral(gateSource, 'GIT_WRITE_SUBCMDS');
   const gateDenyBinaries = extractSetLiteral(gateSource, 'DENY_BINARIES');
+  const gateLauncherWrappers = extractSetLiteral(gateSource, 'LAUNCHER_WRAPPERS');
+  const gateEnvVars = extractSetLiteral(gateSource, 'EXEC_AFFECTING_ENV_VARS');
+
+  // Symmetric drift (a bypass missing from BOTH sides) is invisible to subset
+  // checks — assert full EQUALITY on the wrapper and env-var denylist sets so
+  // the two layers can never diverge on them again (F-INT-1 / F-INT-2).
+  const assertSetEqual = (a, b, label) => {
+    const missingFromB = [...a].filter((x) => !b.has(x));
+    const missingFromA = [...b].filter((x) => !a.has(x));
+    assert.deepEqual(missingFromB, [], `${label}: validator has members the gate lacks: ${missingFromB.join(', ')}`);
+    assert.deepEqual(missingFromA, [], `${label}: gate has members the validator lacks: ${missingFromA.join(', ')}`);
+  };
 
   it('validator git coordination set is DISJOINT from the gate write-vector set', () => {
     // A project may never grant a git subcommand the gate treats as a
@@ -141,5 +180,19 @@ describe('validator ↔ gate set consistency (§3.6)', () => {
       assert.ok(validatorRefused.has(bin),
         `gate denies "${bin}" but the validator would not refuse it as a leading binary — drift`);
     }
+  });
+
+  it('validator WRAPPER_BINARIES === gate LAUNCHER_WRAPPERS (F-INT-1)', () => {
+    // The launcher-wrapper set must be identical: the validator refuses these as
+    // grants and the gate denies them at runtime. A member missing from either
+    // side reopens the `timeout <interpreter>` grantable-then-invisible bypass.
+    assertSetEqual(WRAPPER_BINARIES, gateLauncherWrappers, 'launcher-wrapper set');
+  });
+
+  it('validator EXEC_AFFECTING_ENV_VARS === gate EXEC_AFFECTING_ENV_VARS (F-INT-2)', () => {
+    // The env-var denylist must be identical across the two layers so an
+    // execution-affecting prefix (GIT_EXTERNAL_DIFF / NODE_OPTIONS / LD_PRELOAD /
+    // …) can never be refused by one layer but accepted by the other.
+    assertSetEqual(EXEC_AFFECTING_ENV_VARS, gateEnvVars, 'exec-affecting env-var denylist');
   });
 });

@@ -82,6 +82,44 @@ const GIT_WRITE_SUBCMDS = new Set(['apply', 'restore', 'am', 'stash', 'mv', 'rm'
 // before the subcommand is resolved, or `git -C /path apply x` reads `/path` as
 // the subcommand and the deny-set never matches (the -C bug).
 const GIT_GLOBAL_OPTS_WITH_ARG = new Set(['-C', '--git-dir', '--work-tree', '--namespace']);
+// Launcher-wrappers: binaries whose only job is to exec a following program.
+// DENIED OUTRIGHT when they lead a command — the orchestrator never needs to
+// wrap a coordination op, and the wrapped program (`timeout node -e …`,
+// `timeout rm -rf src`, `setsid python evil.py`) would otherwise run
+// un-inspected. Argument-aware re-inspection is deliberately avoided; deny is
+// simpler and strictly safer. Pinned EQUAL to the validator's WRAPPER_BINARIES
+// by test/orchestrator-allow.test.js (F-INT-1).
+const LAUNCHER_WRAPPERS = new Set([
+  'env', 'command', 'builtin', 'exec', 'sudo', 'doas',
+  'nice', 'nohup', 'time', 'stdbuf', 'xargs', 'find',
+  'timeout', 'setsid', 'flock', 'chrt', 'ionice',
+  'unbuffer', 'setarch', 'catchsegv', 'watch',
+]);
+// Execution-affecting environment variables. An env prefix (`VAR=val cmd`) that
+// sets any of these — or a GIT_CONFIG*/DYLD_*/LD_* family member
+// (isExecAffectingEnvVar) — turns an allowed coordination command into arbitrary
+// execution (git diff/pager/ssh drivers, GIT_CONFIG* alias/core.pager, the
+// dynamic loader, node/perl/python/ruby preload hooks, PATH/IFS hijack) and is
+// DENIED. Benign build vars (RUSTFLAGS, CI, CARGO_*, …) are absent and pass.
+// Pinned EQUAL to the validator's EXEC_AFFECTING_ENV_VARS by the consistency
+// test (F-INT-2).
+const EXEC_AFFECTING_ENV_VARS = new Set([
+  'GIT_EXTERNAL_DIFF', 'GIT_SSH_COMMAND', 'GIT_SSH', 'GIT_PAGER', 'GIT_EDITOR',
+  'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS',
+  'GIT_PROXY_COMMAND', 'GIT_ASKPASS', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'NODE_OPTIONS', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT',
+  'PERL5OPT', 'PERL5LIB', 'PYTHONSTARTUP', 'PYTHONPATH', 'RUBYOPT', 'RUBYLIB',
+  'BASH_ENV', 'ENV', 'IFS', 'PATH', 'SHELLOPTS', 'BASHOPTS',
+]);
+// True iff an env-var NAME is execution-affecting (denylist + prefix families).
+// Identical predicate to the validator's; the exact-name Set is pinned equal.
+function isExecAffectingEnvVar(name) {
+  if (EXEC_AFFECTING_ENV_VARS.has(name)) return true;
+  if (name.startsWith('GIT_CONFIG')) return true; // GIT_CONFIG* family
+  if (name.startsWith('DYLD_')) return true;       // macOS dyld injection
+  if (name.startsWith('LD_')) return true;         // ELF loader injection
+  return false;
+}
 
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -303,18 +341,6 @@ function isWriteRedirect(op) {
   return false;                             // >& <& < << are not file writes
 }
 
-function leadingBinary(words) {
-  const wrappers = new Set(['env', 'command', 'builtin', 'exec', 'sudo', 'doas', 'nice', 'nohup', 'time', 'stdbuf']);
-  for (const w of words) {
-    const u = unquote(w);
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(u)) continue; // VAR=val
-    const base = u.replace(/.*\//, '');
-    if (wrappers.has(base)) continue;
-    return base;
-  }
-  return null;
-}
-
 function inspectNode(words, projectRoot) {
   const args = words.slice(1).map(unquote);
   for (const a of args) {
@@ -348,11 +374,29 @@ function inspectSub(tokens, projectRoot) {
   }
   if (!words.length) return { deny: false };
 
-  const base = leadingBinary(words);
-  if (!base) return { deny: false };
-  // words after the binary (skip leading wrappers/VAR= up to the binary).
-  const binIdx = words.findIndex((w) => unquote(w).replace(/.*\//, '') === base);
-  const binWords = words.slice(binIdx);
+  // 2) env-var prefixes (`VAR=val cmd`): vet each assignment. An
+  //    execution-affecting variable (GIT_EXTERNAL_DIFF, GIT_SSH_COMMAND,
+  //    NODE_OPTIONS, LD_PRELOAD, GIT_CONFIG_GLOBAL, …) turns the following
+  //    coordination command into arbitrary execution and is denied outright.
+  let bi = 0;
+  for (; bi < words.length; bi++) {
+    const u = unquote(words[bi]);
+    const em = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(u);
+    if (!em) break;
+    if (isExecAffectingEnvVar(em[1])) {
+      return { deny: true, reason: shellReason('execution-affecting env prefix ' + em[1] + '=') };
+    }
+  }
+  if (bi >= words.length) return { deny: false }; // only assignments, no command
+
+  // 3) launcher-wrappers (timeout/setsid/flock/…): deny outright — never
+  //    stripped-then-inspected, so the wrapped program can't slip through.
+  const base = unquote(words[bi]).replace(/.*\//, '');
+  if (LAUNCHER_WRAPPERS.has(base)) {
+    return { deny: true, reason: shellReason('launcher-wrapper "' + base + '" (executes an arbitrary following program)') };
+  }
+
+  const binWords = words.slice(bi);
   const args = binWords.slice(1).map(unquote);
 
   if (base === 'node' || base === 'nodejs') return inspectNode(binWords, projectRoot);
