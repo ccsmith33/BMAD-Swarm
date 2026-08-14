@@ -160,6 +160,14 @@ describe('Project-brain hooks (process-spawn contract)', () => {
       assert.match(ctx, /Comprehension BEFORE coordination/);
       // Staleness from frontmatter is surfaced (3 events).
       assert.match(ctx, /3 ledger events/);
+      // The COMMAND CREED (D-57) rides the warm boot so a compacted session
+      // re-internalizes "I command a Claude team, not a human team" before it plans.
+      assert.match(ctx, /COMMAND CREED \(D-57\): I command Claude agents, not human developers\./);
+      assert.match(ctx, /PRODUCE in one shot/);
+      assert.match(ctx, /SPLIT only on real seams/);
+      assert.match(ctx, /SCALE VERIFICATION, not fragmentation/);
+      // The handshake re-states the capability model as the session's own output.
+      assert.match(ctx, /Commanding a Claude team — default: most-direct \+ parallel-independent/);
     });
 
     it('also fires on a fresh startup (matcher startup|compact)', () => {
