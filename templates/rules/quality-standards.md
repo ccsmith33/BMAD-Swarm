@@ -12,10 +12,25 @@ Quality gates are mandatory for all artifacts. Self-validate before reporting do
 
 ## Review Requirements
 
-{{#if methodology.quality.require_review}}- All code must pass adversarial review before merge.
-- The reviewer checks for correctness, security vulnerabilities, architecture compliance, and test coverage.
-- Review findings categorized as "blocking" must be resolved before proceeding.
-- Advisory findings should be logged and addressed when practical.
+{{#if methodology.quality.require_review}}Review is **proportional, not mandatory-everything**. A reversible low-density change gets a glance; an irreversible, high-density, or security-touching change gets the full treatment. Verification depth scales with risk — it is never fragmented away, and it is never uniformly imposed regardless of risk.
+
+The review **tier** is the Layer-3 verification score (constraint density × blast radius × reversibility × verifiability × ambiguity, 5–15) — one rubric, two consumers: it sizes production nowhere and sizes the *review gate* here.
+
+| Tier | Score | Applies to | Verification |
+|---|---|---|---|
+| **T0 — self-verify** | 5–6, all factors reversible/loud | docs, comments, config values, single-file trivial fixes on a branch | tests pass + producer self-check against acceptance criteria; one-line ledger note; NO reviewer spawn |
+| **T1 — light review** | 6–7 | small reversible changes, low constraint density | one reviewer, `code-quality` lens only, briefed with the DIFF (never the whole artifact) |
+| **T2 — full adversarial review** | 8–11 (default for multi-file features, contract/data-model changes) | correctness, security, architecture compliance, test coverage; blocking findings resolved before proceeding | adversarial review; advisory findings logged and addressed when practical |
+| **T3 — heavy verification** | 12–15, or any irreversible/silent-error surface | security boundaries, migrations, public APIs, releases, data-loss paths | adversarial review + security lens/agent + replay-gate evidence + human gate on the irreversible step |
+
+### Constitutional floors (tiering can only move UP, never below these)
+
+- **Security-touching changes** (the `auth`/`crypto`/`secret` signal row) never below **T2**, with the security lens — regardless of size.
+- **Irreversible / world-facing actions** are always **human-gated** (the park-the-one-way-door rule, restated at the gate).
+- **Replay-gated classes** (story / bug-fix / review-verdict) stay gated at **every** tier — deterministic replay is CHEAP verification. Tiering sizes the *agentic* review spend; it never turns off deterministic evidence.
+- **Tests are always required.** "All code must have tests" stays — tests are cheap verification and were never the measured tax. What tiers is the *reviewer-spawn* mandate, not the test mandate.
+
+**One-shot caveat:** one-shot production means bigger diffs per review. Review cost scales sublinearly with diff size while review COUNT drops linearly — so tiering + one-shot is a net win, but a reviewer of one-shot output must be briefed with the **full diff and the acceptance criteria**, never a bare file path.
 {{/if}}{{#unless methodology.quality.require_review}}- Code review is recommended but not required for this project.
 {{/unless}}
 
