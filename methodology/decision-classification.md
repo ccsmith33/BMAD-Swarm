@@ -132,6 +132,8 @@ The orchestrator scores complexity (5–15, per the scoring table in
 | **7–11**, shaped but multi-step | **Workflow script** — a named `.claude/workflows/` deterministic pipeline with agentic nodes | fixed step graph (reproduce → fix → test → review → ledger), schema-validated node outputs, resumable at node boundaries | 1–2 spawns, resumable |
 | **≥ 12**, or ill-defined / exploratory | **agentic team** — the full assembly (entry-point + complexity tables size it) | full assembly ceremony, justified by the score | full ceremony |
 
+**Decompose for parallelism at ≥ 7 (D-55 / L-7).** Any regime above solo is multi-step: enumerate the work items and build a **parallel** task graph by default — serialize a pair only on a **named** dependency (L-5 `Depends-On`); this also governs how the next step is offered to the human. See the planning-time reflex in `agents/orchestrator.md` ("Coordination discipline").
+
 **Regime-invariant traceability (the load-bearing property).** Whichever regime
 runs, the work emits the *same* D-IDs, the same ledger lines via `record.cjs`,
 and the same artifact species as a full agentic run. An auditor cannot tell — and

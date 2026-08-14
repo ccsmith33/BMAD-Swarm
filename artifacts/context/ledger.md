@@ -576,3 +576,18 @@ record:
 body: |
   A PreToolUse:Bash hook cannot sandbox arbitrary in-tree CODE execution. A fail-closed allowlist of BINARIES still admits interpreters/build tools (node <file>, node --test, npm test / npm run <script>, make, pytest, cargo test) that spawn child processes running arbitrary in-tree JS/native code the hook NEVER observes — those processes can fs-write out of tree, open network sockets, forge a marker via a direct fs-write, or execSync('git push') to a live remote. Therefore a hook is a strong GUARDRAIL against DIRECT shelled escapes (interpreters, redirects, obfuscation, out-of-tree writes) but NOT a containment BOUNDARY, and worktree-isolation + never-merge is not genuine containment for a determined agent. A true unattended-night security boundary needs an OS/credential layer: remove the push remote + strip credentials from night worktrees, OS-level filesystem and network egress deny. Do not market a Bash hook as a sandbox. Generalizes the fail-closed-allowlist lesson (a binary allowlist bounds WHICH programs start, not what those programs then do).
 ```
+
+## L-7 — Orchestrator over-serialization is a PLANNING-time default (and surfaces in how options are offered to the human), not just a task-graph setting
+
+```yaml
+record:
+  id: L-7
+  type: lesson
+  status: recurring
+  fingerprint: serial-planning-default-recurs-at-decomposition
+  provenance: {role: orchestrator, project: bmad-swarm, date: 2026-08-14, occurrences: ["Defaulted to serial planning / offered the human one-thing-at-a-time on independent work items 4x in one session, even after L-5/D-050 made the task graph parallel-by-default", "Presented a single next-step option (\"want me to do X?\") when X, Y, Z had no data dependency and could all run at once"]}
+  evidence: []
+  links: {d_ids: [D-050, D-55]}
+body: |
+  ROOT: recurring over-serialization is not merely a task-graph default — it is a PLANNING-time default that reasserts itself at DECOMPOSITION and, critically, in HUMAN-FACING option presentation (offering one option when several are independent). L-5/D-050 fixed the mechanical TaskCreate default (parallel unless Depends-On declared) but that setting does not fire at the moment the orchestrator decomposes a request or offers the human a next step, so the failure kept recurring (observed 4x this session). The lesson (mirrors the D-54 night-nudge lesson: a rule only works if it fires at the RIGHT MOMENT — placement matters). HOW TO APPLY: the fix must fire at DECOMPOSITION and in HUMAN-FACING OFFERS, not only at idle and not only at TaskCreate. (1) Before creating a task graph, committing to a plan, or offering the human a next step, enumerate the work items and ask pairwise "does B require A output (or a decision A produces)?" — if not, run CONCURRENTLY. Default PARALLEL; serialize only on a NAMED Depends-On edge (L-5). (2) If about to offer ONE option when X, Y, Z are independent, offer to fan them out instead. This is the planning-time complement to the D-54 idle self-audit nudge (see [[serial-planning-default-recurs-at-decomposition]] is the planning sibling of the idle nudge). STRUCTURAL FIX (shipped this record, identity-level): decompose-for-parallelism reflex compiled into agents/orchestrator.md Coordination discipline + a >=7 cross-ref in methodology/decision-classification.md (D-55). Recurrence on a distinct future project should promote it.
+```
