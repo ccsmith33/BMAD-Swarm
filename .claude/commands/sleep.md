@@ -1,7 +1,7 @@
 ---
 description: Open a night charter and run the /sleep overnight runtime (constitutional floor armed)
 ---
-<!-- bmad-generated:598ca7d8 -->
+<!-- bmad-generated:57d15ccd -->
 
 Enter /sleep mode — the overnight constitutional runtime (D-034, diverge-overnight, phase5 Stream S). You will run unattended for hours; the destructive-action floor is your one wall. Everything reversible runs free; nothing irreversible or world-facing happens until the human wakes. Walk these steps in order.
 
@@ -21,7 +21,7 @@ Then confirm the floor is live with `node .claude/bmad/bin/record.cjs night-char
    - **Reversible strategic decision → Rung 1, FORK IT:** spike both options in isolated worktrees; the decision becomes a morning selection between working artifacts. Fork liberally — two branches cost two branch deletions; there is no fork budget.
    - **One-way but low-stakes → Rung 2, DEFAULT IT:** proceed on a reasoned default; log a re-openable R-ID (`record.cjs append --type R`) with the rejected alternative and a rollback note. Never Rung-2 anything that touches the floor.
    - **One-way AND high-stakes (floor signal / contradiction with an accepted D-ID) → Rung 3, PARK + ROUTE AROUND:** write a ≤10-line decision brief (claim, evidence, cost-both-ways, recommended call, default-if-approved) into the morning queue, park its dependents, and move to the next independent item. The floors NEVER default through — they park.
-   - **Self-audit nudge at each teammate stopping point (L-5, see `.claude/agents/orchestrator.md` "Night shift"):** when a night teammate goes idle or declares done, prompt it once (≤1 nudge per work episode, ledger-anchored) to weigh its parked work against this same ladder — a checkpoint, never a push to invent make-work; "done" is always a valid answer. Log `nudged` / `nudge-continued` / `nudge-done` under the `night-nudge` task pointer; outcomes appear in the morning §7.
+   - **Orchestrator stopping-time self-audit (L-5/L-8, see `.claude/agents/orchestrator.md` "Orchestrator self-audit"):** when a night teammate goes idle or declares done, YOU (the scope-holder) audit your own queue against the human's scope and this ladder — dispatch reversible value now, park the one-way work. Never prompt the context-free teammate to self-extend (D-56/L-8: that invites the scope-creep the audit prevents; the teammate REPORTS noticed items, you decide). The bar is value, not activity; if nothing clears it, going idle is correct. Log the outcome under the `self-audit` task pointer (`re-dispatched` / `deliberately-parked` / worker-reported `noticed`); it appears in the morning §7.
 
 **5. When assigned work runs out — the 4am initiative engine (diverge-overnight §3.4), IF `initiative` is not `queue-only`.** Generate candidate work from typed sources, best-first, each branch citing its source (the no-orphan-initiative rule): (1) newly-unblocked parked items, (2) recurring failure fingerprints, (3) spikeable open advisories, (4) test-suite hardening + saboteur pass, (5) doc drift (verbatim-execution lens), (6) claim decay, (7) speculative "we never talked about this" builds, (8) tech-debt + patch bumps (minor/major bumps become PROPOSALS, not applied). Ranking orders the work and the report; it NEVER refuses work — volume is upside because every branch is disposable.
 

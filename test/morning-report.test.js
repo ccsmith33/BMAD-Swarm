@@ -230,47 +230,47 @@ describe('morning report: rendering', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Self-audit nudge (L-5): §7 surfaces per-teammate dispositions plus the count
-// of bare nudges that never got a reply (a crash between nudge and disposition).
+// Orchestrator self-audit (L-5/L-8, D-56 correction): §7 surfaces the
+// orchestrator's stopping-time outcomes (re-dispatched / deliberately-parked)
+// plus worker-reported noticed items — NOT worker-directed nudge dispositions.
 // ---------------------------------------------------------------------------
-describe('morning report: self-audit nudges in §7', () => {
-  // A night where three teammates were nudged at a stopping point: one continued,
-  // one reaffirmed done, and one crashed after the nudge before replying.
-  function nudgeLedger() {
+describe('morning report: orchestrator self-audit in §7', () => {
+  // A night where the orchestrator, auditing its own queue against scope, dispatched
+  // one parked item, parked one irreversible item for the human, and logged two
+  // adjacent findings its teammates reported on completion.
+  function selfAuditLedger() {
     return [
       ...nightLedger(),
-      line('2026-08-14T02:30:00Z', 'night-nudge', 'nudged', 'dev-b', 'episode:2026-08-14T02:00:00Z task:5'),
-      line('2026-08-14T02:32:00Z', 'night-nudge', 'nudge-continued', 'dev-b', 'picked up: harden the cache eviction test'),
-      line('2026-08-14T04:30:00Z', 'night-nudge', 'nudged', 'dev-d', 'episode:2026-08-14T04:00:00Z task:7'),
-      line('2026-08-14T04:33:00Z', 'night-nudge', 'nudge-done', 'dev-d', 'parked: FEAT-52 rewrite; reason: blocked on an accepted D-ID'),
-      // dev-e was nudged but the process died before it could answer (bare nudge).
-      line('2026-08-14T05:10:00Z', 'night-nudge', 'nudged', 'dev-e', 'episode:2026-08-14T05:00:00Z task:8'),
+      line('2026-08-14T02:32:00Z', 'self-audit', 're-dispatched', 'orchestrator', 'gave dev-b the cache eviction hardening (task:5)'),
+      line('2026-08-14T02:35:00Z', 'self-audit', 'noticed', 'dev-b', 'retry backoff is not covered by a test'),
+      line('2026-08-14T04:33:00Z', 'self-audit', 'deliberately-parked', 'orchestrator', 'FEAT-52 rewrite; reason: blocked on an accepted D-ID'),
+      line('2026-08-14T05:10:00Z', 'self-audit', 'noticed', 'dev-d', 'the config loader swallows a parse error'),
     ];
   }
 
-  it('folds nudge events per teammate into nightLedger.nudges + a bare-nudged count', () => {
-    const m = buildMorningReport(fixtureInputs({ ledgerLines: nudgeLedger() }));
-    const byAgent = Object.fromEntries(m.nightLedger.nudges.map((n) => [n.agent, n]));
-    assert.equal(m.nightLedger.nudges.length, 2, 'two teammates gave a disposition');
-    assert.equal(byAgent['dev-b'].disposition, 'continued');
-    assert.match(byAgent['dev-b'].detail, /harden the cache eviction test/);
-    assert.equal(byAgent['dev-d'].disposition, 'done');
-    assert.match(byAgent['dev-d'].detail, /blocked on an accepted D-ID/);
-    assert.ok(!byAgent['dev-e'], 'the crashed teammate has no disposition');
-    assert.equal(m.nightLedger.bareNudged, 1, 'dev-e was nudged but never replied');
+  it('folds self-audit events into nightLedger.selfAudit (re-dispatched / parked / noticed)', () => {
+    const m = buildMorningReport(fixtureInputs({ ledgerLines: selfAuditLedger() }));
+    const sa = m.nightLedger.selfAudit;
+    assert.equal(sa.reDispatched.length, 1, 'one item re-dispatched');
+    assert.match(sa.reDispatched[0].detail, /cache eviction hardening/);
+    assert.equal(sa.parked.length, 1, 'one item deliberately parked');
+    assert.match(sa.parked[0].detail, /blocked on an accepted D-ID/);
+    assert.equal(sa.noticed.length, 2, 'two worker-reported noticed items');
+    assert.deepEqual(sa.noticed.map((n) => n.owner).sort(), ['dev-b', 'dev-d']);
   });
 
-  it('renders the continued/done dispositions and the bare-nudged count in §7', () => {
-    const md = renderMorningReport(buildMorningReport(fixtureInputs({ ledgerLines: nudgeLedger() })));
-    assert.match(md, /Self-audit nudges \(3\): considered stopping, then —/);
-    assert.match(md, /dev-b: continued — picked up: harden the cache eviction test/);
-    assert.match(md, /dev-d: done — parked: FEAT-52 rewrite; reason: blocked on an accepted D-ID/);
-    assert.match(md, /1 nudged with no reply/);
+  it('renders the re-dispatched / parked counts and worker-reported noticed items in §7', () => {
+    const md = renderMorningReport(buildMorningReport(fixtureInputs({ ledgerLines: selfAuditLedger() })));
+    assert.match(md, /Orchestrator self-audit — re-dispatched 1, deliberately-parked 1, noticed 2:/);
+    assert.match(md, /re-dispatched — gave dev-b the cache eviction hardening \(task:5\)/);
+    assert.match(md, /deliberately-parked — FEAT-52 rewrite; reason: blocked on an accepted D-ID/);
+    assert.match(md, /noticed \(dev-b\) — retry backoff is not covered by a test/);
+    assert.match(md, /noticed \(dev-d\) — the config loader swallows a parse error/);
   });
 
-  it('omits the nudge block entirely on a night with no nudges', () => {
+  it('omits the self-audit block entirely on a night with no self-audit events', () => {
     const md = renderMorningReport(buildMorningReport(fixtureInputs()));
-    assert.ok(!/Self-audit nudges/.test(md), 'no nudge line when nothing was nudged');
+    assert.ok(!/Orchestrator self-audit/.test(md), 'no self-audit line when nothing was audited');
   });
 });
 

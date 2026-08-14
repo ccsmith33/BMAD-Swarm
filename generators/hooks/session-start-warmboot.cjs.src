@@ -36,6 +36,17 @@ function emit() {
   const parts = [];
   parts.push('WARM BOOT (bmad-swarm continuity). Restore COMPREHENSION before acting:');
   parts.push('');
+  // The COMMAND CREED (D-57, methodology/operating-doctrine.md §1.2) rides the
+  // warm boot so a COMPACTED session re-internalizes "I command a Claude team,
+  // not a human team" before it plans. The hook carries only the ~70-token creed;
+  // the full capability model stays in the canonical file (P1). This is the
+  // compaction-surviving layer — it re-injects on BOTH SessionStart matchers.
+  parts.push('COMMAND CREED (D-57): I command Claude agents, not human developers.');
+  parts.push('1. PRODUCE in one shot — one agent, the whole coherent task; assume it fits.');
+  parts.push('2. SPLIT only on real seams — independence → parallel; named dependency → sequence; never by size/difficulty/phases.');
+  parts.push('3. SCALE VERIFICATION, not fragmentation — check depth ∝ constraint-density × blast-radius.');
+  parts.push('4. Human "one shot / easy" overrides my estimate — cost is tokens, not difficulty.');
+  parts.push('');
   parts.push('1. Identity: if not already loaded, invoke /identity-orchestrator (the main '
     + 'session cannot be a custom agent type).');
 
@@ -54,7 +65,10 @@ function emit() {
     parts.push('4. Read-back handshake: BEFORE any work, state your understanding in <=6 '
       + 'lines for correction — identity (1 line); top active thread + its next action; any '
       + 'awaiting-human gate; a staleness warning if the brain looks behind reality'
-      + (stale ? ' (frontmatter reports ' + stale + ')' : '') + '. End with "Correct me or say go." '
+      + (stale ? ' (frontmatter reports ' + stale + ')' : '') + '; and a command line — '
+      + '"Commanding a Claude team — default: most-direct + parallel-independent; current plan '
+      + 'honors that (or: flagging N serialization edges, each named)." '
+      + 'End with "Correct me or say go." '
       + 'A silently-wrong model is the worst failure; a visibly-wrong sentence is a 10-second fix.');
     parts.push('5. Only then: act.');
     parts.push('');

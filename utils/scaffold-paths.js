@@ -23,6 +23,7 @@ export const SHIPPED_METHODOLOGY_PREFIX = '.claude/bmad/methodology/';
  * @type {readonly string[]}
  */
 export const METHODOLOGY_SHIP_LIST = Object.freeze([
+  'operating-doctrine.md',
   'decision-classification.md',
   'advisory.md',
   'decision-traceability.md',
