@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bmad-generated:60a7cbed
+// bmad-generated:cde31f11
 // BMAD Swarm - record.cjs: the pinned, serialized-write channel for the unified
 // record ledger (ADR-021 / D-036 / D-049; phase2 design §3.2, §4.1).
 //
@@ -2182,9 +2182,10 @@ machine consumption).
 task-event accepts an arbitrary --event/--detail vocabulary (--detail is stored
 in the row's subject=). Documented night vocabularies (discoverability only — no
 special handling): under the stable task pointer night-floor, the floor writes
-denied rows; under night-nudge, the self-audit nudge writes nudged /
-nudge-continued / nudge-done rows (owner=<teammate>, detail carries the episode
-anchor or the teammate's disposition) — the morning report folds these into §7.
+denied rows; under self-audit, the orchestrator's stopping-time self-audit
+writes re-dispatched / deliberately-parked rows (owner=orchestrator) plus
+worker-reported noticed rows (owner=<teammate>), detail carrying the item —
+the morning report folds these into §7.
 
 append is recurrence-aware: an L or F sharing a fingerprint folds the new
 sighting into the existing record (no duplicate) and auto-flags an L recurring

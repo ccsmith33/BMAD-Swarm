@@ -2181,9 +2181,10 @@ machine consumption).
 task-event accepts an arbitrary --event/--detail vocabulary (--detail is stored
 in the row's subject=). Documented night vocabularies (discoverability only — no
 special handling): under the stable task pointer night-floor, the floor writes
-denied rows; under night-nudge, the self-audit nudge writes nudged /
-nudge-continued / nudge-done rows (owner=<teammate>, detail carries the episode
-anchor or the teammate's disposition) — the morning report folds these into §7.
+denied rows; under self-audit, the orchestrator's stopping-time self-audit
+writes re-dispatched / deliberately-parked rows (owner=orchestrator) plus
+worker-reported noticed rows (owner=<teammate>), detail carrying the item —
+the morning report folds these into §7.
 
 append is recurrence-aware: an L or F sharing a fingerprint folds the new
 sighting into the existing record (no duplicate) and auto-flags an L recurring

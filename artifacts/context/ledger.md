@@ -591,3 +591,18 @@ record:
 body: |
   ROOT: recurring over-serialization is not merely a task-graph default — it is a PLANNING-time default that reasserts itself at DECOMPOSITION and, critically, in HUMAN-FACING option presentation (offering one option when several are independent). L-5/D-050 fixed the mechanical TaskCreate default (parallel unless Depends-On declared) but that setting does not fire at the moment the orchestrator decomposes a request or offers the human a next step, so the failure kept recurring (observed 4x this session). The lesson (mirrors the D-54 night-nudge lesson: a rule only works if it fires at the RIGHT MOMENT — placement matters). HOW TO APPLY: the fix must fire at DECOMPOSITION and in HUMAN-FACING OFFERS, not only at idle and not only at TaskCreate. (1) Before creating a task graph, committing to a plan, or offering the human a next step, enumerate the work items and ask pairwise "does B require A output (or a decision A produces)?" — if not, run CONCURRENTLY. Default PARALLEL; serialize only on a NAMED Depends-On edge (L-5). (2) If about to offer ONE option when X, Y, Z are independent, offer to fan them out instead. This is the planning-time complement to the D-54 idle self-audit nudge (see [[serial-planning-default-recurs-at-decomposition]] is the planning sibling of the idle nudge). STRUCTURAL FIX (shipped this record, identity-level): decompose-for-parallelism reflex compiled into agents/orchestrator.md Coordination discipline + a >=7 cross-ref in methodology/decision-classification.md (D-55). Recurrence on a distinct future project should promote it.
 ```
+
+## L-8 — A scope/judgment reflex must live on the agent that HOLDS scope; putting it on context-free workers inverts its intent
+
+```yaml
+record:
+  id: L-8
+  type: lesson
+  status: observed
+  fingerprint: reflex-belongs-on-scope-holder-not-workers
+  provenance: {role: orchestrator, project: bmad-swarm, date: 2026-08-14, occurrences: ["D-54 shipped the night self-audit as a nudge sent to context-free WORKERS; the human caught that this invites scope-creep — the opposite of the anti-premature-stop intent — because a worker holding only its own task cannot judge the human's scope"]}
+  evidence: []
+  links: {d_ids: [D-54, D-56]}
+body: |
+  ROOT: an anti-premature-stop / do-more reflex is a JUDGMENT AGAINST SCOPE, and only the scope-holder can make it. The orchestrator holds the human's intent + full scope; a worker is context-free (its assigned task only). Placing the reflex on the worker (D-54: nudge idle workers to reconsider) therefore inverts the intent — it pressures a context-blind agent to invent work, which is scope-creep, exactly what the audit was meant to prevent. This pairs with the placement lesson from [[serial-planning-default-recurs-at-decomposition]] (L-7) and the over-serialization/early-stop root of [[orchestrator-over-conservative-autonomy]] (L-5): a reflex only works if it fires at the right MOMENT and on the right AGENT. HOW TO APPLY: (1) Any judgment that needs the human's scope (do-more, stop-or-continue, is-this-in-scope, fan-out-or-serialize) lives on the ORCHESTRATOR, never a worker. (2) Workers REPORT UP: on completion, state what they did + anything noticed adjacent/out-of-scope, advisory only; they never self-extend. (3) The scope-holder decides whether a noticed item becomes newly-dispatched work. STRUCTURAL FIX (shipped, D-56): stopping-time self-audit relocated to the orchestrator and unified with the planning-time decomposition reflex (D-55) into ONE 'Orchestrator self-audit' discipline; worker protocol gains report-up (no self-extend); §7 + ledger events reworked (self-audit pointer). Recurrence on a distinct future project should promote it.
+```

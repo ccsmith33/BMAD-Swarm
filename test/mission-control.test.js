@@ -311,55 +311,58 @@ describe('mission-control: bmad-swarm report command', () => {
   });
 });
 
-// The self-audit-nudge fold (L-5): nudged / nudge-continued / nudge-done rows
-// under the night-nudge pointer collapse into nightLedger.nudges per teammate,
-// with a separate count for nudges that never got a disposition (crash before reply).
-describe('mission-control: self-audit nudge fold (buildMorningReport)', () => {
+// The orchestrator self-audit fold (L-5/L-8, D-56 correction): re-dispatched /
+// deliberately-parked / noticed rows under the `self-audit` task pointer collapse
+// into nightLedger.selfAudit. The orchestrator (scope-holder) owns re-dispatched /
+// deliberately-parked; `noticed` is a worker-reported adjacent finding. The old
+// worker-nudge model (nudged / nudge-continued / nudge-done) is gone.
+describe('mission-control: orchestrator self-audit fold (buildMorningReport)', () => {
   const base = {
     charter: null, recordLedger: '', decisionLog: '', branches: [],
-    config: { project: { name: 'nudge-fold' } }, now: NOW,
+    config: { project: { name: 'self-audit-fold' } }, now: NOW,
   };
 
-  it('maps nudge-continued / nudge-done to a per-teammate disposition + detail', () => {
+  it('splits self-audit events into re-dispatched / deliberately-parked / noticed', () => {
     const m = buildMorningReport({
       ...base,
       ledgerLines: [
-        line('2026-08-13T02:00:00Z', 'night-nudge', 'nudged', 'dev-a', 'episode:2026-08-13T01:00:00Z task:1'),
-        line('2026-08-13T02:01:00Z', 'night-nudge', 'nudge-continued', 'dev-a', 'picked up: add the missing edge-case test'),
-        line('2026-08-13T03:00:00Z', 'night-nudge', 'nudged', 'dev-b', 'episode:2026-08-13T02:30:00Z task:2'),
-        line('2026-08-13T03:01:00Z', 'night-nudge', 'nudge-done', 'dev-b', 'parked: nothing; reason: scope genuinely exhausted'),
+        line('2026-08-13T02:00:00Z', 'self-audit', 're-dispatched', 'orchestrator', 'gave dev-a the missing edge-case test (task:9)'),
+        line('2026-08-13T02:05:00Z', 'self-audit', 'noticed', 'dev-a', 'the cache eviction path has no test'),
+        line('2026-08-13T03:00:00Z', 'self-audit', 'deliberately-parked', 'orchestrator', 'FEAT-52 rewrite; reason: irreversible, morning gate'),
       ],
     });
-    const byAgent = Object.fromEntries(m.nightLedger.nudges.map((n) => [n.agent, n]));
-    assert.equal(m.nightLedger.nudges.length, 2);
-    assert.deepEqual(byAgent['dev-a'], { agent: 'dev-a', disposition: 'continued', detail: 'picked up: add the missing edge-case test' });
-    assert.deepEqual(byAgent['dev-b'], { agent: 'dev-b', disposition: 'done', detail: 'parked: nothing; reason: scope genuinely exhausted' });
-    assert.equal(m.nightLedger.bareNudged, 0);
+    const sa = m.nightLedger.selfAudit;
+    assert.equal(sa.reDispatched.length, 1);
+    assert.deepEqual(sa.reDispatched[0], { owner: 'orchestrator', detail: 'gave dev-a the missing edge-case test (task:9)' });
+    assert.equal(sa.parked.length, 1);
+    assert.deepEqual(sa.parked[0], { owner: 'orchestrator', detail: 'FEAT-52 rewrite; reason: irreversible, morning gate' });
+    assert.equal(sa.noticed.length, 1);
+    assert.deepEqual(sa.noticed[0], { owner: 'dev-a', detail: 'the cache eviction path has no test' });
   });
 
-  it('counts a bare nudged row (no reply) without inventing a disposition', () => {
+  it('records a worker-reported noticed item even with no orchestrator outcome', () => {
     const m = buildMorningReport({
       ...base,
       ledgerLines: [
-        line('2026-08-13T04:00:00Z', 'night-nudge', 'nudged', 'dev-c', 'episode:2026-08-13T03:30:00Z task:3'),
+        line('2026-08-13T04:00:00Z', 'self-audit', 'noticed', 'dev-c', 'flaky assertion in the retry test'),
       ],
     });
-    assert.equal(m.nightLedger.nudges.length, 0);
-    assert.equal(m.nightLedger.bareNudged, 1);
+    assert.equal(m.nightLedger.selfAudit.reDispatched.length, 0);
+    assert.equal(m.nightLedger.selfAudit.parked.length, 0);
+    assert.equal(m.nightLedger.selfAudit.noticed.length, 1);
+    assert.equal(m.nightLedger.selfAudit.noticed[0].owner, 'dev-c');
   });
 
-  it('lets a later disposition win for a teammate nudged across two episodes', () => {
+  it('does NOT fold a `deliberately-parked` self-audit row into §6 park events', () => {
+    // Distinct event name (not the bare `parked`) so the §6 park/tripwire fold and
+    // the §7 self-audit fold never collide on the same vocabulary.
     const m = buildMorningReport({
       ...base,
       ledgerLines: [
-        line('2026-08-13T04:00:00Z', 'night-nudge', 'nudged', 'dev-d', 'episode:e1 task:4'),
-        line('2026-08-13T04:05:00Z', 'night-nudge', 'nudge-continued', 'dev-d', 'picked up: spike B'),
-        line('2026-08-13T05:00:00Z', 'night-nudge', 'nudged', 'dev-d', 'episode:e2 task:4'),
-        line('2026-08-13T05:05:00Z', 'night-nudge', 'nudge-done', 'dev-d', 'parked: none; reason: done'),
+        line('2026-08-13T05:00:00Z', 'self-audit', 'deliberately-parked', 'orchestrator', 'a one-way migration; parked for the human'),
       ],
     });
-    assert.equal(m.nightLedger.nudges.length, 1, 'one teammate, one folded entry');
-    assert.equal(m.nightLedger.nudges[0].disposition, 'done', 'the latest disposition wins');
-    assert.equal(m.nightLedger.bareNudged, 0);
+    assert.equal(m.nightLedger.selfAudit.parked.length, 1);
+    assert.equal(m.parkedTripwired.length, 0, 'self-audit parking is not an iteration-tripwire park');
   });
 });
