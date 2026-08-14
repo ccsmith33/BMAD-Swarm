@@ -28,6 +28,17 @@ export const METHODOLOGY_SHIP_LIST = Object.freeze([
   'decision-traceability.md',
   'brainstorming-techniques.md',
   'elicitation-methods.md',
+  // Lean-identity annexes (D-57 Seam D): the on-demand half of each role
+  // identity, lazy-loaded via the pointers in the resident CORE agents/*.md.
+  // These MUST ship so the CORE pointers resolve inside a user project.
+  'ideator-annex.md',
+  'reviewer-annex.md',
+  'strategist-annex.md',
+  'architect-annex.md',
+  'developer-annex.md',
+  'researcher-annex.md',
+  'security-annex.md',
+  'devops-annex.md',
   'artifact-schemas/product-brief.md',
   'artifact-schemas/prd.md',
   'artifact-schemas/epic.md',
