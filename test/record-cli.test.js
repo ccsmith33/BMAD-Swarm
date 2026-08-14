@@ -60,6 +60,61 @@ describe('record.cjs: append + ID allocation', () => {
   });
 });
 
+// D-036 append bug regression: `append --json '<str>'` must carry the record
+// JSON as a VALUE, producing the same envelope as the --stdin / --file paths.
+// `--json` is overloaded (a boolean output selector on reconcile/recall/etc.),
+// so a single global bool set once swallowed it here — flags.json=true, the JSON
+// dropped to a positional, and cmdAppend did `true.trim()` → "raw.trim is not a
+// function". This locks the three input paths to byte-identical envelopes and the
+// malformed case to a clean non-zero error rather than a crash.
+describe('record.cjs: append input parity across --json / --stdin / --file', () => {
+  let proj, ctx;
+  before(() => { ({ proj, ctx } = mkproj()); });
+  after(() => { rmSync(proj, { recursive: true, force: true }); });
+
+  const RECORD = JSON.stringify({
+    provenance: { role: 'reviewer', project: 'bmad-swarm', date: '2026-08-13', occurrences: [] },
+    body: 'parity body\nwith a second line',
+  });
+
+  // Extract a record's serialized section (heading through its closing fence)
+  // with the allocated ID and fingerprint normalized away, so the envelopes can
+  // differ ONLY by input path. (Distinct fingerprints are required per path —
+  // records sharing a fingerprint are merged by the recurrence engine.)
+  const sectionFor = (id) => {
+    const ledger = readFileSync(join(ctx, 'ledger.md'), 'utf8');
+    const m = new RegExp(`## ${id} — [\\s\\S]*?\\n\`\`\`\\n`).exec(ledger);
+    assert.ok(m, `section for ${id} not found`);
+    return m[0].replace(/F-\d+/g, 'F-X').replace(/fingerprint: \S+/, 'fingerprint: FP');
+  };
+
+  it('--json succeeds, allocates an ID, and is not a crash', () => {
+    const r = run(['append', '--type', 'F', '--title', 'parity', '--fingerprint', 'fp-json', '--json', RECORD], { ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), 'F-1');
+  });
+
+  it('--json produces the SAME envelope as --stdin and --file', () => {
+    run(['append', '--type', 'F', '--title', 'parity', '--fingerprint', 'fp-stdin', '--stdin'], { stdin: RECORD, ctx, proj });
+    const jsonFile = join(proj, 'rec.json');
+    writeFileSync(jsonFile, RECORD);
+    run(['append', '--type', 'F', '--title', 'parity', '--fingerprint', 'fp-file', '--file', jsonFile], { ctx, proj });
+    // F-1 was written by the --json test above; F-2 = --stdin, F-3 = --file.
+    const viaJson = sectionFor('F-1');
+    const viaStdin = sectionFor('F-2');
+    const viaFile = sectionFor('F-3');
+    assert.equal(viaJson, viaStdin, '--json must match --stdin envelope');
+    assert.equal(viaJson, viaFile, '--json must match --file envelope');
+  });
+
+  it('malformed --json fails cleanly (non-zero, no raw.trim crash)', () => {
+    const r = run(['append', '--type', 'F', '--title', 'bad', '--fingerprint', 'b', '--json', '{not valid'], { ctx, proj });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /not valid JSON/);
+    assert.doesNotMatch(r.stderr, /raw\.trim/, 'must be a clean validation error, not a TypeError');
+  });
+});
+
 describe('record.cjs: --context-dir confinement (F2-H)', () => {
   let proj, ctx;
   before(() => { ({ proj, ctx } = mkproj()); });
