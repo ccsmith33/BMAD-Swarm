@@ -12,7 +12,9 @@ import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
 import { generateRules } from '../generators/rules-generator.js';
+import { renderEarnedRulesReview } from '../utils/earned-rules.js';
 import { generateCommands } from '../generators/commands-generator.js';
+import { generateWorkflows } from '../generators/workflows-generator.js';
 import { loadSwarmConfig } from '../utils/config.js';
 import { DEFAULT_MODEL } from '../utils/validator.js';
 import { runScan } from './scan.js';
@@ -30,6 +32,7 @@ export function registerInitCommand(program) {
     .option('--template <name>', 'Use a predefined stack template (next-app, express-api, react-app, node-cli, python-api)')
     .option('-y, --yes', 'Accept all defaults without interactive prompts')
     .option('--github', 'Generate GitHub Actions workflow for artifact validation')
+    .option('--skip-earned-rules', 'Do not compile promoted cross-project lessons into the scaffold')
     .addHelpText('after', `
 Examples:
   $ bmad-swarm init                       Interactive setup with prompts
@@ -136,12 +139,21 @@ async function runInit(options) {
   console.log(`  \u2713 Generated .claude/hooks/ (${hookResult.generated.length} hooks)`);
 
   // 6. Generate .claude/rules/
-  const rulesResult = generateRules(config, paths);
+  const rulesResult = generateRules(config, paths, { skipEarnedRules: !!options.skipEarnedRules });
   console.log(`  \u2713 Generated .claude/rules/ (${rulesResult.generated.length} rules)`);
+
+  // 6.1. Born-immune human review (K-2 compensating control): surface any earned
+  // rules compiled into the scaffold so a self-promoted rule can't ship silently.
+  const earnedReview = renderEarnedRulesReview(rulesResult.earnedLessons, 'init');
+  if (earnedReview) console.log(earnedReview);
 
   // 6.5. Generate .claude/commands/
   const commandResult = generateCommands(config, paths);
   console.log(`  \u2713 Generated .claude/commands/ (${commandResult.generated.length} commands)`);
+
+  // 6.6. Generate .claude/workflows/ (regime router deterministic tier)
+  const workflowResult = generateWorkflows(config, paths);
+  console.log(`  \u2713 Generated .claude/workflows/ (${workflowResult.generated.length} workflows)`);
 
   // 7. Generate CLAUDE.md
   generateClaudeMd(config, paths);
@@ -154,10 +166,9 @@ async function runInit(options) {
   }
   console.log('  \u2713 Created artifacts/ directory');
 
-  // 9. Initialize project.yaml
-  const projectYaml = buildProjectYaml(answers);
-  writeFileSafe(paths.projectYaml, yaml.dump(projectYaml, { lineWidth: 120, noRefs: true }));
-  console.log('  \u2713 Initialized project.yaml');
+  // Machine state (phase + gates) is homed in the project-brain frontmatter when
+  // the orchestrator first writes the brain (D-037). There is NO project.yaml \u2014
+  // it was a prompted chore-file that lied in 8/9 field projects.
 
   // 10. Create overrides directory
   ensureDir(paths.overridesAgentsDir);
@@ -333,22 +344,5 @@ function buildSwarmYaml(answers) {
   if (answers.testing) config.stack.testing = answers.testing;
 
   return config;
-}
-
-/**
- * Build the initial project.yaml state file.
- * @param {object} answers - User answers
- * @returns {object} project.yaml content
- */
-function buildProjectYaml(answers) {
-  return {
-    project: {
-      name: answers.name,
-      type: answers.type,
-    },
-    phase: 'not-started',
-    status: 'initialized',
-    created: new Date().toISOString().split('T')[0],
-  };
 }
 

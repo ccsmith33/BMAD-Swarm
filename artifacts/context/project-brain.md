@@ -1,12 +1,18 @@
 ---
 schema: project-brain/1
-updated: 2026-08-13T15:00:00Z
+updated: '2026-08-13T23:02:49.854Z'
 checkpoint: 1
-phase: implementation
+phase: delivery
 gates:
-  prd-approved: {status: n/a, note: reinvention track is design-led, no PRD}
-  architecture-approved: {status: passed, ref: artifacts/design/phase2-enforcement-resilience-2026-08-13.md}
-staleness: {ledger-events-since-checkpoint: 0}
+  prd-approved:
+    status: skipped
+    note: reinvention track is design-led
+    no PRD: null
+  architecture-approved:
+    status: passed
+    ref: artifacts/design/phase2-enforcement-resilience-2026-08-13.md
+staleness:
+  ledger-events-since-checkpoint: 0
 ---
 
 ## What this is (and why)
@@ -25,8 +31,8 @@ bmad-swarm is a multi-agent orchestration framework where one orchestrator deleg
 
 ## Load-bearing facts
 
-- Spike-verified on Claude Code v2.1.221: PreCompact stdout is injected as compaction instructions AND can flush state; never exit 2 (it blocks auto-compaction and pins the session at the ceiling) — see artifacts/exploration/spikes-2026-08-11.md.
-- SessionStart matcher:compact re-injects context after compaction; matcher:startup fires on fresh sessions (artifacts/exploration/spikes-2026-08-11.md).
+- Spike-verified on Claude Code v2.1.221: PreCompact stdout is injected as compaction instructions AND can flush state; never exit 2 (it blocks auto-compaction and pins the session at the ceiling) — see artifacts/design/phase2-enforcement-resilience-2026-08-13.md (Spike ground truth).
+- SessionStart matcher:compact re-injects context after compaction; matcher:startup fires on fresh sessions (artifacts/design/phase2-enforcement-resilience-2026-08-13.md).
 - The brain is a SINGLE-WRITER file (the orchestrator, prose body) — it is EXEMPT from the serialized-CLI write-deny (phase2 design §3.2, artifacts/design/phase2-enforcement-resilience-2026-08-13.md).
 - project.yaml is being DELETED in the sibling task-ledger track (D-037); machine state (phase/gates) now lives in this brain's frontmatter, not a separate YAML.
 - Do NOT regenerate the live .claude/ mid-session — this session runs on it; regeneration is deferred to pre-merge (D-045). Verify hooks via temp-dir generation + direct stdin invocation.
@@ -37,18 +43,18 @@ bmad-swarm is a multi-agent orchestration framework where one orchestrator deleg
 ## Active threads
 
 - Project brain (this piece, SE-2) — schema + PreCompact flush + SessionStart warm-boot landing — next: run the hook + module tests green — see artifacts/design/phase2-enforcement-resilience-2026-08-13.md @c1
-- Task-ledger + machine-state cutover (sibling SE-2/SE-3 track) — reconcile + project.yaml deletion — owned elsewhere, do not build here — see artifacts/reviews/audit-2026-08-11-resilience.md @c1
+- Task-ledger + machine-state cutover (sibling SE-2/SE-3 track) — reconcile + project.yaml deletion — owned elsewhere, do not build here — see artifacts/design/phase2-enforcement-resilience-2026-08-13.md (§4.3) @c1
 - SE-1 enforcement layer — replay gate + record ledger + Fork A narrowing — COMMITTED at d913a25, D-051 — see artifacts/context/decision-log.md @c1
 
 ## Dead ends
 
 - Rewire TaskCompleted to a Stop hook — rejected, the payload lacks task fields; superseded by the direct TaskCompleted event once spike 1 proved it exists (D-002, superseded by D-051) @c1
 - project.yaml as a machine-state chore file — abandoned, it lied in 8/9 field projects because nothing read or event-wrote it (D-037) @c1
-- Trusting the default compaction summarizer as the memory layer — rejected, it cannot know which 5% is load-bearing; only schema-driven compaction is acceptable (diverge-2026-08-11-continuity.md §7) @c1
+- Trusting the default compaction summarizer as the memory layer — rejected, it cannot know which 5% is load-bearing; only schema-driven compaction is acceptable (phase2 design §4.4) @c1
 
 ## Open questions
 
-- Do PostToolUse payloads for TaskCreate/TaskUpdate/SendMessage carry the task fields the hook-written task ledger needs? (unverified platform assumption — sibling track's live check, artifacts/exploration/spikes-2026-08-11.md)
+- Do PostToolUse payloads for TaskCreate/TaskUpdate/SendMessage carry the task fields the hook-written task ledger needs? (verified live — see artifacts/exploration/spike-posttooluse-2026-08-13.md)
 - Final disposition of team-assembly-log.md as the 5th standing file vs folding into the task ledger (human decision, phase2 design §7).
 
 ## Pointers
@@ -57,7 +63,7 @@ bmad-swarm is a multi-agent orchestration framework where one orchestrator deleg
 - lessons-learned: artifacts/context/lessons-learned.md
 - unified record ledger: artifacts/context/ledger.md
 - findings-register (pre-migration): artifacts/context/findings-register.md
-- resilience audit (RES-1..10): artifacts/reviews/audit-2026-08-11-resilience.md
-- continuity design (full brain spec): artifacts/exploration/diverge-2026-08-11-continuity.md
+- resilience design (RES-1..10 → liveness/task-ledger/machine-state): artifacts/design/phase2-enforcement-resilience-2026-08-13.md (§4.3)
+- continuity/brain design (full brain spec): artifacts/design/phase2-enforcement-resilience-2026-08-13.md (§4.4)
 - phase-2 design (Piece 4 / brain): artifacts/design/phase2-enforcement-resilience-2026-08-13.md
 - brain schema (agent-facing): .claude/bmad/methodology/artifact-schemas/project-brain.md

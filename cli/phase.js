@@ -12,7 +12,7 @@ export function registerPhaseCommand(program) {
     .action(() => {
       try {
         const paths = getProjectPaths(process.cwd());
-        const { phase, history } = getCurrentPhase(paths.projectYaml);
+        const { phase, history } = getCurrentPhase(paths.brainPath);
         const transitions = getAvailableTransitions(phase);
         console.log(`\nCurrent phase: ${phase}`);
         if (transitions.length > 0) {
@@ -39,7 +39,7 @@ export function registerPhaseCommand(program) {
     .action(() => {
       try {
         const paths = getProjectPaths(process.cwd());
-        const result = advancePhase(paths.projectYaml);
+        const result = advancePhase(paths.brainPath);
         console.log(`Phase advanced: ${result.from} → ${result.to}`);
       } catch (err) {
         console.error(`Error: ${err.message}`);
@@ -54,7 +54,7 @@ export function registerPhaseCommand(program) {
     .action((name, options) => {
       try {
         const paths = getProjectPaths(process.cwd());
-        const result = setPhase(paths.projectYaml, name, { force: options.force });
+        const result = setPhase(paths.brainPath, name, { force: options.force });
         console.log(`Phase set: ${result.from} → ${result.to}`);
       } catch (err) {
         console.error(`Error: ${err.message}`);

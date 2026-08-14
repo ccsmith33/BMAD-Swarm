@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { PACKAGE_TEMPLATES_DIR } from '../utils/paths.js';
 import { writeFileSafe, isFileManuallyModified, contentHash } from '../utils/fs-helpers.js';
 import { getHooksConfig } from './hooks-generator.js';
+import { validateOrchestratorAllowEntry } from '../utils/orchestrator-allow.js';
 
 /**
  * Generate .claude/settings.json from the package template,
@@ -22,6 +23,29 @@ export function generateSettings(config, projectPaths, options = {}) {
 
   const templatePath = join(PACKAGE_TEMPLATES_DIR, 'settings.json.template');
   const template = JSON.parse(readFileSync(templatePath, 'utf8'));
+
+  // Project-aware orchestrator allow-list (ADR-017 Amendment 1 §3.2). Merge the
+  // project's validated `permissions.orchestrator_allow` entries onto the
+  // template's safe default: template first, then the project entries appended
+  // deduped + sorted (stable, so the generated hash stays update-idempotent).
+  // Entries are already validated at config load (validateConfig →
+  // orchestrator-allow.js); re-validate defensively here so a generator invoked
+  // with a hand-built config still fails loudly rather than emitting a bad grant.
+  const projectEntries = config?.permissions?.orchestrator_allow || [];
+  const existing = new Set(template.permissions.allow);
+  const toAppend = [];
+  for (const entry of projectEntries) {
+    const verdict = validateOrchestratorAllowEntry(entry);
+    if (!verdict.ok) {
+      throw new Error(`Invalid permissions.orchestrator_allow entry ${JSON.stringify(entry)}: ${verdict.reason}`);
+    }
+    if (!existing.has(entry)) {
+      existing.add(entry);
+      toAppend.push(entry);
+    }
+  }
+  toAppend.sort();
+  template.permissions.allow.push(...toAppend);
 
   // Hooks come exclusively from the hooks generator (single source of truth)
   template.hooks = getHooksConfig();

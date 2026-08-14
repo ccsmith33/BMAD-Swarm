@@ -34,6 +34,9 @@ export const {
   currentStatus,
   editRecordStatus,
   LEDGER_HEADER,
+  // knowledge-promotion surface (Stream K) — the born-immune compiler reads
+  // PROMOTED L-records out of the ledger to compile earned rules into scaffolds.
+  extractPromotedLessons,
 } = record;
 
 export default record;

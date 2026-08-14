@@ -30,8 +30,7 @@
 // internals and drifted twice (GATE-1, HARN-2); the repo-controlled
 // handshake file is the only stable channel. Missing/stale/incomplete
 // declaration = decline with an actionable message. Fail-open is reserved
-// for environmental errors (unparseable stdin, unreadable swarm.yaml,
-// missing js-yaml).
+// for environmental errors (unparseable stdin, unreadable swarm.yaml).
 //
 // Pass 2 (ADR-008, D-009): fixed-mode routing check. After Pass 1
 // accepts the bmad-assembly envelope shape, Pass 2 reads swarm.yaml from
@@ -40,13 +39,173 @@
 // matching (role, domain) pair pass; without a domain, fall back to
 // team.fallback (when enabled and role matches); unspecialized roles pass
 // unconditionally. Fail-open posture: missing/malformed swarm.yaml or any
-// js-yaml require/parse failure skips Pass 2 silently (D-012). Routing
-// failures are correctness issues, not security issues — the reviewer is
-// the backstop. Dynamic mode (or absent team block) sees zero behavior
-// change.
+// parse failure skips Pass 2 silently (D-012). Routing failures are
+// correctness issues, not security issues — the reviewer is the backstop.
+// Dynamic mode (or absent team block) sees zero behavior change.
+//
+// ADVISORIES SLOT (diverge-advisory §3, methodology/advisory.md §6): the
+// bmad-assembly block carries an OPTIONAL `advisories:` key — a list of open
+// R-IDs (recommendations) relevant to the spawn, so a teammate inherits
+// standing counsel without re-deriving it. It is a DECLARED-INTENT slot only
+// and is NEVER enforced: this hook does not read, validate, or deny on it, and
+// a malformed or absent `advisories:` value can never fail a spawn. The slot is
+// deliberately excluded from REQUIRED_KEYS below (the 5 required keys are
+// unchanged). It is documented here so the key is a recognized part of the
+// block schema rather than stray text, and so a future strict-key pass would
+// treat it as known-optional. The one honest guarantee: a block that carries an
+// `advisories:` slot passes Pass 1 exactly as one without it.
+//
+// SELF-CONTAINED (F-team-assembly-lint-requires-js-yaml-fails-open): both
+// passes parse with node built-ins only — NO js-yaml. The hook runs inside
+// SCAFFOLDED user projects, which are not npm packages and carry no
+// node_modules, so js-yaml is unresolvable there. The prior fail-open
+// (a js-yaml load guarded by try/catch that exit-0'd on the resolve failure)
+// therefore SILENTLY NO-OPPED Pass 2 in every real project — the same
+// latent-dead-hook
+// class as the removed TeamCreate gate. parseYamlLite (below) reads the only
+// two shapes the lint needs — the bmad-assembly block and swarm.yaml's
+// team.* subtree — mirroring bin/record.cjs's node-only posture (ADR-021: we
+// EMIT yaml and parse only our own fixed shapes).
 
 const fs = require('fs');
 const path = require('path');
+
+// --- Minimal YAML-subset parser (node built-ins only; no js-yaml) -----------
+// Parses the two fixed shapes this lint reads: the bmad-assembly block and
+// swarm.yaml's team.* subtree. Supports block maps, block sequences (scalar
+// items and map items whose first key sits inline on the dash line), flow
+// sequences/maps ([a, b] / {k: v}), and scalars. It THROWS on structurally
+// broken input (e.g. an unterminated flow collection) so callers keep the
+// fail-open posture js-yaml had: a parse error skips Pass 2 (exit 0), never a
+// false deny. It is deliberately NOT a general YAML parser — only the subset
+// the handshake block and swarm.yaml commit to (ADR-021).
+function _lite_scalar(s) {
+  const t = String(s).trim();
+  if (t === '') return null;
+  if (t[0] === '[' || t[0] === '{') return _lite_flow(t);
+  if ((t[0] === '"' && t.endsWith('"')) || (t[0] === "'" && t.endsWith("'"))) return t.slice(1, -1);
+  if (/^-?\d+$/.test(t)) return parseInt(t, 10);
+  if (/^-?\d+\.\d+$/.test(t)) return parseFloat(t);
+  if (t === 'true') return true;
+  if (t === 'false') return false;
+  if (t === 'null' || t === '~') return null;
+  return t;
+}
+
+// Split a flow-collection body on top-level commas (respecting [] / {} nesting).
+function _lite_splitTop(s) {
+  const out = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of s) {
+    if (ch === '[' || ch === '{') depth++;
+    else if (ch === ']' || ch === '}') depth--;
+    if (ch === ',' && depth === 0) { out.push(cur); cur = ''; } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function _lite_flow(s) {
+  const str = String(s).trim();
+  if (str[0] === '[') {
+    if (str[str.length - 1] !== ']') throw new Error('unterminated flow sequence');
+    const inner = str.slice(1, -1).trim();
+    if (inner === '') return [];
+    return _lite_splitTop(inner).map(_lite_scalar);
+  }
+  if (str[0] === '{') {
+    if (str[str.length - 1] !== '}') throw new Error('unterminated flow map');
+    const inner = str.slice(1, -1).trim();
+    const out = {};
+    if (inner === '') return out;
+    for (const part of _lite_splitTop(inner)) {
+      const idx = part.indexOf(':');
+      if (idx === -1) throw new Error('malformed flow map entry');
+      out[part.slice(0, idx).trim()] = _lite_scalar(part.slice(idx + 1));
+    }
+    return out;
+  }
+  return _lite_scalar(str);
+}
+
+function _lite_isSeqLine(content) {
+  return content[0] === '-' && (content.length === 1 || content[1] === ' ' || content[1] === '\t');
+}
+
+function _lite_parseMap(lines, state, indent) {
+  const map = {};
+  while (state.i < lines.length) {
+    const line = lines[state.i];
+    if (line.indent < indent) break;
+    if (line.indent > indent) break; // malformed extra indent: stop this block (lenient)
+    if (_lite_isSeqLine(line.content)) break;
+    const m = /^([^:]+):(?:[ \t]+(.*))?$/.exec(line.content);
+    if (!m) { state.i++; continue; }
+    const key = m[1].trim();
+    const rest = m[2] === undefined ? '' : m[2];
+    if (rest.trim() === '') {
+      state.i++;
+      if (state.i < lines.length && lines[state.i].indent > indent) {
+        map[key] = _lite_parseNode(lines, state, lines[state.i].indent);
+      } else {
+        map[key] = null;
+      }
+    } else {
+      map[key] = _lite_scalar(rest);
+      state.i++;
+    }
+  }
+  return map;
+}
+
+function _lite_parseSeq(lines, state, indent) {
+  const arr = [];
+  while (state.i < lines.length) {
+    const line = lines[state.i];
+    if (line.indent !== indent || !_lite_isSeqLine(line.content)) break;
+    const after = line.content.slice(1).replace(/^[ \t]+/, '');
+    if (after === '') {
+      state.i++;
+      if (state.i < lines.length && lines[state.i].indent > indent) {
+        arr.push(_lite_parseNode(lines, state, lines[state.i].indent));
+      } else {
+        arr.push(null);
+      }
+    } else if (after[0] !== '{' && after[0] !== '[' && /^[^:\s][^:]*:(?:[ \t].*|$)/.test(after)) {
+      // Map item: the first key sits inline on the dash line; continuation
+      // keys align at the column where that inline key starts.
+      const keyCol = indent + (line.content.length - after.length);
+      lines[state.i] = { indent: keyCol, content: after };
+      arr.push(_lite_parseMap(lines, state, keyCol));
+    } else {
+      arr.push(_lite_scalar(after));
+      state.i++;
+    }
+  }
+  return arr;
+}
+
+function _lite_parseNode(lines, state, indent) {
+  const first = lines[state.i];
+  if (!first) return null;
+  if (_lite_isSeqLine(first.content)) return _lite_parseSeq(lines, state, indent);
+  return _lite_parseMap(lines, state, indent);
+}
+
+function parseYamlLite(text) {
+  const lines = [];
+  for (const raw of String(text == null ? '' : text).split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    if (!line.trim()) continue;          // blank
+    if (/^\s*#/.test(line)) continue;    // full-line comment
+    const stripped = line.replace(/^\s+/, '');
+    lines.push({ indent: line.length - stripped.length, content: stripped });
+  }
+  if (lines.length === 0) return {};
+  return _lite_parseNode(lines, { i: 0 }, lines[0].indent);
+}
+
 let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { input += c; });
@@ -137,17 +296,15 @@ process.stdin.on('end', () => {
   const acceptedBlock = lastBlock;
 
   // Pass 2 (ADR-008): fixed-mode routing check. Fail-open on every
-  // error path — missing swarm.yaml, missing js-yaml dep, parse error, or
-  // unexpected shape. Pass 2 runs ONLY after Pass 1 has accepted.
-  let yaml;
-  try { yaml = require('js-yaml'); } catch { process.exit(0); }
-
+  // error path — missing swarm.yaml, parse error, or unexpected shape.
+  // Pass 2 runs ONLY after Pass 1 has accepted. Parsing is node-only
+  // (parseYamlLite); no js-yaml dependency (see header).
   const swarmYamlPath = path.join(process.cwd(), 'swarm.yaml');
   if (!fs.existsSync(swarmYamlPath)) { process.exit(0); }
   let swarmRaw;
   try { swarmRaw = fs.readFileSync(swarmYamlPath, 'utf8'); } catch { process.exit(0); }
   let swarmConfig;
-  try { swarmConfig = yaml.load(swarmRaw); } catch { process.exit(0); }
+  try { swarmConfig = parseYamlLite(swarmRaw); } catch { process.exit(0); }
   if (!swarmConfig || typeof swarmConfig !== 'object') { process.exit(0); }
 
   const teamCfg = swarmConfig.team || {};
@@ -166,7 +323,7 @@ process.stdin.on('end', () => {
   const SPECIALIZED_ROLES = new Set(['developer', 'reviewer']);
 
   let assembly;
-  try { assembly = yaml.load(acceptedBlock); } catch { process.exit(0); }
+  try { assembly = parseYamlLite(acceptedBlock); } catch { process.exit(0); }
   if (!assembly || typeof assembly !== 'object') { process.exit(0); }
   const teamArray = Array.isArray(assembly.team) ? assembly.team : [];
 

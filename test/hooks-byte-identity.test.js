@@ -33,6 +33,10 @@ const HOOK_NAMES = [
   'post-compact-reinject.cjs',
   'user-prompt-submit.cjs',
   'team-assembly-lint.cjs',
+  // phase5 Stream S: the night floor is a fresh hook (no live-session reconcile
+  // concern), so its .cjs.src is guarded byte-for-byte from day one.
+  'night-floor.cjs',
+  'workflow-integrity.cjs',
 ];
 
 describe('Hooks byte-identity (prep split is a pure refactor)', () => {

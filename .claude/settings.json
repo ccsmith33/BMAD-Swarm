@@ -1,5 +1,5 @@
 {
-  "_bmadGenerated": "f6bc666a",
+  "_bmadGenerated": "eeac6ab0",
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
@@ -15,6 +15,18 @@
       "Bash(npm test:*)",
       "Bash(node .claude/bmad/bin/record.cjs:*)",
       "Bash(node .claude/bmad/bin/replay-check.cjs:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge --ff-only:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git branch:*)",
+      "Bash(git tag:*)",
+      "Bash(bmad-swarm validate:*)",
+      "Bash(bmad-swarm doctor:*)",
+      "Bash(bmad-swarm status:*)",
+      "Bash(bmad-swarm scan:*)",
       "Read",
       "Write",
       "Edit",
@@ -116,6 +128,24 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-write-guard.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/night-floor.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/workflow-integrity.cjs\""
           }
         ]
       }

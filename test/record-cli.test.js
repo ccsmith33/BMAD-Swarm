@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, utimesSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -166,8 +166,10 @@ describe('record.cjs: set-status state machine', () => {
   it('enforces the L -> promoted human gate via set-status', () => {
     const blocked = run(['set-status', 'L-1', 'promoted'], { ctx, proj });
     assert.equal(blocked.status, 1);
-    assert.match(blocked.stderr, /human gate/);
-    const ok = run(['set-status', 'L-1', 'promoted', '--human-approved', 'D-050', '--enforcement-tier', 'reviewer-lens'], { ctx, proj });
+    assert.match(blocked.stderr, /ratification marker/);
+    // K-2: --human-approved must resolve to a REAL decision, so ratify with one.
+    const dId = run(['append', '--type', 'D'], { stdin: JSON.stringify({ title: 'ratify L-1', body: 'promote it' }), ctx, proj }).stdout.trim();
+    const ok = run(['set-status', 'L-1', 'promoted', '--human-approved', dId, '--enforcement-tier', 'reviewer-lens'], { ctx, proj });
     assert.equal(ok.status, 0, ok.stderr);
     assert.match(readFileSync(join(ctx, 'ledger.md'), 'utf8'), /enforcement_tier: reviewer-lens/);
   });
@@ -188,7 +190,7 @@ describe('record.cjs: append human gate (F-27 / F2-H3)', () => {
   it('refuses append --type L --status promoted with no --human-approved', () => {
     const r = run(['append', '--type', 'L', '--title', 't', '--fingerprint', 'fp', '--status', 'promoted'], { stdin: provBody('x'), ctx, proj });
     assert.equal(r.status, 1, 'the append door must honor the constitutional gate');
-    assert.match(r.stderr, /human gate/);
+    assert.match(r.stderr, /ratification marker/);
     assert.ok(!existsSync(join(ctx, 'ledger.md')), 'no record should be written');
   });
 
@@ -196,13 +198,14 @@ describe('record.cjs: append human gate (F-27 / F2-H3)', () => {
     const stdin = JSON.stringify({ provenance: { role: 'r', project: 'p', date: '2026-08-13' }, body: 'x', status: 'promoted' });
     const r = run(['append', '--type', 'L', '--title', 't', '--fingerprint', 'fp'], { stdin, ctx, proj });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /human gate/);
+    assert.match(r.stderr, /ratification marker/);
   });
 
   it('allows the migration entry points observed and recurring, and promoted WITH approval', () => {
     assert.equal(run(['append', '--type', 'L', '--title', 'a', '--fingerprint', 'f1', '--status', 'observed'], { stdin: provBody('x'), ctx, proj }).status, 0);
     assert.equal(run(['append', '--type', 'L', '--title', 'b', '--fingerprint', 'f2', '--status', 'recurring'], { stdin: provBody('x'), ctx, proj }).status, 0);
-    assert.equal(run(['append', '--type', 'L', '--title', 'c', '--fingerprint', 'f3', '--status', 'promoted', '--human-approved', 'D-050'], { stdin: provBody('x'), ctx, proj }).status, 0);
+    const dId = run(['append', '--type', 'D'], { stdin: JSON.stringify({ title: 'ratify f3', body: 'promote' }), ctx, proj }).stdout.trim();
+    assert.equal(run(['append', '--type', 'L', '--title', 'c', '--fingerprint', 'f3', '--status', 'promoted', '--human-approved', dId], { stdin: provBody('x'), ctx, proj }).status, 0);
   });
 });
 
@@ -219,5 +222,144 @@ describe('record.cjs: append --type D to the decision log', () => {
     assert.match(log, /^## D-1 — a decision$/m);
     assert.match(log, /the decision text/);
     assert.ok(!existsSync(join(ctx, 'ledger.md')), 'D append must not create ledger.md');
+  });
+});
+
+describe('record.cjs: reconcile subcommand (SE-3 / T7)', () => {
+  let proj, ctx;
+  before(() => {
+    ({ proj, ctx } = mkproj());
+    // Build a ledger through the sanctioned writer (the only door to task-ledger.md).
+    run(['task-event', '--task', '1', '--event', 'created', '--owner', 'dev-a', '--session', 's1', '--detail', 'story-1'], { ctx, proj });
+    run(['task-event', '--task', '1', '--event', 'in_progress', '--owner', 'dev-a', '--session', 's1'], { ctx, proj });
+    run(['task-event', '--task', '2', '--event', 'created', '--owner', 'dev-b', '--session', 's1', '--detail', 'story-2'], { ctx, proj });
+    // Task 3: the ledger believes it is live, but TaskList will have dropped it.
+    run(['task-event', '--task', '3', '--event', 'created', '--owner', 'dev-c', '--session', 's1', '--detail', 'orphan'], { ctx, proj });
+    run(['task-event', '--task', '3', '--event', 'in_progress', '--owner', 'dev-c', '--session', 's1'], { ctx, proj });
+    // A brain with an awaiting-human gate (project-brain.md is exempt from the deny).
+    writeFileSync(join(ctx, 'project-brain.md'), [
+      '---',
+      'schema: project-brain/1',
+      'updated: 2026-08-13T10:00:00Z',
+      'checkpoint: 4',
+      'phase: implementation',
+      'gates:',
+      '  prd: {status: awaiting-human, d_id: D-9, at: 2026-08-13T09:00:00Z}',
+      '  architecture: {status: pending}',
+      'staleness: {ledger-events-since-checkpoint: 0}',
+      '---',
+      '',
+      '## What this is (and why)',
+      'A test.',
+      '',
+    ].join('\n'));
+  });
+  after(() => { rmSync(proj, { recursive: true, force: true }); });
+
+  const TASKLIST = JSON.stringify({ tasks: [
+    { id: '1', status: 'in_progress', owner: 'dev-a' },
+    { id: '2', status: 'pending', owner: 'dev-b' },
+    // task 3 dropped => orphan
+  ] });
+
+  it('--json reports the unwoken pending task, the orphan, and the awaiting-human gate', () => {
+    const r = run(['reconcile', '--tasklist', '-', '--json'], { stdin: TASKLIST, ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.rewake.map((x) => x.task), ['2']);
+    assert.match(out.rewake[0].reason, /not yet woken/);
+    assert.deepEqual(out.orphans.map((x) => x.task), ['3']);
+    assert.equal(out.orphans[0].owner, 'dev-c');
+    assert.deepEqual(out.awaitingHuman.map((x) => x.gate), ['prd']);
+    assert.equal(out.awaitingHuman[0].dId, 'D-9');
+    assert.equal(out.staleness.brainCheckpoint, 4);
+  });
+
+  it('human-readable mode prints an action list with RE-WAKE / ORPHANS / AWAITING HUMAN sections', () => {
+    const r = run(['reconcile', '--tasklist', '-'], { stdin: TASKLIST, ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /RE-WAKE/);
+    assert.match(r.stdout, /ORPHANS/);
+    assert.match(r.stdout, /AWAITING HUMAN/);
+    assert.match(r.stdout, /task 2 owner=dev-b/);
+    assert.match(r.stdout, /task 3 owner=dev-c/);
+  });
+
+  it('fails loudly on malformed TaskList JSON', () => {
+    const r = run(['reconcile', '--tasklist', '-'], { stdin: 'not json', ctx, proj });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /not valid JSON/);
+  });
+
+  it('reports nothing to reconcile when TaskList matches the ledger and no gates await', () => {
+    const clean = mkproj();
+    run(['task-event', '--task', '1', '--event', 'created', '--owner', 'dev-a'], { ctx: clean.ctx, proj: clean.proj });
+    run(['task-event', '--task', '1', '--event', 'in_progress', '--owner', 'dev-a'], { ctx: clean.ctx, proj: clean.proj });
+    const r = run(['reconcile', '--tasklist', '-'], {
+      stdin: JSON.stringify({ tasks: [{ id: '1', status: 'in_progress', owner: 'dev-a' }] }),
+      ctx: clean.ctx, proj: clean.proj,
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /nothing to reconcile/);
+    rmSync(clean.proj, { recursive: true, force: true });
+  });
+});
+
+// F-INT-1: a BLOCK-nested gate (`gates:\n  prd:\n    status: awaiting-human`)
+// passes validate/doctor but the old parseFrontmatterLite flattened the deeper
+// `status:` onto `gates` instead of `gates.prd`, so reconcile returned
+// awaitingHuman=[] and the warm boot SILENTLY skipped the human-approval pause
+// (RES-4). This locks in that the 2-level block form surfaces the gate — the
+// exact shape that failed — alongside the flow-map form that already worked.
+describe('record.cjs: reconcile surfaces a BLOCK-nested awaiting-human gate (F-INT-1)', () => {
+  let proj, ctx;
+  before(() => {
+    ({ proj, ctx } = mkproj());
+    run(['task-event', '--task', '1', '--event', 'created', '--owner', 'dev-a'], { ctx, proj });
+    run(['task-event', '--task', '1', '--event', 'in_progress', '--owner', 'dev-a'], { ctx, proj });
+    // Deep 2-level block form (NOT the single-line flow-map): status/d_id sit on
+    // their own indented lines under gates.prd.
+    writeFileSync(join(ctx, 'project-brain.md'), [
+      '---',
+      'schema: project-brain/1',
+      'updated: 2026-08-13T10:00:00Z',
+      'checkpoint: 7',
+      'phase: implementation',
+      'gates:',
+      '  prd:',
+      '    status: awaiting-human',
+      '    d_id: D-9',
+      '    at: 2026-08-13T09:00:00Z',
+      '  architecture:',
+      '    status: passed',
+      'staleness: {ledger-events-since-checkpoint: 0}',
+      '---',
+      '',
+      '## What this is (and why)',
+      'A test.',
+      '',
+    ].join('\n'));
+  });
+  after(() => { rmSync(proj, { recursive: true, force: true }); });
+
+  const TASKLIST = JSON.stringify({ tasks: [{ id: '1', status: 'in_progress', owner: 'dev-a' }] });
+
+  it('--json surfaces the block-form awaiting-human gate (not silently dropped)', () => {
+    const r = run(['reconcile', '--tasklist', '-', '--json'], { stdin: TASKLIST, ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.awaitingHuman.map((x) => x.gate), ['prd']);
+    assert.equal(out.awaitingHuman[0].dId, 'D-9');
+    // The passed gate must NOT be surfaced, and the deeper keys must not have
+    // leaked up onto `gates` (the old flattening bug).
+    assert.equal(out.awaitingHuman.length, 1);
+    assert.equal(out.staleness.brainCheckpoint, 7);
+  });
+
+  it('human-readable mode names the awaiting-human gate', () => {
+    const r = run(['reconcile', '--tasklist', '-'], { stdin: TASKLIST, ctx, proj });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /AWAITING HUMAN/);
+    assert.match(r.stdout, /prd/);
   });
 });

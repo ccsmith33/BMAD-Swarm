@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path';
 import { PACKAGE_METHODOLOGY_DIR } from '../utils/paths.js';
 import { writeGeneratedFile, isFileManuallyModified, ensureDir } from '../utils/fs-helpers.js';
 import { METHODOLOGY_SHIP_LIST, rewriteScaffoldPaths } from '../utils/scaffold-paths.js';
+import { collectEarnedLessons, renderEarnedMethodology } from '../utils/earned-rules.js';
 
 /**
  * Ship the load-bearing methodology subset into `.claude/bmad/methodology/`
@@ -53,6 +54,22 @@ export function generateMethodology(config, projectPaths, options = {}) {
     ensureDir(dirname(outputPath));
     writeGeneratedFile(outputPath, rewritten);
     generated.push(relPath);
+  }
+
+  // Born-immune (phase4 §3.1 item 6): compile promoted L-records into a
+  // generated methodology/earned-lessons.md. Only emitted when a rule has
+  // actually been earned+promoted, so the default ship list is unchanged.
+  const earnedLessons = collectEarnedLessons(config, projectPaths, options);
+  const earnedDoc = renderEarnedMethodology(earnedLessons);
+  if (earnedDoc) {
+    const relPath = 'earned-lessons.md';
+    const outputPath = join(projectPaths.bmadMethodologyDir, relPath);
+    if (!options.force && isFileManuallyModified(outputPath)) {
+      modified.push(relPath);
+    } else {
+      writeGeneratedFile(outputPath, earnedDoc);
+      generated.push(relPath);
+    }
   }
 
   return { generated, modified };

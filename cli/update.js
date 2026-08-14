@@ -11,7 +11,10 @@ import { generateClaudeMd } from '../generators/claude-md-generator.js';
 import { generateHooks } from '../generators/hooks-generator.js';
 import { generateSettings } from '../generators/settings-generator.js';
 import { generateRules } from '../generators/rules-generator.js';
+import { collectEarnedLessons, renderEarnedRulesReview } from '../utils/earned-rules.js';
 import { generateCommands } from '../generators/commands-generator.js';
+import { generateWorkflows } from '../generators/workflows-generator.js';
+import { migrateProjectYamlToBrain } from '../utils/phase-machine.js';
 
 /**
  * Register the update command with the CLI program.
@@ -23,6 +26,8 @@ export function registerUpdateCommand(program) {
     .description('Regenerate all managed files (.claude/agents, CLAUDE.md, hooks, settings) from swarm.yaml')
     .option('--dry-run', 'Preview what would be regenerated without writing any files')
     .option('--force', 'Overwrite files even if they have been manually modified')
+    .option('--swap-live-hooks', 'Regenerate .claude/hooks/ + settings.json even while a live session is active (hot-swaps the running enforcement — off by default)')
+    .option('--skip-earned-rules', 'Do not compile promoted cross-project lessons into the scaffold')
     .addHelpText('after', `
 Examples:
   $ bmad-swarm update              Regenerate all managed files
@@ -33,6 +38,11 @@ Safe to run repeatedly. Never touches user-owned files:
   swarm.yaml, overrides/, artifacts/, src/
 Ejected agents (in overrides/agents/) are preserved and used as-is.
 Files with manual edits are skipped unless --force is used.
+
+While a live session is active (.claude/hooks/.session-active present), update
+SKIPS regenerating .claude/hooks/ and settings.json so it cannot hot-swap the
+enforcement the running session relies on. Pass --swap-live-hooks to override
+(--force does NOT override this — it is a different consent).
 `)
     .action(async (options) => {
       try {
@@ -60,6 +70,17 @@ async function runUpdate(options) {
 
   const config = loadSwarmConfig(paths.swarmYaml);
   const genOptions = { force: !!options.force };
+
+  // Live-swap guard (ADR-017 Amendment 1 §3.5): regenerating .claude/hooks/ +
+  // settings.json UNDER a running orchestrator session hot-swaps the gate that
+  // session relies on — that wedged the 2026-08-13 merge. While the
+  // .session-active marker exists, skip those two regen steps. --swap-live-hooks
+  // restores the old behavior explicitly; --force does NOT override it (it means
+  // "overwrite manual edits", a different consent). A stale marker left by a
+  // crash makes this warn spuriously — the warning names the marker path so the
+  // human can delete it (doctor already knows the marker; no new machinery).
+  const sessionMarker = join(paths.hooksDir, '.session-active');
+  const skipLiveHooks = existsSync(sessionMarker) && !options.swapLiveHooks;
 
   if (options.dryRun) {
     console.log('Dry run - showing what would be regenerated:\n');
@@ -125,7 +146,11 @@ async function runUpdate(options) {
   }
 
   // 3. Regenerate hooks
-  if (options.dryRun) {
+  if (skipLiveHooks) {
+    console.log('  ! Skipped .claude/hooks/: a live session is active (.claude/hooks/.session-active).');
+    console.log('    Re-run after the session ends, or pass --swap-live-hooks to override.');
+    console.log('    (If the session already ended, delete .claude/hooks/.session-active.)');
+  } else if (options.dryRun) {
     console.log('  Would regenerate .claude/hooks/');
   } else {
     const hookResult = generateHooks(config, paths, genOptions);
@@ -139,13 +164,20 @@ async function runUpdate(options) {
   // 4. Regenerate rules
   if (options.dryRun) {
     console.log('  Would regenerate .claude/rules/');
+    // Even in dry-run, show which earned rules WOULD compile (K-2 review).
+    const preview = collectEarnedLessons(config, paths, { skipEarnedRules: !!options.skipEarnedRules });
+    const previewReview = renderEarnedRulesReview(preview, 'update');
+    if (previewReview) console.log(previewReview);
   } else {
-    const rulesResult = generateRules(config, paths, genOptions);
+    const rulesResult = generateRules(config, paths, { ...genOptions, skipEarnedRules: !!options.skipEarnedRules });
     console.log(`  \u2713 Regenerated .claude/rules/ (${rulesResult.generated.length} rules)`);
     if (rulesResult.modified.length > 0) {
       console.log(`    Skipped (manually modified): ${rulesResult.modified.join(', ')}`);
       console.log(`    Use --force to overwrite.`);
     }
+    // Born-immune human review (K-2 compensating control).
+    const earnedReview = renderEarnedRulesReview(rulesResult.earnedLessons, 'update');
+    if (earnedReview) console.log(earnedReview);
   }
 
   // 4.1. Clean up stale generated files from older versions
@@ -218,6 +250,27 @@ async function runUpdate(options) {
     }
   }
 
+  // 4.2. Machine-state migration (D-037 / WS-11): fold a legacy project.yaml's
+  // `phase` into the brain frontmatter, then delete project.yaml. Idempotent.
+  //
+  // This migrates a USER-OWNED file, NOT a generated hook/settings artifact, so
+  // it MUST run even when the live-swap guard skips steps 3 (hooks) + 5
+  // (settings.json) under an active session — it is deliberately OUTSIDE that
+  // guarded region. Placed between 4.1 and 4.5, disjoint from the guard.
+  if (options.dryRun) {
+    if (existsSync(join(projectRoot, 'project.yaml'))) {
+      console.log('  Would migrate project.yaml phase into the project-brain frontmatter and delete project.yaml (D-037)');
+    }
+  } else {
+    const migration = migrateProjectYamlToBrain(projectRoot, paths.brainPath);
+    if (migration.migrated) {
+      console.log(`  ✓ Migrated project.yaml → project-brain.md frontmatter (phase: ${migration.phase}) and removed project.yaml (D-037 / WS-11)`);
+      if (migration.createdBrain) {
+        console.log('    Created a minimal artifacts/context/project-brain.md to hold the machine state — the orchestrator will flesh it out on next session.');
+      }
+    }
+  }
+
   // 4.5. Regenerate slash commands
   if (options.dryRun) {
     console.log('  Would regenerate .claude/commands/');
@@ -229,8 +282,25 @@ async function runUpdate(options) {
     }
   }
 
-  // 5. Regenerate settings.json
+  // 4.6. Regenerate named workflows (the regime router's deterministic tier).
+  // These are inert files until the orchestrator invokes them by name, so they
+  // ship uniformly (no live-session guard, unlike hooks/settings).
   if (options.dryRun) {
+    console.log('  Would regenerate .claude/workflows/');
+  } else {
+    const workflowResult = generateWorkflows(config, paths, genOptions);
+    console.log(`  ✓ Regenerated .claude/workflows/ (${workflowResult.generated.length} workflows)`);
+    if (workflowResult.modified.length > 0) {
+      console.log(`    Skipped (manually modified): ${workflowResult.modified.join(', ')}`);
+      console.log(`    Use --force to overwrite.`);
+    }
+  }
+
+  // 5. Regenerate settings.json
+  if (skipLiveHooks) {
+    console.log('  ! Skipped .claude/settings.json: a live session is active (.claude/hooks/.session-active).');
+    console.log('    Re-run after the session ends, or pass --swap-live-hooks to override.');
+  } else if (options.dryRun) {
     console.log('  Would regenerate .claude/settings.json');
   } else {
     const settingsResult = generateSettings(config, paths, genOptions);

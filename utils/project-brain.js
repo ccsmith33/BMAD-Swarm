@@ -23,9 +23,19 @@ export const SCHEMA_VERSION = 'project-brain/1';
 export const BUDGET_TOKENS = 2500;
 
 // Frontmatter keys every brain must carry. `phase`/`gates` are the machine-state
-// home that subsumes project.yaml (D-037 / continuity §4.2) — put machine state
-// here, never in a separate chore file.
-export const REQUIRED_FRONTMATTER = Object.freeze(['schema', 'updated', 'checkpoint', 'phase']);
+// home that subsumes project.yaml (D-037 / continuity §4.2 / ADR-018 point 5) —
+// put machine state here, never in a separate chore file. `gates:` is the
+// awaiting-human home the warm-boot reconciliation reads (phase2 §4.2); a project
+// with no gates yet carries an empty map (`gates: {}`), never a missing key.
+export const REQUIRED_FRONTMATTER = Object.freeze(['schema', 'updated', 'checkpoint', 'phase', 'gates']);
+
+// The gate-status vocabulary (ADR-018 point 5 / phase2 §4.2). `awaiting-human` is
+// the status the reconciler surfaces first; the terminal states are passed/failed;
+// `approved` is accepted as a synonym for passed at a human-approval gate;
+// `skipped` marks a gate a project deliberately does not apply (e.g. a design-led
+// track with no PRD gate) — the honest representation of "not applicable" that
+// keeps the map complete without lying about a status (tactical addition, Stream B).
+export const GATE_STATUSES = Object.freeze(['pending', 'awaiting-human', 'approved', 'passed', 'failed', 'skipped']);
 
 // The fixed section set, in order, each with its item cap (continuity §1.1).
 // `evictable` marks the sections eviction may prune; identity + mental model +
@@ -159,6 +169,23 @@ export function validateBrain(text) {
     }
     if (fm.checkpoint !== undefined && !Number.isInteger(fm.checkpoint)) {
       errors.push('frontmatter: checkpoint must be an integer');
+    }
+    // gates: the machine-state awaiting-human home (D-037 / phase2 §4.2). Must be
+    // a mapping (empty is fine); each entry must carry a status in the vocabulary.
+    if (fm.gates !== undefined && fm.gates !== null) {
+      if (typeof fm.gates !== 'object' || Array.isArray(fm.gates)) {
+        errors.push('frontmatter: gates must be a mapping of {gate-name: {status, d_id?, at?}}');
+      } else {
+        for (const [gate, spec] of Object.entries(fm.gates)) {
+          if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
+            errors.push(`frontmatter: gate "${gate}" must be a mapping with a status`);
+            continue;
+          }
+          if (!GATE_STATUSES.includes(spec.status)) {
+            errors.push(`frontmatter: gate "${gate}" status ${JSON.stringify(spec.status)} not in {${GATE_STATUSES.join(', ')}}`);
+          }
+        }
+      }
     }
   }
 

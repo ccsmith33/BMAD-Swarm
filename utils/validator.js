@@ -1,4 +1,5 @@
 import { getAgentNames } from './config.js';
+import { validateOrchestratorAllowEntry } from './orchestrator-allow.js';
 
 const VALID_PROJECT_TYPES = ['web-app', 'api', 'cli', 'library', 'mobile', 'monorepo', 'other'];
 const VALID_AUTONOMY_LEVELS = ['auto', 'guided', 'collaborative'];
@@ -80,6 +81,25 @@ export function validateConfig(config) {
     }
     if (r.gated_owner_pattern !== undefined && typeof r.gated_owner_pattern !== 'string') {
       errors.push(`replay.gated_owner_pattern must be a string (a regex), got: ${typeof r.gated_owner_pattern}`);
+    }
+  }
+
+  // Permissions validation (ADR-017 Amendment 1). Each project-declared
+  // orchestrator_allow entry must pass the structural guard in
+  // utils/orchestrator-allow.js. Invalid entries are a config ERROR (surfaced by
+  // EVERY loadSwarmConfig caller), never silently dropped — a silent drop hides
+  // from the project author that their tooling will keep prompting.
+  if (config.permissions?.orchestrator_allow !== undefined) {
+    const list = config.permissions.orchestrator_allow;
+    if (!Array.isArray(list)) {
+      errors.push(`permissions.orchestrator_allow must be an array of "Bash(<command>:*)" grant strings, got: ${typeof list}`);
+    } else {
+      for (const entry of list) {
+        const verdict = validateOrchestratorAllowEntry(entry);
+        if (!verdict.ok) {
+          errors.push(`permissions.orchestrator_allow entry ${JSON.stringify(entry)} is refused: ${verdict.reason}`);
+        }
+      }
     }
   }
 

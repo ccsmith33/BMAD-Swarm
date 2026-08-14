@@ -249,4 +249,79 @@ describe('Settings Generator', () => {
     const result = generateSettings(config, paths);
     assert.equal(result.modified, false, 'First generation should not be marked as modified');
   });
+
+  // -----------------------------------------------------------------------
+  // ADR-017 Amendment 1: safe-default coordination git + project-aware merge.
+  // -----------------------------------------------------------------------
+
+  function makeProjectYaml(name, yaml) {
+    const projectDir = join(tmpDir, name);
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(join(projectDir, 'swarm.yaml'), yaml);
+    const config = loadSwarmConfig(join(projectDir, 'swarm.yaml'));
+    return { config, paths: getProjectPaths(projectDir) };
+  }
+
+  it('safe default includes coordination git + read-only bmad-swarm CLI', () => {
+    const { config, paths } = makeProject('settings-coord-git');
+    generateSettings(config, paths);
+    const allow = JSON.parse(readFileSync(paths.settingsJson, 'utf8')).permissions.allow;
+    for (const expected of [
+      'Bash(git commit:*)', 'Bash(git push:*)', 'Bash(git fetch:*)',
+      'Bash(git merge --ff-only:*)', 'Bash(git checkout:*)', 'Bash(git switch:*)',
+      'Bash(git branch:*)', 'Bash(git tag:*)',
+      'Bash(bmad-swarm validate:*)', 'Bash(bmad-swarm doctor:*)',
+      'Bash(bmad-swarm status:*)', 'Bash(bmad-swarm scan:*)',
+    ]) {
+      assert.ok(allow.includes(expected), `safe default must include ${expected}`);
+    }
+  });
+
+  it('merges validated project orchestrator_allow entries onto the safe default (appended, sorted)', () => {
+    const { config, paths } = makeProjectYaml('settings-merge', [
+      'project:',
+      '  name: merge-test',
+      'permissions:',
+      '  orchestrator_allow:',
+      '    - "Bash(cargo check:*)"',
+      '    - "Bash(npm test:*)"',
+      '',
+    ].join('\n'));
+    generateSettings(config, paths);
+    const allow = JSON.parse(readFileSync(paths.settingsJson, 'utf8')).permissions.allow;
+    assert.ok(allow.includes('Bash(cargo check:*)'), 'project entry merged');
+    assert.ok(allow.includes('Bash(npm test:*)'), 'project entry merged');
+    // Template entries come first; project entries are appended.
+    assert.ok(allow.indexOf('Bash(cargo check:*)') > allow.indexOf('Bash(git commit:*)'),
+      'project entries are appended after the template safe default');
+  });
+
+  it('does not duplicate a project entry that equals a safe-default entry', () => {
+    const { config, paths } = makeProjectYaml('settings-dedupe', [
+      'project:',
+      '  name: dedupe-test',
+      'permissions:',
+      '  orchestrator_allow:',
+      '    - "Bash(git commit:*)"',
+      '',
+    ].join('\n'));
+    generateSettings(config, paths);
+    const allow = JSON.parse(readFileSync(paths.settingsJson, 'utf8')).permissions.allow;
+    assert.equal(allow.filter((e) => e === 'Bash(git commit:*)').length, 1,
+      'a project entry equal to a safe default must not be duplicated');
+  });
+
+  it('a dangerous project entry fails config load loudly (never silently dropped)', () => {
+    // loadSwarmConfig runs validateConfig, which rejects the entry — the throw
+    // happens before generateSettings is ever reached.
+    assert.throws(() => makeProjectYaml('settings-bad', [
+      'project:',
+      '  name: bad-test',
+      'permissions:',
+      '  orchestrator_allow:',
+      '    - "Bash(git:*)"',
+      '',
+    ].join('\n')), /orchestrator_allow|refused|git/i,
+      'a bare git grant must make loadSwarmConfig throw');
+  });
 });

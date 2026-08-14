@@ -45,6 +45,12 @@ async function runValidate(options) {
     for (const issue of r.issues) {
       console.log(`    - ${issue}`);
     }
+    // Claims-table lint is ADVISORY: warnings print but never fail the command
+    // (a file-shape check is gameable by its author \u2014 D-039). Same posture as
+    // the project-brain lint below.
+    for (const w of (r.warnings || [])) {
+      console.log(`    \u2139 ${w}`);
+    }
   }
 
   console.log(`\nTotal: ${result.passed} passed, ${result.failed} failed`);

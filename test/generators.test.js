@@ -664,7 +664,7 @@ methodology:
       const paths = getProjectPaths(projectDir);
       const result = generateHooks(config, paths);
 
-      assert.equal(result.generated.length, 9, 'Should generate 9 hooks');
+      assert.equal(result.generated.length, 11, 'Should generate 11 hooks');
       assert.equal(result.skipped.length, 0, 'No hooks should be skipped');
       for (const hookPath of result.generated) {
         assert.ok(existsSync(hookPath), `Hook should exist: ${hookPath}`);
@@ -697,7 +697,7 @@ methodology:
       const result = generateHooks(config, paths);
       assert.equal(result.skipped.length, 1, 'Should skip 1 modified hook');
       assert.ok(result.skipped[0].includes('user-prompt-submit'), 'Should skip user-prompt-submit');
-      assert.equal(result.generated.length, 8, 'Should regenerate the other 8');
+      assert.equal(result.generated.length, 10, 'Should regenerate the other 10');
     });
 
     it('overwrites modified hooks with force option', () => {
@@ -718,7 +718,7 @@ methodology:
 
       const result = generateHooks(config, paths, { force: true });
       assert.equal(result.skipped.length, 0, 'Should skip nothing with force');
-      assert.equal(result.generated.length, 9, 'Should regenerate all 9');
+      assert.equal(result.generated.length, 11, 'Should regenerate all 11');
     });
 
     it('all generated hook files contain valid JavaScript', () => {
@@ -870,7 +870,6 @@ methodology:
         'artifacts/implementation/stories/1-1.md',
         'artifacts/exploration/research.md',
         'artifacts\\reviews\\bar.md', // backslash separators normalize + anchor
-        'project.yaml',
         'swarm.yaml',
         '.gitignore',
       ];
@@ -893,6 +892,7 @@ methodology:
         'cli/init.js',
         'bin/bmad-swarm.js',
         'package.json',
+        'project.yaml',              // ADR-017 Amendment 1: removed from the writable set
         'src/artifacts/malware.js', // F-017: sibling artifacts dir
         'notes-artifacts/x.js',      // F-017: substring, not a segment
         'evil/project.yaml',         // F-017: $-suffix config match

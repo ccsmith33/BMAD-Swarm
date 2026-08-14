@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { estimateCost } from '../utils/cost-estimator.js';
+import { estimateCost, GOVERNOR_MODES, QUOTA_COUPLING_NOTE } from '../utils/cost-estimator.js';
 
 describe('Cost Estimator', () => {
   const baseConfig = {
@@ -147,6 +147,50 @@ describe('Cost Estimator', () => {
           .estimatedCostMin.slice(1),
       );
       assert.ok(fable > opus, 'Fable ($10/$50) must cost more than opus ($5/$25)');
+    });
+  });
+
+  // D-038: one Governor, two modes. Treasurer by day (budget/cap-stall
+  // avoidance), scheduler by night (clock-only, no cap). The token math is
+  // identical in both modes — the mode only changes the governance framing —
+  // because day and night draw the SAME subscription quota (the honesty coupling).
+  describe('governor mode parameter (treasurer | scheduler — D-038)', () => {
+    it('defaults to treasurer (day) mode, cap-aware', () => {
+      const r = estimateCost(baseConfig, 'bug-fix');
+      assert.equal(r.mode, GOVERNOR_MODES.TREASURER);
+      assert.equal(r.governance.capAware, true);
+      assert.equal(r.governance.hardResource, 'budget/limit');
+      assert.match(r.governance.advice, /pause|story boundary|cap/i);
+    });
+
+    it('scheduler (night) mode is clock-only with no cap', () => {
+      const r = estimateCost(baseConfig, 'bug-fix', { mode: GOVERNOR_MODES.SCHEDULER });
+      assert.equal(r.mode, GOVERNOR_MODES.SCHEDULER);
+      assert.equal(r.governance.capAware, false);
+      assert.equal(r.governance.hardResource, 'clock');
+      assert.match(r.governance.advice, /runway|redirect|dawn/i);
+    });
+
+    it('carries the quota-coupling honesty note in both modes', () => {
+      const day = estimateCost(baseConfig, 'bug-fix', { mode: GOVERNOR_MODES.TREASURER });
+      const night = estimateCost(baseConfig, 'bug-fix', { mode: GOVERNOR_MODES.SCHEDULER });
+      assert.equal(day.quotaNote, QUOTA_COUPLING_NOTE);
+      assert.equal(night.quotaNote, QUOTA_COUPLING_NOTE);
+      assert.match(QUOTA_COUPLING_NOTE, /same/i);
+      assert.match(QUOTA_COUPLING_NOTE, /quota/i);
+    });
+
+    it('produces identical token estimates regardless of mode (same quota)', () => {
+      const day = estimateCost(baseConfig, 'full-lifecycle', { mode: GOVERNOR_MODES.TREASURER });
+      const night = estimateCost(baseConfig, 'full-lifecycle', { mode: GOVERNOR_MODES.SCHEDULER });
+      assert.equal(day.estimatedTokensMin, night.estimatedTokensMin);
+      assert.equal(day.estimatedTokensMax, night.estimatedTokensMax);
+      assert.equal(day.estimatedCostMin, night.estimatedCostMin);
+    });
+
+    it('falls back to treasurer on an unknown mode string', () => {
+      const r = estimateCost(baseConfig, 'bug-fix', { mode: 'nonsense' });
+      assert.equal(r.mode, GOVERNOR_MODES.TREASURER);
     });
   });
 });

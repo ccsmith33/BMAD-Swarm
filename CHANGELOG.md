@@ -2,7 +2,68 @@
 
 All notable changes to bmad-swarm.
 
-## [Unreleased]
+## [3.0.0] — 2026-08-13
+
+> **⚠ Human sign-off required — version and publish.** The `3.0.0` bump and the npm publish are human sign-offs, not automated: ADR-020 is **PROPOSED, awaiting human approval** (D-033), and the phase-3 ship-prep design (`artifacts/design/parallel-execution-2026-08-13.md` §5) recommends `3.0.0` but defers the confirm to the publish gate. `npm publish --dry-run` has been run and attached as release evidence — **no package was published.** This is a **semver-major** release: it deletes documented features (the facade ring, ADR-020) and removes `project.yaml` (Stream B / D-037), both breaking, documented behavior.
+
+#### Stream A — project-aware orchestrator allow-list (ADR-017 Amendment 1)
+
+##### Added
+- **Project-aware orchestrator allow-list** (`permissions.orchestrator_allow` in `swarm.yaml`). Each project can declare the read-only + coordination commands its orchestrator needs prompt-free, e.g. `Bash(cargo check:*)`. Entries are merged onto a widened safe default by the settings generator. (ADR-017 Amendment 1)
+- **Widened safe default:** scaffolded projects now get coordination git (`git commit`/`push`/`fetch`/`merge --ff-only`/`checkout`/`switch`/`branch`/`tag`) and the read-only `bmad-swarm` CLI (`validate`/`doctor`/`status`/`scan`) in the orchestrator allow-list — no more prompts for routine coordination. The write-gate still denies the write/destructive vectors inside those shapes.
+- **`bmad-swarm update --swap-live-hooks`** flag to explicitly regenerate `.claude/hooks/` + `settings.json` while a session is live (off by default).
+
+##### Changed
+- **Orchestrator write-gate git inspection** now distinguishes coordination git from tree/history rewrites. Denies write-vector git (`apply`, `restore`, `am`, `stash`, `mv`, `rm`, `checkout`/`switch` with a pathspec) and destructive git (`reset --hard/--merge/--keep`, `clean`, `push --force`-family, non-`--ff-only` `merge`, `pull` without `--ff-only`, `rebase`, `filter-branch`, `update-ref`, `-c alias.*`, `--exec-path`). Allows the coordination set.
+- **`bmad-swarm update` no longer hot-swaps live enforcement.** While `.claude/hooks/.session-active` exists, it skips regenerating `.claude/hooks/` and `settings.json` (this wedged the 2026-08-13 merge). `--force` does not override the skip — use `--swap-live-hooks`.
+- **Invalid `permissions.orchestrator_allow` entries fail config load loudly** — every `loadSwarmConfig` caller (`init`, `update`, `validate`, `doctor`, `start`) surfaces the error rather than silently dropping the entry.
+
+##### Fixed
+- **Git subcommand parsing in the write-gate** misread `git -C /path <subcommand>`: the argument to `-C` was taken as the subcommand, so `git -C . apply evil.patch` slipped past the deny-set. Option-with-argument globals (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`) are now consumed before subcommand resolution; `-c alias.*`/`-c …!` and `--exec-path` are denied outright.
+
+##### Removed
+- **`project.yaml` removed from the orchestrator writable set** (D-037 retires the file; the Stream B cutover relies on this). Phase writes flow through the CLI.
+
+Security posture (ADR-017) is preserved by construction: the validator's deny sets and the gate's deny sets are pinned to each other by a source-parsing consistency test, and a validator escape still cannot grant writes (the runtime write-gate is an independent layer).
+
+#### Stream B — SE-3 resilience (reconcile / liveness / project.yaml retirement)
+
+##### Added
+- **Reconcile-on-start (ADR-018 / RES-2/RES-3/RES-4/RES-5).** New `record.cjs reconcile --tasklist <-|file> [--json]` subcommand. It diffs the `TaskList` tool output against `artifacts/context/task-ledger.md` and the project-brain `gates:` frontmatter, and prints a machine-generated coordination action list: **re-wake** unwoken `pending` tasks (a `pending` task with no durable `in_progress` wake-ack was never woken), respawn **orphans** (in the ledger but gone from `TaskList` — a dead owner / lost task), ping-then-respawn **stuck** `in_progress` tasks with no recent ledger activity, and surface **awaiting-human** gates first. The `session-start-warmboot` hook now instructs the orchestrator to run `TaskList` and pipe it to this subcommand on every warm boot. Pure logic lives in `bin/record.cjs` (self-contained, ships to `.claude/bmad/bin/`) and is re-exported by `utils/reconcile.js`.
+- **Wake-ack protocol (RES-3).** Every generated teammate is now instructed that its first tool call on wake is `TaskUpdate → in_progress`; a PostToolUse hook writes that transition to the durable task ledger, making "`pending` with no `in_progress` row = never woken" authoritative for reconciliation.
+- **Liveness carve-out (RES-1).** The orchestrator identity documents event-driven reconciliation (one liveness ping, then respawn against the same task pointer for an unresponsive owner) as the sole exception to the no-status-check rule — without reverting the single-wake channel (D-028).
+- **`gates:` frontmatter contract (D-037 / ADR-018 point 5).** The project-brain frontmatter now REQUIRES a `gates:` map (the awaiting-human home). `validate` and `doctor` enforce its shape; each gate's `status` must be one of `pending | awaiting-human | approved | passed | failed | skipped` (`skipped` marks a gate a project deliberately does not apply).
+
+##### Changed
+- **RES-9 rejection flow.** On a blocking review rejection the orchestrator now creates a fix task (assigned to the original developer) AND a re-review task (assigned to the reviewer, blocked on the fix task) — replacing the dead "block the fix on the already-completed review task" edge.
+- **Machine-state home relocated to the project-brain frontmatter (D-037).** `phase` (and a `phase_history`) now live in `artifacts/context/project-brain.md` frontmatter. `utils/phase-machine.js`, `cli/phase.js`, `cli/status.js`, and `cli/doctor.js` read/write the brain frontmatter instead of `project.yaml`.
+
+##### Removed / Migrated (BREAKING)
+- **`project.yaml` is retired (D-037 / WS-11).** It was a prompted chore-file with no guaranteed reader (lied in 8/9 field projects). `bmad-swarm init` no longer creates it. `bmad-swarm update` gains **step 4.2**: an idempotent migration that folds a legacy `project.yaml`'s `phase` into the brain frontmatter (creating a minimal brain if none exists), then deletes `project.yaml`. This migration runs even when a live session is active (migrating a user-owned file is not a hook swap — it sits outside the live-swap guard).
+
+#### Stream C — Phase 3 ship-prep (facade kill list, F-023, packaging)
+
+### Removed (facade kill list — ADR-020, audit CB-7)
+
+The audit found a ring of shipped, help-text-documented features that were functionally inert — discovered-but-never-generated, called-only-by-tests, or with zero importers — plus ~275 lines of tests pinning the dead code. Per ADR-020 all are deleted rather than wired (nothing in the field record showed demand; wiring the plugin branch would have been a security project — see SEC note).
+
+- **Plugin system deleted.** Removed `utils/plugins.js`, `cli/plugin.js`, the `bmad-swarm plugin` command (registration dropped from `bin/bmad-swarm.js`), and `test/plugins.test.js`. Plugin agents were discovered (`plugin list`) but never fed to `getAgentNames()`/generation, so a discovered plugin agent was never spawnable. **Security:** deleting plugin loading also retires the latent prompt-injection vector SEC-F-021 (untrusted `plugins/agents/*.md` read verbatim as agent instructions) without the hardening the "wire" branch would have required — ADR-020 point 4.
+- **Workspace / monorepo commands deleted.** Removed `utils/workspace.js`, `cli/workspace.js`, the `bmad-swarm workspace` command, and `test/workspace.test.js`. `mergeWorkspaceConfig` (the actual feature) was only ever called by its own tests; `init`/`update`/`start` never consulted workspace context.
+- **`run-reporter` deleted.** Removed `utils/run-reporter.js` and `test/run-reporter.test.js`. Its only importer was its own test — no CLI command or generator produced a run report. ADR-020 point 3 gave it a "wire as ADR-018's session-end snapshot, or delete in the same commit — no limbo" fork; the fork resolves to **delete**, because SE-2 built the task ledger as the session-end snapshot substrate without run-reporter (traceability for the ADR consequence).
+- **`integrations/github.js` deleted.** Zero importers. The `integrations/` directory is gone; the `files` whitelist no longer references it.
+- **methodology-eject remnant removed.** The `eject methodology` placebo was already retired (V-5 — the shipped methodology copy *is* the override); this drops its last dead remnant, the never-read `overridesMethodologyDir` path in `utils/paths.js`. Agent ejection (`bmad-swarm eject agent <name>`, the live Layer-3 override) is untouched.
+- **~275 lines of dead-code tests removed** along with the modules above (`test/plugins.test.js`, `test/workspace.test.js`, `test/run-reporter.test.js`, plus the workspace/plugin regions of `test/cli.test.js`). Tests that pin unreachable code are negative documentation — ADR-020.
+
+### Fixed
+
+- **F-023: generated CI no longer pins an unpublished version.** `generators/github-actions-generator.js` produced a workflow whose install step ran `npm install -g bmad-swarm@<local package.json version>`. Because that exact version is not on npm, the step 404'd (`ETARGET`) on the first run of *every* generated project's workflow — a guaranteed red build. The validate step now runs `npx --yes bmad-swarm@latest validate`, which resolves whatever is actually published (read-only token, push-and-PR triggers, and D-042 tracked-path filters unchanged). **Caveat:** the workflow is only honest once `bmad-swarm` is published to npm; a human may swap `@latest` for a specific about-to-publish version at the publish sign-off (design §5, default `@latest`). Test added in `test/cli.test.js` (asserts no unpublished pin + the resolvable `npx …@latest validate` spec).
+
+### Changed (packaging & release)
+
+- **`package.json`.** Version → `3.0.0` (**recommended**; the facade removals + `project.yaml` removal are breaking, documented behavior — human confirms at the publish gate). Added `repository`, `homepage`, and `bugs` fields (GitHub `ccsmith33/BMAD-Swarm`). Pruned the `files` whitelist: dropped the deleted `integrations/`, added the runtime `scripts/` directory.
+- **`.npmignore` removed.** Redundant against the `files` whitelist — with `files` present npm packs only the listed paths, so the blacklist could never add exclusions. The whitelist is now the single source of truth for the packed tarball (`npm pack --dry-run` confirmed no `test/`, `artifacts/`, or `.claude/` leakage).
+
+---
 
 v3 coordination layer (D-028, ADR-013, ADR-014). Three changes to how teams are assembled and spawned: orchestrator-assigned task ownership becomes the single wake channel; generated agents become valid native Claude Code custom agent definitions spawned via `subagent_type` (the `FIRST: Invoke /identity-{role}` teammate ceremony is retired); and the `teamcreate-gate` drops transcript scanning entirely in favor of the `artifacts/context/team-assembly-log.md` file handshake as the sole Pass-1 channel.
 

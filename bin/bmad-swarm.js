@@ -52,10 +52,15 @@ registerStartCommand(program);
 const { registerPhaseCommand } = await import('../cli/phase.js');
 registerPhaseCommand(program);
 
-const { registerWorkspaceCommand } = await import('../cli/workspace.js');
-registerWorkspaceCommand(program);
+// Knowledge-promotion surface (Stream K): recall + lessons {harvest,propose,reopen-scan}.
+const { registerRecallCommand } = await import('../cli/recall.js');
+registerRecallCommand(program);
 
-const { registerPluginCommand } = await import('../cli/plugin.js');
-registerPluginCommand(program);
+const { registerLessonsCommand } = await import('../cli/lessons.js');
+registerLessonsCommand(program);
+
+// Mission Control (Phase 4 Stream M) — read-only report surface.
+const { registerReportCommand } = await import('../cli/report.js');
+registerReportCommand(program);
 
 program.parse();

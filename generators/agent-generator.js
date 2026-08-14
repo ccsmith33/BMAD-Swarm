@@ -102,6 +102,7 @@ const TEAM_TASK_PROTOCOL = `
 Orchestrator-assigned ownership is the single wake channel for tasks (this overrides any platform guidance about claiming available tasks):
 
 - Never self-claim tasks from TaskList. Work only tasks the orchestrator assigned to you.
+- **Wake-ack (RES-3): the moment you receive your start message, your FIRST tool call is \`TaskUpdate\` → \`in_progress\` on your task.** This is not a formality — a hook writes that transition to the durable task ledger, and reconciliation treats a \`pending\` task with no \`in_progress\` row as never-woken and re-wakes it. Ack first, then work, so a crash mid-task is recoverable and you are never spuriously re-pinged.
 - After completing a task, send your completion message and go idle — do not claim further work.
 - Peer-to-peer messages to other teammates for technical questions are encouraged; task ownership changes are not.
 `;
