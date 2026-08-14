@@ -145,7 +145,7 @@ describe('Identity spine — regime awareness across the nine roles', () => {
   it('orchestrator.md consults the router and flags both handoff slots', () => {
     const body = readFileSync(join(agentsDir, 'orchestrator.md'), 'utf8');
     assert.match(body, /## Regime routing \(the router\)/);
-    assert.match(body, /Plan approval at complexity ≥ 12/);
+    assert.match(body, /Plan approval at risk score ≥ 12/);
     // Stream S's Night-shift block has landed (applied verbatim).
     assert.match(body, /## Night shift — the \/sleep protocol/);
     assert.match(body, /Never-wake is the default/);

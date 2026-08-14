@@ -65,12 +65,26 @@ describe('Lean identity split — content integrity (D-57 Seam D)', () => {
         );
       });
 
-      it('CORE is strictly smaller than the pre-split identity (boot-cost reduction)', () => {
+      it('CORE holds its ACHIEVED boot-cost reduction floor (regression guard, A1)', () => {
         const originalChars = readFileSync(originalPath, 'utf8').length;
         const coreChars = readFileSync(corePath, 'utf8').length;
+        const reductionPct = (1 - coreChars / originalChars) * 100;
+        // The reduction actually DELIVERED by the split, pinned per role as a FLOOR.
+        // The old check (`core < original`) let a -2% "reduction" pass as success
+        // (A1): green did not mean the boot-cost goal was met. This locks in what
+        // was delivered so a future edit that re-bloats a core fails here. NOTE:
+        // these are NOT the design's aspirational ≤5K-char / -40–60% targets — those
+        // were not met (cores carry resident behavioral rules; integrity > size) and
+        // a deeper slimming pass is a documented follow-up, deliberately not done here.
+        const REDUCTION_FLOOR_PCT = {
+          ideator: 15, reviewer: 15, strategist: 28, architect: 2,
+          researcher: 2, security: 8, developer: 13, devops: 3,
+        };
+        const floor = REDUCTION_FLOOR_PCT[role] ?? 0;
         assert.ok(
-          coreChars < originalChars,
-          `${role} CORE (${coreChars} chars) is not smaller than the original (${originalChars}) — the split saved no boot cost`
+          reductionPct >= floor,
+          `${role} CORE reduction ${reductionPct.toFixed(2)}% fell below its achieved floor of ${floor}% ` +
+            `(core ${coreChars} / original ${originalChars} chars) — a core was re-bloated past what the split delivered (A1 regression)`
         );
       });
     });

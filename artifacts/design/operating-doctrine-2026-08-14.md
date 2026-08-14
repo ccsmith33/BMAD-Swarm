@@ -364,7 +364,8 @@ substitutes for, cutting fragment count (Layers 2–3).
 **Approach — core/annex split, with the creed kept resident:**
 
 1. **Every `agents/{role}.md` splits into a slim CORE and lazy-loaded ANNEXES.**
-   - CORE (stays in the identity, target **≤5K chars ≈ 1.3K tokens** per role):
+   - CORE (stays in the identity; design target **≤5K chars ≈ 1.3K tokens** per role
+     — **NOT met in delivery; see the achieved-figures correction below**):
      role + expertise summary, inputs/outputs, behavioral rules, quality bar,
      escalation/decision-classification pointer, team-task protocol.
    - ANNEX (moves to `methodology/` files, read on first need): technique catalogs,
@@ -373,12 +374,25 @@ substitutes for, cutting fragment count (Layers 2–3).
      artifact schemas — this makes it uniform. Each extracted section leaves a one-line
      pointer: *"When you need X, read `.claude/bmad/methodology/<file>.md`."*
    - Priority targets (audit §59): ideator 17.1K chars, reviewer 14.8K, strategist
-     13.5K, architect 13.2K → each ~-40–60%. Orchestrator slims via P1: the ~500-word
+     13.5K, architect 13.2K → each ~-40–60% *(aspirational; NOT achieved — see the
+     correction below)*. Orchestrator slims via P1: the ~500-word
      inline doctrine prose in the branch's self-audit section compresses to the three
      questions + creed + pointer once Layer 0 exists (net: the orchestrator identity
      gets doctrine-DENSER while getting shorter).
-   - Expected effect: avg identity ~3K → ~1.2K tokens; ~2K/spawn saved; ~16K on a
-     9-role fan-out; compounding on every spawn forever (eval-synthesis action 5).
+   - Expected effect (design estimate): avg identity ~3K → ~1.2K tokens; ~2K/spawn
+     saved; ~16K on a 9-role fan-out; compounding on every spawn forever
+     (eval-synthesis action 5).
+   - **ACHIEVED IN DELIVERY (correction, A1 — 2026-08-14 review):** the split
+     delivered **~-13% overall** (8-role total ~110.7K → ~96.0K chars), not the 50%+
+     the token estimate implied. Per role: strategist **-29%**, ideator/reviewer
+     **-16%**, developer **-14%**, security **-9%**, devops **-4%**, architect/
+     researcher **-2%**. Cores landed at 2–3× the ≤5K target because behavioral rules
+     stay resident (the implementers correctly chose CONTENT INTEGRITY over size — a
+     dropped behavioral rule is a real regression). Boot cost is an optimization, not
+     a correctness property; a deeper slimming pass (push more behavioral-rule bulk
+     into annexes behind resident pointers) is a **documented follow-up, deliberately
+     not done here**. `test/lean-identity-integrity.test.js` now pins these achieved
+     reductions as per-role regression floors so a core cannot silently re-bloat.
 2. **The capability grounding is NEVER lazy-loaded.** The creed is ~70 tokens — it
    rides in full. Teammates get a 2-line worker form appended to the
    `TEAM_TASK_PROTOCOL` constant in `generators/agent-generator.js` (injected into
@@ -483,7 +497,7 @@ no phases, no ordering beyond the one named edge.
 | **A — Doctrine core + orchestrator surface** | one agent, one shot | NEW `methodology/operating-doctrine.md`; `agents/orchestrator.md` (identity opening §2.1.3, assembly-schema `doctrine:` key §2.2.3, self-audit re-anchor + read-back §2.6, context-curation tightening §2.5.3, human-override rows §2.3, entry-point annotation §2.3); `generators/hooks/session-start-warmboot.cjs.src` (creed injection + handshake line §2.1.1–2) | coupled: all share the canonical text + cross-refs. `/identity-orchestrator` + `.claude/` copies regenerate mechanically |
 | **B — Router rewrite** | one agent, one shot | `methodology/decision-classification.md` (risk-factor table, Decision 1/2 split, regime re-key, WS-12 re-key §2.3) | independent given §2.3's normative tables |
 | **C — Proportional review** | one agent, one shot | `templates/rules/quality-standards.md`; `test/rules-generator.test.js`; regen of `.claude/rules/quality-standards.md` | tier ladder + floors verbatim from §2.4; `rules-generator.js` body unchanged |
-| **D — Lean role identities** | fan out per role (up to 8 parallel) | `agents/{ideator,reviewer,strategist,architect,developer,researcher,security,devops}.md` + new `methodology/` annex files | shared convention from §2.5.1 (CORE ≤5K chars, pointer format); each role independent; orchestrator excluded (Seam A owns it) |
+| **D — Lean role identities** | fan out per role (up to 8 parallel) | `agents/{ideator,reviewer,strategist,architect,developer,researcher,security,devops}.md` + new `methodology/` annex files | shared convention from §2.5.1 (CORE slim target ≤5K chars — see §2.5's A1 correction: achieved ~-13% overall, cores 2–3× target, integrity kept over size; pointer format); each role independent; orchestrator excluded (Seam A owns it) |
 | **E — Worker creed + generator** | one agent, one shot | `generators/agent-generator.js` (`TEAM_TASK_PROTOCOL` 2-line addition §2.5.2) + its tests | small, isolated constant + test |
 | **F — Integration + verification** | one agent, AFTER A–E (named dep: consumes their merged output) | regenerate `.claude/` (agents, commands, hooks, rules), run full test suite + parity/self-containment guards, live-repo smoke (warm-boot injection renders, lint passes with `doctrine:` key) | the verification scaled to this change's blast radius: T3 — it rewrites how every future session operates |
 

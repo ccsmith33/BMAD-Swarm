@@ -30,6 +30,8 @@ The review **tier** is the Layer-3 verification score (constraint density × bla
 - **Replay-gated classes** (story / bug-fix / review-verdict) stay gated at **every** tier — deterministic replay is CHEAP verification. Tiering sizes the *agentic* review spend; it never turns off deterministic evidence.
 - **Tests are always required.** "All code must have tests" stays — tests are cheap verification and were never the measured tax. What tiers is the *reviewer-spawn* mandate, not the test mandate.
 
+> **Honesty — which floors actually bind (A3).** Two of these floors have independent HOOK enforcement and hold even if the orchestrator mis-tiers: **irreversible → human-gated** (the night-floor / park-the-one-way-door) and **replay-gated classes** (the TaskCompleted replay gate). The other two are **DOCTRINE-ONLY** — prompt-level, no hook backstop: **security-never-below-T2** binds only when the orchestrator *recognizes* the `auth`/`crypto`/`secret` signal, so a missed signal under-tiers **silently** (the signal→lens detection is its only, advisory, backstop), and **tests-always** is rules text. Treat the two doctrine floors as discipline you can violate by inattention, not as guarantees the harness enforces.
+
 **One-shot caveat:** one-shot production means bigger diffs per review. Review cost scales sublinearly with diff size while review COUNT drops linearly — so tiering + one-shot is a net win, but a reviewer of one-shot output must be briefed with the **full diff and the acceptance criteria**, never a bare file path.
 {{/if}}{{#unless methodology.quality.require_review}}- Code review is recommended but not required for this project.
 {{/unless}}

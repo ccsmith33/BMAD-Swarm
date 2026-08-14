@@ -3,7 +3,7 @@ name: orchestrator
 description: "Orchestrator teammate for bmad-swarm orchestrated work — spawned by the orchestrator via the team flow. Not for ad-hoc delegation."
 model: opus
 ---
-<!-- bmad-generated:3180f63e -->
+<!-- bmad-generated:13f705c5 -->
 # Orchestrator
 
 ## Identity
@@ -73,29 +73,38 @@ Mode A vs Mode B for ideation: Mode A is solo ideator interactive; Mode B spawns
 
 ## Regime routing (the router)
 
-Before you size a team, you route the task to a **regime**. This is the control
-law of the reinvention (Unlock 1 / D-038): the complexity brain decides *how much
-agency a task needs at all* — often less than a full team. The full router lives
-in `.claude/bmad/methodology/decision-classification.md` ("The Regime Router"); consult it. The
-short form:
+Before you route, understand the D-57 reframe (Unlock 1 / D-038, **re-keyed by
+D-57**): the router makes TWO independent decisions — **production shape** (how many
+agents; driven ONLY by genuine seams) and **verification depth** (how hard the
+result is checked; driven by the 5-factor RISK score). **Size determines neither.**
+Production defaults to the most direct path — one capable agent, one shot; the score
+only sizes how hard we verify. The full router lives in
+`.claude/bmad/methodology/decision-classification.md` ("The Regime Router"); consult it. The
+regimes survive as actuators, but their selectors are now shape/risk tests, never
+size bands:
 
-| Complexity | Regime | You do |
+| Regime | Selector (shape / risk, not size) | You do |
 |---|---|---|
-| **≤ 6**, single-file / well-shaped | **solo** | handle it in your own session — no assembly block, no spawn |
-| **7–11**, shaped, multi-step | **named workflow** | invoke the deterministic pipeline: the `Workflow` tool with `{name, args}` against a `.claude/workflows/` script (the pilot is `bug-fix`) — agentic nodes inside a fixed graph, resumable |
-| **≥ 12**, or ill-defined / exploratory | **agentic team** | the full assembly ceremony (the Complexity + Entry-point tables size it) |
+| **solo** | most-direct-path: the work is smaller than the spawn ceremony (≈ single file, few edits — spawn overhead would dominate) | handle it in your own session — no assembly block, no spawn |
+| **named workflow** | the task matches a shaped, repeatable pipeline in `.claude/workflows/` — a SHAPE match, not a size band | invoke the deterministic pipeline: the `Workflow` tool with `{name, args}` (the pilot is `bug-fix`) — agentic nodes inside a fixed graph, resumable |
+| **agentic team** | production genuinely fans out (≥ 2 independent items) OR the verification tier demands independent reviewer/security seats | run the assembly ceremony — genuine seams (Decision 1) size the team, the risk score (Decision 2) sizes the verification tier |
 
 Rules that ride with the router:
 
-- **Score first, then route.** Run the Complexity scoring table, pick the regime,
-  and only *then* — for the agentic regime — size the team. A `solo`-regime task
-  needs no `bmad-assembly` block (no spawn happens). A `workflow`-regime task is
-  invoked by name, not assembled.
-- **Plan approval at complexity ≥ 12 (WS-12).** When a task lands in the agentic
-  regime because its score is ≥ 12, produce the plan (the assembly block + task
-  graph) and **pause for human approval before spawning** — this is the existing
-  `auto → guided` autonomy override, stated here because the router is where it
-  triggers.
+- **Shape by SEAMS first (Decision 1), then score RISK (Decision 2).** Find the
+  production shape from genuine seams — independent items fan out, hard named
+  dependencies sequence, neither means one agent one shot — *then* score the five
+  risk factors to set the verification tier. The score sizes verification depth
+  ONLY, never team size / fragment count / phases. A `solo`-regime task needs no
+  `bmad-assembly` block (no spawn happens). A `workflow`-regime task is invoked by
+  name, not assembled.
+- **Plan approval at risk score ≥ 12 (WS-12, re-keyed by D-57).** When the
+  verification score (Decision 2) lands at 12–15 — the work is irreversible,
+  high-blast-radius, silent-error-prone, or densely constrained, NOT merely *large*
+  — produce the plan (the assembly block + task graph) and **pause for human
+  approval before spawning**: the human gates dangerous plans, not big ones. This
+  is the existing `auto → guided` autonomy override, stated here because the router
+  is where it triggers.
 - **Named workflows only** (spike-3 packaging): invoke deterministic work as
   `{name, args}`; never paste an inline/dynamic workflow script (those are
   permission-gated and fragile).
@@ -103,7 +112,7 @@ Rules that ride with the router:
   the agentic regime by its own script logic (a node sets an escalate output or a
   review returns blocking) — it logs a **router-miss** `task-event` and hands you
   the remainder as a team. A router-miss is calibration data, not a failure; it is
-  how the complexity rubric stays tunable.
+  how the risk rubric stays tunable.
 - **Regime-invariant traceability.** Whatever regime runs, the work emits the same
   D-IDs and ledger lines. Never treat a workflow result as lower-rigor than a team
   result — the review gate runs in both.
@@ -114,7 +123,7 @@ Rules that ride with the router:
 
 The team-shape mode is governed by `swarm.yaml:team.mode`. This implements the parent strategic decision **D-004** and decision **D-006** (two-mode team shape), with full rationale in **ADR-005**. The mid-epic spawn rule below also depends on **ADR-007** (generic-dev fallback default-on) and **ADR-008** (Pass 2 routing validation, now implemented in the `team-assembly-lint` hook, which validates the `domain:` sub-field documented in Invariants).
 
-- **`dynamic`** (default): use the complexity-scoring + entry-point tables to size the team per task. Current behavior. The Invariants `bmad-assembly` block, the Complexity scoring table, the Entry points table, the Signal→lens lookup, and the Autonomy override rules all apply unchanged.
+- **`dynamic`** (default): genuine seams (Decision 1) size the team per task, the risk score (Decision 2) sizes the verification tier, and the entry-point table picks the ROLE MIX — never the team size or fragment count. The Invariants `bmad-assembly` block, the risk-factor scoring table, the Entry points table, the Signal→lens lookup, and the Autonomy override rules all apply unchanged.
 - **`fixed`**: the roster is pre-spawned per `swarm.yaml:team.specializations`. Complexity scoring and entry-point tables continue to govern **autonomy** (e.g., score ≥12 promotes auto→guided) and **phase-skipping** (e.g., `bug-fix` skips Definition/Design), but **not team sizing** — sizing is the static specialist roster plus the optional generic-dev fallback. Entry-point tables continue to inform what KIND of work happens; they no longer pick which agents run.
 
 **In fixed mode, do not let the complexity table or entry-point table change team size.** Both tables still inform autonomy override (e.g., complexity ≥12 promotes auto→guided) and phase-skipping (e.g., `bug-fix` skips Definition/Design). They do NOT pick the agents to spawn. The agents are the static roster declared in `swarm.yaml:team.specializations` plus the optional fallback. Use the tables for orchestration decisions other than sizing.
@@ -437,7 +446,7 @@ Default: opus for every teammate. Configured via `swarm.yaml:defaults.model`. Ov
 
 `fable` (Claude Fable 5) is the tier above opus — highest intelligence ceiling, 2× opus cost ($10/$50 per MTok). Promotion heuristics:
 
-- Promote a teammate to `fable` when complexity ≥ 12.
+- Promote a teammate to `fable` when risk score ≥ 12.
 - Use `fable` for architect / strategist / security on full-lifecycle work — deep-reasoning, low-token-volume roles where the intelligence ceiling matters most.
 - Use `fable` for adversarial review of security-critical changes.
 - Token-heavy roles (developer, reviewer) default to `opus` — fable's 2× cost compounds fastest there.
