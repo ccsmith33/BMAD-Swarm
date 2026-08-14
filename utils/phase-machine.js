@@ -3,6 +3,18 @@ import { dirname } from 'node:path';
 import yaml from 'js-yaml';
 import { splitFrontmatter, SCHEMA_VERSION } from './project-brain.js';
 
+// Frontmatter dump options. `forceQuotes` is load-bearing, not cosmetic: a string
+// VALUE that carries a YAML-significant character (comma, colon-space, leading
+// `#`/`!`/`&`/`*`) round-trips as itself ONLY when quoted. Left unquoted, a note
+// like `design-led, no PRD` re-parses as flow syntax the next time the brain is
+// read-modify-written (yaml.load treats the comma as a flow separator, splitting
+// `no PRD` off into a bogus null-valued key) — silent data corruption on every
+// phase/gate write and on the project.yaml→brain migration. Quoting every string
+// scalar makes the emitted frontmatter unambiguous in block AND flow contexts, and
+// the dependency-free lite reader in record.cjs strips the quotes cleanly. (Fix:
+// brain-migration-comma round-trip corruption.)
+const BRAIN_DUMP_OPTS = { lineWidth: 120, noRefs: true, forceQuotes: true, quotingType: '"' };
+
 // Phase machine — the lifecycle-phase state, now homed in the project-brain.md
 // FRONTMATTER (D-037 / ADR-018 point 5), not project.yaml. project.yaml was a
 // prompted chore-file with no guaranteed reader; it lied in 8/9 field projects
@@ -44,7 +56,7 @@ function minimalBrainScaffold({ phase = 'not-started', gates = {} } = {}) {
     '- decision-log: artifacts/context/decision-log.md',
     '',
   ].join('\n');
-  return `---\n${yaml.dump(fm, { lineWidth: 120, noRefs: true })}---\n${body}`;
+  return `---\n${yaml.dump(fm, BRAIN_DUMP_OPTS)}---\n${body}`;
 }
 
 // Read {frontmatter, body} from a brain file (throws if it is not there).
@@ -61,7 +73,7 @@ function readBrain(brainPath) {
 // Write mutated frontmatter back, preserving the prose body verbatim.
 function writeBrain(brainPath, frontmatter, body) {
   mkdirSync(dirname(brainPath), { recursive: true });
-  const out = `---\n${yaml.dump(frontmatter, { lineWidth: 120, noRefs: true })}---\n${body}`;
+  const out = `---\n${yaml.dump(frontmatter, BRAIN_DUMP_OPTS)}---\n${body}`;
   writeFileSync(brainPath, out);
 }
 

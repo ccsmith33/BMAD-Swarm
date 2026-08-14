@@ -6,8 +6,7 @@ phase: delivery
 gates:
   prd-approved:
     status: skipped
-    note: reinvention track is design-led
-    no PRD: null
+    note: 'reinvention track is design-led, no PRD'
   architecture-approved:
     status: passed
     ref: artifacts/design/phase2-enforcement-resilience-2026-08-13.md

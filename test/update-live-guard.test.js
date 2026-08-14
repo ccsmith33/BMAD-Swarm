@@ -91,6 +91,8 @@ describe('update live-swap guard (ADR-017 Amendment 1)', () => {
     assert.match(out, /Migrated project\.yaml → project-brain\.md frontmatter \(phase: design\)/);
     assert.ok(!existsSync(join(dir, 'project.yaml')), 'project.yaml must be removed after migration');
     const brain = readFileSync(join(dir, 'artifacts', 'context', 'project-brain.md'), 'utf8');
-    assert.match(brain, /^phase: design$/m, 'the migrated phase must land in the brain frontmatter');
+    // Frontmatter string scalars are emitted quoted (comma/colon/# safety, see
+    // phase-machine.js BRAIN_DUMP_OPTS), so tolerate the optional quotes here.
+    assert.match(brain, /^phase: "?design"?$/m, 'the migrated phase must land in the brain frontmatter');
   });
 });

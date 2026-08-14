@@ -91,7 +91,9 @@ describe('CLI Integration', () => {
     assert.match(output, /Migrated project\.yaml/);
     assert.ok(!existsSync(join(dir, 'project.yaml')), 'project.yaml must be deleted by the migration');
     const brain = readFileSync(join(dir, 'artifacts', 'context', 'project-brain.md'), 'utf8');
-    assert.match(brain, /phase:\s*design/, 'migrated phase must land in the brain frontmatter');
+    // Frontmatter string scalars are emitted quoted (comma/colon/# safety, see
+    // phase-machine.js BRAIN_DUMP_OPTS), so tolerate the optional quotes here.
+    assert.match(brain, /phase:\s*"?design"?/, 'migrated phase must land in the brain frontmatter');
   });
 
   it('update --dry-run does not write files', () => {
