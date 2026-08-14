@@ -1,4 +1,4 @@
-<!-- bmad-generated:2cb05fff -->
+<!-- bmad-generated:8a6e836b -->
 # Artifact Schema: Epic Breakdown
 
 The epic breakdown document decomposes the PRD and architecture into implementable epics and stories. It serves as the master plan for implementation, mapping every functional requirement to stories and organizing them into logical groups (epics) that can be developed in sequence.
@@ -111,6 +111,7 @@ Then they see an error message "Invalid email or password" and no token is issue
 
 ### Story Sequencing
 - Stories within an epic must be ordered by dependency (foundational first)
+- Ordering communicates reading/priority order, not execution order: execution edges come only from each story's `## Depends-On:` field (see the story schema). Stories without declared dependencies are independent by default and run in parallel.
 - Cross-epic dependencies must be noted
 - The first epic/story should typically be project scaffolding and setup
 - Story numbering convention: `[Epic].[Story]` (e.g., 1.1, 1.2, 2.1)
