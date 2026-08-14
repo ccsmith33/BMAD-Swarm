@@ -62,6 +62,7 @@ export function generateHooks(config, projectPaths, options = {}) {
   const hooks = [
     'post-compact-reinject.cjs',
     'session-start-warmboot.cjs',
+    'session-start-autoheal.cjs',
     'pre-compact-flush.cjs',
     'user-prompt-submit.cjs',
     'team-assembly-lint.cjs',
@@ -106,6 +107,14 @@ export function getHooksConfig() {
       // restores identity on compact); Claude Code concatenates their
       // additionalContext.
       { matcher: 'startup|compact', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-warmboot.cjs"' }] },
+      // AUTO-HEAL DELIVERY (F-29/F-30). Registered ONLY on `startup` (never
+      // `compact`): at a FRESH session start it compares the installed package
+      // version to the scaffold's .claude/.bmad-version.json stamp and, on drift,
+      // offers or runs `bmad-swarm update` per swarm.yaml `delivery.auto_heal`.
+      // The startup-only matcher keeps it out of the mid-session window where
+      // regenerating hooks would hot-swap the running session (live-swap hazard,
+      // D-045); update's own .session-active guard is the second line of defense.
+      { matcher: 'startup', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-autoheal.cjs"' }] },
     ],
     // Project brain PreCompact FLUSH (phase2 design §4.4; continuity §2.2/§6.1).
     // Fires before every compaction: injects the current project-brain.md + its

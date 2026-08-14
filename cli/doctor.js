@@ -6,6 +6,7 @@ import { loadSwarmConfig, getAgentNames } from '../utils/config.js';
 import { readFileSafe } from '../utils/fs-helpers.js';
 import { METHODOLOGY_SHIP_LIST } from '../utils/scaffold-paths.js';
 import { validateBrain, extractPointers } from '../utils/project-brain.js';
+import { getPackageVersion, computeScaffoldHash, readStamp, detectDrift, driftOfferLine } from '../utils/auto-heal.js';
 
 // The claim-decay pass lives in the self-contained replay engine (bin/replay-check.cjs)
 // so doctor and any future gate replay the same deterministic check — the single-
@@ -177,6 +178,13 @@ async function runDoctor() {
   // a prompt to re-verify, not a build break. It never flips hasIssues.
   reportClaimDecay(paths);
 
+  // 8.7. Scaffold drift (auto-heal, F-29/F-30). Compare the installed package to
+  // the scaffold's version stamp. Like claim decay this FLAGS, it does not gate —
+  // drift is a prompt to run `update`, not a build break — so it never flips
+  // hasIssues. This is the same signal the fresh-SessionStart auto-heal hook acts
+  // on, surfaced synchronously in the health check.
+  reportScaffoldDrift(paths);
+
   // 9. Orphaned overrides
   if (existsSync(paths.overridesAgentsDir)) {
     const overrides = readdirSync(paths.overridesAgentsDir).filter(f => f.endsWith('.md'));
@@ -312,6 +320,31 @@ function reportClaimDecay(paths) {
     const rel = file.startsWith(paths.root) ? file.slice(paths.root.length).replace(/^[\\/]/, '') : file;
     console.log(`    - ${rel}: ${finding.message}`);
   }
+}
+
+/**
+ * Advisory scaffold-drift report (auto-heal, F-29/F-30). Compares the installed
+ * package version + scaffold hash to the .claude/.bmad-version.json stamp and
+ * prints the drift (with the safe `bmad-swarm update` remedy) when they diverge.
+ * Never flips hasIssues \u2014 this flags, it does not gate.
+ * @param {object} paths - Project paths
+ */
+function reportScaffoldDrift(paths) {
+  if (!existsSync(paths.claudeDir)) return;
+  let currentVersion, currentHash;
+  try {
+    currentVersion = getPackageVersion();
+    currentHash = computeScaffoldHash();
+  } catch {
+    return; // cannot determine the installed identity \u2014 say nothing.
+  }
+  const stamp = readStamp(paths.claudeDir);
+  const drift = detectDrift(stamp, { currentVersion, currentHash });
+  if (!drift.drifted) {
+    check(true, `scaffold version stamp current (${stamp.version})`);
+    return;
+  }
+  console.log(`  \u2139 ${driftOfferLine(drift)}`);
 }
 
 function check(pass, message, fix) {

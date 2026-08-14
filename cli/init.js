@@ -15,6 +15,7 @@ import { generateRules } from '../generators/rules-generator.js';
 import { renderEarnedRulesReview } from '../utils/earned-rules.js';
 import { generateCommands } from '../generators/commands-generator.js';
 import { generateWorkflows } from '../generators/workflows-generator.js';
+import { generateVersionStamp } from '../generators/version-stamp-generator.js';
 import { loadSwarmConfig } from '../utils/config.js';
 import { DEFAULT_MODEL } from '../utils/validator.js';
 import { runScan } from './scan.js';
@@ -158,6 +159,11 @@ async function runInit(options) {
   // 7. Generate CLAUDE.md
   generateClaudeMd(config, paths);
   console.log('  \u2713 Generated CLAUDE.md');
+
+  // 7.5. Stamp the scaffold with the version that produced it (auto-heal, F-29/
+  // F-30). A fresh init is a full generation, so the stamp is always advanced.
+  const stampResult = generateVersionStamp(config, paths);
+  console.log(`  \u2713 Stamped scaffold version (.claude/.bmad-version.json @ ${stampResult.version})`);
 
   // 8. Create artifacts directory structure
   const artifactSubdirs = ['exploration', 'planning', 'design', 'design/decisions', 'implementation', 'implementation/stories', 'reviews', 'context'];
@@ -326,6 +332,14 @@ function buildSwarmYaml(answers) {
     output: {
       artifacts_dir: './artifacts',
       code_dir: './src',
+    },
+    // Auto-heal delivery (F-29/F-30): at a fresh session start, compare the
+    // installed bmad-swarm to the version stamp the scaffold was generated with,
+    // and on drift `offer` a one-line `bmad-swarm update` prompt (default; writes
+    // nothing, so it never hot-swaps a live session), `auto` (run update at the
+    // fresh-start safe window), or `off`.
+    delivery: {
+      auto_heal: 'offer',
     },
     // Replay gate (ADR-022 / D-049): the deterministic evidence engine re-runs
     // ONLY these command shapes (prefix match) — no agent-invented command is

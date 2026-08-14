@@ -1,5 +1,6 @@
 import { getAgentNames } from './config.js';
 import { validateOrchestratorAllowEntry } from './orchestrator-allow.js';
+import { VALID_AUTO_HEAL_MODES } from './auto-heal.js';
 
 const VALID_PROJECT_TYPES = ['web-app', 'api', 'cli', 'library', 'mobile', 'monorepo', 'other'];
 const VALID_AUTONOMY_LEVELS = ['auto', 'guided', 'collaborative'];
@@ -82,6 +83,12 @@ export function validateConfig(config) {
     if (r.gated_owner_pattern !== undefined && typeof r.gated_owner_pattern !== 'string') {
       errors.push(`replay.gated_owner_pattern must be a string (a regex), got: ${typeof r.gated_owner_pattern}`);
     }
+  }
+
+  // Delivery / auto-heal validation (F-29/F-30). `delivery.auto_heal` must be one
+  // of the three modes; a typo would silently disable healing, so reject loudly.
+  if (config.delivery?.auto_heal !== undefined && !VALID_AUTO_HEAL_MODES.includes(config.delivery.auto_heal)) {
+    errors.push(`delivery.auto_heal "${config.delivery.auto_heal}" is invalid. Valid options: ${VALID_AUTO_HEAL_MODES.join(', ')}`);
   }
 
   // Permissions validation (ADR-017 Amendment 1). Each project-declared
