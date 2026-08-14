@@ -673,7 +673,7 @@ methodology:
       const paths = getProjectPaths(projectDir);
       const result = generateHooks(config, paths);
 
-      assert.equal(result.generated.length, 11, 'Should generate 11 hooks');
+      assert.equal(result.generated.length, 12, 'Should generate 12 hooks');
       assert.equal(result.skipped.length, 0, 'No hooks should be skipped');
       for (const hookPath of result.generated) {
         assert.ok(existsSync(hookPath), `Hook should exist: ${hookPath}`);
@@ -706,7 +706,7 @@ methodology:
       const result = generateHooks(config, paths);
       assert.equal(result.skipped.length, 1, 'Should skip 1 modified hook');
       assert.ok(result.skipped[0].includes('user-prompt-submit'), 'Should skip user-prompt-submit');
-      assert.equal(result.generated.length, 10, 'Should regenerate the other 10');
+      assert.equal(result.generated.length, 11, 'Should regenerate the other 11');
     });
 
     it('overwrites modified hooks with force option', () => {
@@ -727,7 +727,7 @@ methodology:
 
       const result = generateHooks(config, paths, { force: true });
       assert.equal(result.skipped.length, 0, 'Should skip nothing with force');
-      assert.equal(result.generated.length, 11, 'Should regenerate all 11');
+      assert.equal(result.generated.length, 12, 'Should regenerate all 12');
     });
 
     it('all generated hook files contain valid JavaScript', () => {

@@ -1,5 +1,5 @@
 {
-  "_bmadGenerated": "eeac6ab0",
+  "_bmadGenerated": "67591444",
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
@@ -89,6 +89,15 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-warmboot.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-autoheal.cjs\""
           }
         ]
       }

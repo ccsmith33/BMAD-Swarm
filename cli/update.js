@@ -15,6 +15,7 @@ import { collectEarnedLessons, renderEarnedRulesReview } from '../utils/earned-r
 import { generateCommands } from '../generators/commands-generator.js';
 import { generateWorkflows } from '../generators/workflows-generator.js';
 import { migrateProjectYamlToBrain } from '../utils/phase-machine.js';
+import { generateVersionStamp } from '../generators/version-stamp-generator.js';
 
 /**
  * Register the update command with the CLI program.
@@ -310,6 +311,22 @@ async function runUpdate(options) {
     } else {
       console.log('  \u2713 Regenerated .claude/settings.json');
     }
+  }
+
+  // 5.5. Advance the scaffold version stamp (auto-heal, F-29/F-30). Advance it
+  // ONLY after a FULL generation: if the live-swap guard deferred hooks/settings
+  // (skipLiveHooks), the on-disk scaffold is NOT fully current, so leaving the
+  // stamp behind keeps drift detectable until a between-sessions `update`
+  // completes the regeneration. This is the one write that makes the fresh-
+  // SessionStart drift check go quiet once the scaffold is actually current.
+  if (options.dryRun) {
+    console.log('  Would write scaffold version stamp (.claude/.bmad-version.json)');
+  } else if (skipLiveHooks) {
+    console.log('  ! Skipped version stamp: hooks/settings were deferred (live session), so the');
+    console.log('    scaffold is not fully current. Re-run update after the session ends to stamp it.');
+  } else {
+    const stampResult = generateVersionStamp(config, paths);
+    console.log(`  ✓ Stamped scaffold version (.claude/.bmad-version.json @ ${stampResult.version})`);
   }
 
   // Ensure .gitignore stays current

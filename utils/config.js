@@ -130,6 +130,15 @@ function applyDefaults(raw) {
     config.replay.gated_owner_pattern = '^(dev|reviewer|security)';
   }
 
+  // Delivery / auto-heal defaults (F-29/F-30). `auto_heal` governs what the
+  // fresh-SessionStart drift check does when the scaffold's version stamp lags
+  // the installed package: `offer` (default — surface a one-line update prompt,
+  // regenerate nothing), `auto` (run `bmad-swarm update` at the fresh-start safe
+  // window), or `off`. Default `offer` is the safe choice: it cannot hot-swap a
+  // running session's hooks (live-swap hazard, D-045) because it writes nothing.
+  config.delivery = config.delivery || {};
+  if (!config.delivery.auto_heal) config.delivery.auto_heal = 'offer';
+
   // Team block defaults (wide-team specialization — D-005, ADR-004)
   config.team = config.team || {};
   config.team.mode = config.team.mode || 'dynamic';
