@@ -263,7 +263,7 @@ Harvest, propose, and review knowledge-ledger lessons.
 
 | Subcommand | Description | Flags |
 |------------|-------------|-------|
-| `harvest` | Mine retrospectives/lessons markdown into L-records | `--project <name>`, `--dry-run`, `--json` |
+| `harvest` | Mine retrospectives/lessons markdown into L-records | `--from <path>` (**required**); `--project <name>`, `--dry-run`, `--json` |
 | `propose <lessonId>` | Emit a human-gated promotion proposal with retro-catch evidence | `--artifacts-root <dir>`, `--json` |
 | `reopen-scan` | Surface rejected R-records whose re-open trigger may have fired | `--against <path>`, `--json` |
 
