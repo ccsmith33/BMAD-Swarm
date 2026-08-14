@@ -1,4 +1,4 @@
-<!-- bmad-generated:ab5bac18 -->
+<!-- bmad-generated:ac364b30 -->
 # Decision Classification
 
 When agents encounter decisions during their work, they classify them as **tactical** or **strategic** to determine whether to resolve autonomously or escalate.
@@ -133,7 +133,7 @@ The orchestrator scores complexity (5–15, per the scoring table in
 | **7–11**, shaped but multi-step | **Workflow script** — a named `.claude/workflows/` deterministic pipeline with agentic nodes | fixed step graph (reproduce → fix → test → review → ledger), schema-validated node outputs, resumable at node boundaries | 1–2 spawns, resumable |
 | **≥ 12**, or ill-defined / exploratory | **agentic team** — the full assembly (entry-point + complexity tables size it) | full assembly ceremony, justified by the score | full ceremony |
 
-**Decompose for parallelism at ≥ 7 (D-55 / L-7).** Any regime above solo is multi-step: enumerate the work items and build a **parallel** task graph by default — serialize a pair only on a **named** dependency (L-5 `Depends-On`); this also governs how the next step is offered to the human. See the planning-time half of the reflex in `.claude/agents/orchestrator.md` ("Orchestrator self-audit").
+**Decompose for parallelism at ≥ 7 (D-55 / L-7), but not by size (L-9).** Any regime above solo is multi-step: build a **parallel** task graph by default — serialize a pair only on a **named** dependency (L-5 `Depends-On`); this also governs how the next step is offered to the human. Split production along exactly two seams — genuine INDEPENDENCE (parallelize) or a hard DEPENDENCY (sequence) — never by size or perceived difficulty: the complexity score sizes the REGIME, not the number of phases. Produce coherent work in ONE shot and scale VERIFICATION (review depth, replay, tests) to constraint-density × blast-radius; a human "one shot / don't phase it" overrides the score (L-9). See the planning-time half of the reflex in `.claude/agents/orchestrator.md` ("Orchestrator self-audit").
 
 **Regime-invariant traceability (the load-bearing property).** Whichever regime
 runs, the work emits the *same* D-IDs, the same ledger lines via `record.cjs`,
