@@ -1,17 +1,23 @@
 # bmad-swarm
 
-Autonomous development teams powered by [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) Agent Teams, built on the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD).
+Autonomous development teams powered by [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) agent teams, built on the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD).
 
-BMAD Swarm combines BMAD's structured brainstorming and documentation with Claude Agent Teams' parallel execution. Run `bmad-swarm init` once to configure your project, then `bmad-swarm start` to launch. There are no special commands to learn, no agent names to remember, no workflow to manage -- the methodology activates automatically.
+bmad-swarm is a **thin methodology layer over native Claude Code primitives** — custom agents, hooks, slash commands, and settings — plus a differentiated **brain** that those primitives don't provide on their own:
 
-Unlike the original BMAD Method (which requires manually switching agent personas and running workflow commands), BMAD Swarm integrates directly into Claude Code. `bmad-swarm start` launches Claude with the orchestrator identity loaded via the `/identity-orchestrator` slash command -- so every message you send is automatically routed through the orchestrator methodology. It reads your request, assesses complexity, assembles the right team, and manages the full lifecycle. You just talk.
+- **Complexity-based routing.** A task is scored and routed to exactly one execution regime: the main session handles it solo, a deterministic Workflow script runs it, or a full agentic team assembles around it. You pay for agency only when the work needs it.
+- **Adversarial review, always.** Code and artifacts pass an independent reviewer (and, where relevant, a security teammate) before they're considered done.
+- **Traceability that survives compaction.** Decisions (D-IDs), recommendations (R-IDs), lessons (L-IDs), and claims (C-IDs) live in durable on-disk ledgers, not in the model's context window — so nothing is silently dropped when the conversation is summarized.
+- **An opinionated collaborator.** The advisory layer lets every role push back in its own domain, anchored on one carved principle: *the human is the source of truth for decisions, not for what is best.*
+- **Night mode.** With `/sleep`, the swarm runs unattended for hours behind a fail-closed constitutional floor and hands you a ranked morning action queue.
 
-**Anyone can use it.** Non-technical users describe ideas in plain language and make design choices while the AI handles all code decisions. Technical users go as deep as they want -- debate architecture, review patterns, pick frameworks. The system reads your conversation style and adapts.
+Run `bmad-swarm init` once to configure your project, then `bmad-swarm start` to launch. There are no special commands to learn and no agent names to remember — the methodology activates automatically. `bmad-swarm start` launches Claude with the orchestrator identity loaded via the `/identity-orchestrator` slash command, so every message you send is routed through the orchestrator methodology. It reads your request, scores complexity, routes to the right regime, and manages the lifecycle. You just talk.
+
+**Anyone can use it.** Non-technical users describe ideas in plain language and make product choices while the AI handles all code decisions. Technical users go as deep as they want — debate architecture, review patterns, pick frameworks. The system reads your conversation style and adapts.
 
 ## Prerequisites
 
-- **Node.js >= 18** -- [download](https://nodejs.org/)
-- **Claude Code** installed and authenticated -- [setup guide](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
+- **Node.js >= 18** — [download](https://nodejs.org/)
+- **Claude Code** installed and authenticated — [setup guide](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
 - A git-initialized project directory
 
 ## Quick Start
@@ -32,98 +38,153 @@ bmad-swarm start
 ```
 
 `bmad-swarm init` generates:
-- `swarm.yaml` -- project configuration (you own and edit this)
-- `.claude/agents/` -- native Claude Code agent definitions for each role (teammates are spawned directly via `subagent_type`)
-- `.claude/hooks/` -- quality gate hooks
-- `.claude/settings.json` -- Claude Code permissions
-- `.claude/commands/` -- slash commands (`/identity-orchestrator` plus 8 workflow commands like `/bug`, `/feature`, `/research`; the other identity-* commands are inspection aids -- teammates load identity natively from `.claude/agents/`)
-- `.claude/rules/` -- methodology rules (coding standards, quality standards, orchestrator methodology)
-- `CLAUDE.md` -- project context (type, stack, phases, artifacts)
-- `artifacts/` -- directory structure for all methodology artifacts
-- `project.yaml` -- project state tracking
+
+- `swarm.yaml` — project configuration (you own and edit this)
+- `.claude/agents/` — native Claude Code agent definitions, one per role (teammates are spawned directly via `subagent_type`)
+- `.claude/hooks/` — quality-gate and enforcement hooks
+- `.claude/commands/` — slash commands (`/identity-orchestrator` plus the workflow and night-mode commands; the other `identity-*` commands are inspection aids — teammates load identity natively from `.claude/agents/`)
+- `.claude/rules/` — methodology rules (coding standards, quality standards, orchestrator methodology)
+- `.claude/workflows/` — named deterministic pipelines for the middle routing tier
+- `.claude/bmad/methodology/` — the load-bearing methodology subset (decision classification, artifact schemas, testing knowledge)
+- `.claude/bmad/bin/` — the `record.cjs` ledger tool that ships into the project
+- `.claude/settings.json` — Claude Code permissions
+- `CLAUDE.md` — project context (type, stack, invariants, artifact locations)
+- `artifacts/` — directory structure for all methodology artifacts
+
+> Phase and gate state are **not** kept in a separate config file. They live in the frontmatter of `artifacts/context/project-brain.md`, written when the orchestrator first records progress (D-037). Earlier versions generated a `project.yaml` for this — that file has been retired.
 
 ## How It Works
 
-BMAD Swarm works by generating configuration files that Claude Code reads automatically. The agent definitions in `.claude/agents/`, hooks in `.claude/hooks/`, and rules in `.claude/rules/` are all standard Claude Code features -- bmad-swarm just generates them with the right content.
+bmad-swarm works by generating configuration files that Claude Code reads automatically. The agent definitions in `.claude/agents/`, hooks in `.claude/hooks/`, and rules in `.claude/rules/` are all standard Claude Code features — bmad-swarm just generates them with the right content.
 
-The key is the **slash-command identity system**. On a fresh session the orchestrator invokes `/identity-orchestrator` as its first action; the command body is the full orchestrator role and arrives as user-turn content, which the model weights more heavily than system-ambient instructions. A `UserPromptSubmit` hook emits a short (<40 token) reminder on the first turn of a session pointing at `/identity-orchestrator` and the 8 workflow commands. After context compaction a `SessionStart` hook re-points the orchestrator at the same slash command. This is reinforced by `.claude/rules/` files that define agent routing and quality standards, and `CLAUDE.md` provides project context (stack, phases, artifact locations). Teammates do not use slash-command identity: the generated `.claude/agents/*.md` files are native Claude Code agent definitions, so teammates are spawned directly via `subagent_type` with their full role attached (ADR-014).
+The key is the **slash-command identity system**. On a fresh session the orchestrator invokes `/identity-orchestrator` as its first action; the command body is the full orchestrator role and arrives as user-turn content, which the model weights more heavily than system-ambient instructions. A `UserPromptSubmit` hook emits a short reminder on the first turn of a session pointing at `/identity-orchestrator`. After context compaction a `SessionStart` hook (`session-start-warmboot`) re-points the orchestrator at the same slash command and instructs it to reconcile coordination state. This is reinforced by `.claude/rules/` files that define routing and quality standards, and `CLAUDE.md` provides project context. Teammates do not use slash-command identity: the generated `.claude/agents/*.md` files are native Claude Code agent definitions, so teammates are spawned directly via `subagent_type` with their full role attached (ADR-014).
 
 After initialization, launch with `bmad-swarm start` and just talk. No special commands, no agent names to remember.
 
-### The Orchestrator
+### The Regime Router
 
-Claude itself becomes the orchestrator -- an AI coordinator that never writes code, only delegates. When you give it a task:
+Claude itself becomes the orchestrator — an AI coordinator that never writes code, only delegates. When you give it a task, it scores complexity on a **5–15 scale** and routes to exactly **one** execution regime (D-038). The complexity brain is the control law; the native primitives — the solo main session, a deterministic Workflow script, a full agentic team — are the actuators.
 
-1. **Assesses complexity** across 5 dimensions (scope, clarity, technical risk, codebase size, dependencies)
-2. **Selects the orchestration mode**:
-   - **Interactive** -- Single agent works directly with you (brainstorming, planning, design decisions)
-   - **Parallel** -- Multiple agents work simultaneously (implementation, review)
-   - **Hybrid** -- Interactive for planning phases, parallel for building
-3. **Assembles the right team** -- only the agents needed, not the full roster
-4. **Creates a task graph** with dependencies and quality gates
-5. **Adapts to you** -- reads your conversation style and calibrates which decisions to involve you in vs. handle autonomously
+| Complexity | Regime | What runs |
+|---|---|---|
+| **≤ 6** (single-file, well-shaped) | **solo** | The main session handles it directly — no spawn, no assembly ceremony. |
+| **7–11** (shaped but multi-step) | **Workflow script** | A named `.claude/workflows/` deterministic pipeline (reproduce → fix → test → review → ledger) with schema-validated node outputs, resumable at node boundaries. |
+| **≥ 12** (or ill-defined / exploratory) | **agentic team** | The full assembly — sized by the complexity tables — **pauses for human approval before spawning** (WS-12). |
+
+**Regime-invariant traceability.** Whichever regime runs, the work emits the *same* D-IDs, the same ledger lines, and the same artifact species. An auditor cannot tell — and shouldn't care — which regime produced a change. The regime is a cost decision, never a rigor decision. The router stays a rule table (auditable and tunable), never a learned model. A misroute costs one `router-miss` telemetry event and a fallback team spawn, not a wrong answer.
+
+### Parallel by default
+
+Within the agentic regime, **tasks are independent unless a dependency is declared** (L-5 / D-050). A sequencing edge requires a *named* reason — task B reads task A's output, or task B needs a decision task A produces. At `TaskCreate` time this is mechanical: a story task is blocked only on the stories in its `## Depends-On:` field (or an equally nameable reason). Every other task is created unblocked and its owner spawned in the same batch. The orchestrator never serializes work because it "feels tidy."
 
 ### Phases
 
-Planning phases default to interactive mode (one agent working with you). Building phases default to parallel mode (multiple agents working simultaneously).
-
-| Phase | Mode | Purpose | Primary Agents |
-|-------|------|---------|---------------|
-| **0. Ideation** | Interactive | Brainstorm and refine ideas | Ideator |
-| **1. Exploration** | Interactive | Research problem space | Researcher |
-| **2. Definition** | Interactive | Define requirements (PRD) | Strategist |
-| **3. Design** | Interactive | Architecture and technical decisions | Architect |
-| **4. Implementation** | Parallel | Build, test, review in sprints | Strategist, Developer, Reviewer |
-| **5. Delivery** | Parallel | Final validation and handoff | Reviewer |
+| Phase | Purpose | Primary Agents |
+|-------|---------|----------------|
+| **0. Ideation** | Brainstorm and refine ideas | Ideator |
+| **1. Exploration** | Research the problem space | Researcher |
+| **2. Definition** | Define requirements (PRD) | Strategist |
+| **3. Design** | Architecture and technical decisions | Architect |
+| **4. Implementation** | Build, test, review in sprints | Strategist, Developer, Reviewer |
+| **5. Delivery** | Final validation and handoff | Reviewer |
 
 Phases are skipped based on complexity. A bug fix goes straight to Implementation. A small feature might skip Exploration and Definition.
 
 ### Agents
 
+Nine roles ship with bmad-swarm:
+
 | Agent | Role |
 |-------|------|
-| **orchestrator** | Team lead. Assesses complexity, builds teams, creates task graphs. Never implements directly. |
-| **ideator** | Structured brainstorming partner. Uses 17 techniques, anti-bias protocols, and elicitation methods. Adapts to your thinking style. |
+| **orchestrator** | Team lead. Scores complexity, routes to a regime, builds teams, creates task graphs. Never implements directly. |
+| **ideator** | Structured brainstorming partner. Uses a curated technique library, anti-bias protocols, and elicitation methods. Adapts to your thinking style. |
 | **researcher** | Discovery, analysis, and context acquisition. Web research and codebase scanning. |
 | **strategist** | Product strategy, requirements definition, PRD creation, and story decomposition (implementation-ready stories with BDD acceptance criteria). |
 | **architect** | Technical design, system architecture, technology selection. |
 | **developer** | Story implementation following TDD. Multiple developers can work in parallel. |
-| **reviewer** | Adversarial code review. Validates quality, security, architecture compliance, and decision traceability. Lens system covers test coverage (former qa role) and documentation (former tech-writer role). |
-| **devops** | Infrastructure, CI/CD, deployment automation. |
+| **reviewer** | Adversarial code review. Validates quality, security, architecture compliance, and decision traceability. Its lens system covers test coverage and documentation. |
+| **devops** | Infrastructure, CI/CD, deployment automation, branch integration. |
 | **security** | Security design, threat modeling, vulnerability analysis. |
 
-### Decision Traceability
+## The Brain
 
-Every significant decision gets a **D-ID** (Decision ID) that flows through the entire artifact chain:
+Everything above is orchestration. What makes bmad-swarm more than a team spawner is the durable record system underneath it — four kinds of record, all appended to on-disk ledgers by a single tool (`record.cjs`) so they survive context compaction and crash-restart.
+
+### Decision traceability (D-IDs)
+
+Every significant decision gets a **D-ID** that flows through the entire artifact chain:
 
 ```
 Human says "mobile-first" during brainstorming
-  -> D-001 logged in product brief
-    -> Strategist references D-001 in PRD requirement
-      -> Architect references D-001 in frontend design
+  -> D-001 logged in the decision log
+    -> Strategist references D-001 in a PRD requirement
+      -> Architect references D-001 in the frontend design
         -> Strategist includes D-001 in acceptance criteria
           -> Reviewer verifies D-001 compliance
 ```
 
-Decisions made once are never silently dropped.
+Tactical decisions get a lightweight one-line D-record; strategic decisions get full documentation with rationale and lifecycle status. Decisions made once are never silently dropped, and a pattern of tactical decisions stays auditable.
 
-### Adaptive Interaction
+### The advisory layer (R-IDs)
 
-The system reads your conversation style and adapts in real-time:
+The advisory layer is the **proposal half** of the decision system — it lets swarm be an opinionated collaborator rather than a passive order-taker. Recommendations are **R-records** in `artifacts/context/ledger.md`: decisions-in-waiting that carry a stakes assessment and evidence sized to those stakes.
 
-- **Technical language** ("Should we use connection pooling?") -- engages at technical depth
-- **Design language** ("Make the sidebar collapsible") -- engages on UX
-- **Business language** ("We need to beat competitor X on onboarding") -- engages on strategy
+- **Per-recommendation judgment.** Delivery mode is judged from each recommendation's *own* stakes — never a fixed policy. Two recommendations at the same moment can earn opposite modes: **silent-proceed**, **inline-note**, or **pause-and-ask**. A variable-name nit is silent; "the library the architecture picked is abandoned with an open CVE" pauses.
+- **Challenge-the-premise is in scope.** Swarm may argue that a recorded decision is wrong.
+- **The contradiction escalator (constitutional floor).** Any recommendation that crosses an accepted D-ID or an explicit human statement can *never* be delivered silent-proceed and always carries the maximum evidence bar. This is the carved principle made mechanical: **the human is the source of truth for decisions, not for what is best.** If the human reaffirms, the recommendation becomes a *rejected R with a re-open trigger* — recorded, not relitigated.
 
-Agents auto-resolve decisions you wouldn't care about (library choices, folder structure) and escalate decisions you would (scope, business logic, architecture tradeoffs).
+### Knowledge promotion (L-IDs)
 
-### Autonomy Levels
+Lessons learned are promoted from one-off observations into **earned rules** compiled into future scaffolds:
+
+- `bmad-swarm recall <query...>` — interrogate the knowledge ledger; answers cite L/D/C records.
+- `bmad-swarm lessons harvest` — mine retrospectives and lessons markdown into recurrence-aware L-records.
+- `bmad-swarm lessons propose <L-ID>` — emit a human-gated promotion proposal with retro-catch evidence.
+- `bmad-swarm lessons reopen-scan` — surface rejected R-records whose re-open trigger may have fired.
+
+Promoted cross-project lessons are compiled into new project scaffolds at `init`/`update` time. Pass `--skip-earned-rules` to opt out.
+
+### Verification (C-IDs)
+
+Factual claims are tracked as **C-records** against a claims table (`methodology/artifact-schemas/claims-table.md`). Unlike decisions and lessons, claims don't promote — they *decay*: a claim carries a status and is re-checked over time rather than trusted forever.
+
+### Mission Control
+
+Read-only surfaces for seeing the whole run at a glance:
+
+- `bmad-swarm status --full` — awaiting-human gates, running/stuck tasks, decisions/recommendations, and a spend estimate.
+- `bmad-swarm report` — generates the Mission Control surface to `artifacts/delivery/mission-control-<date>.md`.
+
+## Night Mode
+
+With `/sleep`, the swarm runs unattended for hours and hands you a ranked action queue in the morning (D-034 / D-038, Phase 5). It is **off by default** — `/sleep` arms only when `swarm.yaml` has `sleep:\n  enabled: true`.
+
+- **`/sleep`** opens a *night charter* (`record.cjs night-charter open --ends <iso>`), runs a preflight canary, and works the queue behind the constitutional floor. Decisions follow the **Night Ladder**: reversible strategic decisions *fork* into isolated worktrees (both candidates get tests + a blind judge note, so the morning is a selection between working artifacts); low-stakes one-way decisions *default* on a reasoned choice logged as a re-openable R-ID; high-stakes one-way decisions *park* as a ≤10-line brief and the scheduler routes around them. Pause-and-ask isn't available at night — a night that stalls waiting for an answer is a wasted night.
+- **The night floor** (`night-floor` hook) is a **fail-closed guardrail, not a hermetic boundary.** It is an allowlist: it denies every *direct* shelled escape (interpreters, redirects, obfuscation, out-of-tree writes) and mechanically enforces never-merge / never-push / never-publish / never-deploy. It is honestly a strong guardrail against direct escapes, not a proof against a determined adversary. The charter is a *file*, not context, so compaction at 3am cannot erase it.
+- **The Governor** is a treasurer by day (forecasts token burn, advises a clean story-boundary checkpoint before a cap-stall) and a scheduler by night (surfaces a no-progress tripwire as advisory data, ranks work). It never refuses work — ranking orders it.
+- **`/wake`** (or any human prompt) closes the charter, reconciles crash-only state, and refreshes the morning report.
+- **`bmad-swarm report --morning`** generates the seven-section ranked morning queue (**ANSWER THESE**, **PICK ONE**, **MERGE THESE**, **INITIATIVE SHELF**, **PROPOSALS**, **PARKED / TRIPWIRED**, **NIGHT LEDGER**) to `artifacts/delivery/morning-report-<date>.md`. It is generated entirely from durable stores, so it produces the same queue even if the orchestrator that ran the night has died. `bmad-swarm status` also renders a compact night panel while a charter is open.
+
+Nothing merges, pushes, publishes, or deploys as part of night mode. The morning stays human-gated by posture even after `/wake` lifts the floor.
+
+## Permission Model
+
+bmad-swarm's central invariant is **the orchestrator delegates everything** — it never writes code or teammate-owned artifacts (PRD, architecture, stories, reviews). This is enforced mechanically, not just by prompt.
+
+- **`orchestrator-write-gate` hook** — the delegate-everything boundary. A **fail-closed, read-only allowlist**: the orchestrator may write only `artifacts/**` plus a small config set (`swarm.yaml`, `.gitignore`, `.claude/settings.local.json`); everything else is denied. It identifies the orchestrator via a two-layer check (Claude Code hook-payload subagent fields + `AGENT_ROLE` env) so teammates pass through even when env vars are inherited (ADR-003).
+- **Git allow-list.** The write-gate distinguishes *coordination* git (`commit`, `push`, `fetch`, `merge --ff-only`, `checkout`/`switch`, `branch`, `tag`) — allowed — from *write-vector* and *destructive* git (`reset --hard`, `clean`, `push --force`, non-`--ff-only` `merge`, `rebase`, `filter-branch`, `apply`, `restore`, …) — denied. `git -C`/`-c` global-option smuggling is parsed out before subcommand resolution.
+- **Per-project allow-list.** `permissions.orchestrator_allow` in `swarm.yaml` lets each project declare the read-only + coordination commands its orchestrator needs prompt-free (e.g. `Bash(cargo check:*)`), merged onto a widened safe default. Invalid entries fail config load loudly.
+- **Standard permission mode** is `acceptEdits` — in-scope tools run without prompting, for autonomous execution. Destructive shell patterns (`rm -rf /`, `git push --force`, `sudo`, curl-piped-to-shell) are denied in `.claude/settings.json`.
+
+Roughly eleven hooks ship, including `orchestrator-write-gate`, `night-floor`, `user-prompt-submit`, `session-start-warmboot`, `pre-compact-flush` / `post-compact-reinject` (context durability), `task-ledger-writer` and `ledger-write-guard` (durable coordination state), `team-assembly-lint` (advisory assembly check), `replay-gate`, and `workflow-integrity`.
+
+## Autonomy Levels
 
 | Level | Behavior | Best For |
 |-------|----------|----------|
-| `auto` | No human checkpoints. Reports results at the end. | Bug fixes, small features, well-defined tasks |
+| `auto` | No human checkpoints; reports at the end. (The `≥ 12` plan-approval gate still applies.) | Bug fixes, small features, well-defined tasks |
 | `guided` | Pauses at phase boundaries for human review. | Medium features, new modules |
-| `collaborative` | Pauses at phase boundaries AND within phases for key choices. | New apps, major redesigns, vague requirements |
+| `collaborative` | Pauses at phase boundaries **and** within phases for key choices. | New apps, major redesigns, vague requirements |
 
 ## CLI Reference
 
@@ -131,57 +192,40 @@ Agents auto-resolve decisions you wouldn't care about (library choices, folder s
 
 Initialize a new project in the current directory.
 
-```bash
-bmad-swarm init [options]
-```
-
 | Flag | Description |
 |------|-------------|
-| `--scan` | Auto-detect language, framework, and test setup from existing codebase |
+| `--scan` | Auto-detect language, framework, and test setup from an existing codebase |
 | `--template <name>` | Use a predefined stack template |
 | `-y, --yes` | Accept all defaults without interactive prompts |
-| `--github` | Generate GitHub Actions workflow for artifact validation (`.github/workflows/bmad-validate.yml`) |
+| `--github` | Generate a GitHub Actions workflow for artifact validation |
+| `--skip-earned-rules` | Do not compile promoted cross-project lessons into the scaffold |
 
-**Available templates:**
-
-| Template | Stack |
-|----------|-------|
-| `next-app` | TypeScript + Next.js + Jest |
-| `express-api` | TypeScript + Express + Jest |
-| `react-app` | TypeScript + React + Vitest |
-| `node-cli` | JavaScript + node:test |
-| `python-api` | Python + FastAPI + pytest |
+**Available templates:** `next-app` (TypeScript + Next.js + Jest), `express-api` (TypeScript + Express + Jest), `react-app` (TypeScript + React + Vitest), `node-cli` (JavaScript + node:test), `python-api` (Python + FastAPI + pytest).
 
 ### `bmad-swarm start`
 
-Launch Claude Code in the project. Orchestrator identity loads via the `/identity-orchestrator` slash command on the first user turn (a `UserPromptSubmit` hook prompts the orchestrator to invoke it).
-
-```bash
-bmad-swarm start [options]
-```
+Launch Claude Code in the project. Orchestrator identity loads via `/identity-orchestrator` on the first user turn.
 
 | Flag | Description |
 |------|-------------|
-| `--print` | Print the claude command instead of running it |
+| `--print` | Print the `claude` command instead of running it |
 
-Tool permissions are now scoped via `.claude/settings.json` (`allow` + `deny` lists + `defaultMode: acceptEdits`) rather than CLI flags. See ADR-001 for the permission model.
+Tool permissions are scoped via `.claude/settings.json` (`allow` + `deny` + `defaultMode: acceptEdits`), not CLI flags. See ADR-001.
 
 ### `bmad-swarm update`
 
-Regenerate all managed files from `swarm.yaml` including agents, CLAUDE.md, slash commands, hooks, rules, and settings. Safe to run repeatedly -- never touches user-owned files (`swarm.yaml`, `overrides/`, `artifacts/`, `src/`).
-
-```bash
-bmad-swarm update [options]
-```
+Regenerate all managed files from `swarm.yaml` (agents, CLAUDE.md, slash commands, hooks, rules, workflows, settings). Never touches user-owned files (`swarm.yaml`, `overrides/`, `artifacts/`, `src/`). It also folds a legacy `project.yaml`'s phase into the project-brain frontmatter and deletes the file.
 
 | Flag | Description |
 |------|-------------|
-| `--dry-run` | Preview what would be regenerated without writing any files |
-| `--force` | Overwrite files even if they have been manually modified |
+| `--dry-run` | Preview what would be regenerated without writing |
+| `--force` | Overwrite files even if manually modified |
+| `--swap-live-hooks` | Regenerate `.claude/hooks/` + `settings.json` while a session is live (off by default; `--force` alone does not override the live-session skip) |
+| `--skip-earned-rules` | Do not compile promoted cross-project lessons into the scaffold |
 
-### `bmad-swarm eject agent <name>`
+### `bmad-swarm eject agent <name>` / `uneject agent <name>`
 
-Copy an agent template to `overrides/agents/` for local customization on a single project. The ejected copy takes priority over the package version and survives `bmad-swarm update`.
+Copy an agent template to `overrides/agents/` for per-project customization (the ejected copy takes priority and survives `update`), or remove the override and restore the package version.
 
 ```bash
 bmad-swarm eject agent developer
@@ -189,51 +233,86 @@ bmad-swarm eject agent developer
 bmad-swarm update  # your override is preserved
 ```
 
-### `bmad-swarm uneject agent <name>`
-
-Remove a local override and restore the package version.
-
 ### `bmad-swarm scan`
 
-Detect stack from the current codebase and generate `project-context.md`.
+Detect the stack from the current codebase and generate `project-context.md`.
 
 ### `bmad-swarm status`
 
-Show project configuration, current phase, agent status, and artifact counts.
+Show project configuration, current phase, agent status, and artifact counts. Renders a night panel while a `/sleep` charter is open.
 
-### `bmad-swarm validate`
+| Flag | Description |
+|------|-------------|
+| `--full` | Render the Mission Control control surface (awaiting-human, running/stuck, decisions/recommendations, spend estimate) |
 
-Validate artifact quality against quality gate criteria.
+### `bmad-swarm report`
 
-### `bmad-swarm doctor`
+Generate the read-only Mission Control surface to `artifacts/delivery/`.
 
-Check project configuration health and report issues.
+| Flag | Description |
+|------|-------------|
+| `--morning` | Generate the seven-section ranked morning action queue instead |
 
-### `bmad-swarm phase`
+### `bmad-swarm recall <query...>`
 
-Manage project phase transitions. Subcommands: `show` (current phase and available transitions), `advance` (move to the next phase), `set <name>` (manually set the current phase).
+Interrogate the knowledge ledger; answers cite L/D/C records. `--json` emits structured output.
 
-### `bmad-swarm workspace`
+### `bmad-swarm lessons <subcommand>`
 
-Manage workspace/monorepo discovery. Subcommands: `list` (discover and list workspaces from `swarm.yaml`), `detect` (check whether the current directory is a workspace in a monorepo).
+Harvest, propose, and review knowledge-ledger lessons.
 
-### `bmad-swarm plugin`
+| Subcommand | Description | Flags |
+|------------|-------------|-------|
+| `harvest` | Mine retrospectives/lessons markdown into L-records | `--project <name>`, `--dry-run`, `--json` |
+| `propose <lessonId>` | Emit a human-gated promotion proposal with retro-catch evidence | `--artifacts-root <dir>`, `--json` |
+| `reopen-scan` | Surface rejected R-records whose re-open trigger may have fired | `--against <path>`, `--json` |
 
-Manage plugin agents. Subcommands: `list` (discover and list plugin agents).
+### `bmad-swarm phase <subcommand>`
+
+Manage phase transitions (state lives in the project-brain frontmatter). `show` displays the current phase and available transitions; `advance` moves to the next phase; `set <name>` sets it manually (`--force` bypasses validation).
+
+### `bmad-swarm validate` / `doctor`
+
+`validate` checks artifact quality against the quality-gate criteria. `doctor` checks project configuration health and reports issues. Both enforce the `gates:` frontmatter contract in the project brain.
 
 ### `bmad-swarm scaffold-team`
 
 Generate the `swarm.yaml` `team:` block from the architecture Domain Map (see "Retrofit tooling" below).
+
+| Flag | Description |
+|------|-------------|
+| `--write` | Inject the `team:` block into `swarm.yaml` (backs up to `swarm.yaml.bak` first) |
+| `--architecture <path>` | Path to `architecture.md` (default: `artifacts/design/architecture.md`) |
+| `--no-fallback` | Set `fallback.enabled` to false (advanced) |
+
+## Slash Commands
+
+Workflow commands set up a team assembly and spawn the right roles; identity commands are inspection aids (teammates load identity natively).
+
+| Command | Purpose |
+|---------|---------|
+| `/bug` | Bug fix — developer + reviewer |
+| `/feature` | Feature — architect + developer + reviewer |
+| `/research` | Research-only task — researcher |
+| `/audit` | Audit — researcher + reviewer + security |
+| `/brainstorm` | Brainstorm with the ideator overlay |
+| `/explore-idea` | Explore an idea — ideator overlay + parallel researcher |
+| `/migrate` | Migration — architect + developer + reviewer |
+| `/review` | Review an artifact with lens selection |
+| `/plan` | Produce an assembly block only; do not spawn |
+| `/retrofit-team` | Propose a Domain Map for an existing architecture |
+| `/sleep` | Open a night charter and run the overnight runtime |
+| `/wake` | End the night: close the charter, reconcile, generate the morning report |
 
 ## Escape Hatches
 
 Not every task needs the full lifecycle:
 
 ```bash
-# Quick bug fix -- skips straight to implementation
+# Quick bug fix — routes straight to implementation
 > Fix: users can't log in with special characters in email
 
-# Brainstorm only -- no code, just thinking
+# Brainstorm only — no code, just thinking
 > I have a vague idea for a tech debt tracker. Help me think through it.
 
 # Skip to coding with defaults
@@ -255,30 +334,17 @@ methodology:
 
 Three layers for customizing agent behavior on a specific project:
 
-1. **Package templates** (default) -- ship with `bmad-swarm`, regenerated on `bmad-swarm update`
-2. **swarm.yaml overrides** (lightweight) -- add `extra_context` or `extra_rules` per agent
-3. **Ejected overrides** (full control) -- `bmad-swarm eject agent <name>` copies the template for free editing
+1. **Package templates** (default) — ship with `bmad-swarm`, regenerated on `update`.
+2. **swarm.yaml overrides** (lightweight) — add `extra_context` or `extra_rules` per agent.
+3. **Ejected overrides** (full control) — `bmad-swarm eject agent <name>` copies the template for free editing.
 
 Resolution order: ejected file > package template + swarm.yaml overrides.
 
-This is for customizing agent behavior within a single project (e.g., adding domain-specific rules to the architect). To change bmad-swarm itself, see [Development](#development) below.
+## Wide-Team Specialization
 
-## Wide-team specialization
+Wide-team specialization lets you pre-spawn multiple domain-specialized teammates (e.g. one developer dedicated to `backend-auth`, another to `backend-upload`, another to `frontend-dashboard`) instead of recycling one generic developer across many domains. Each specialist holds bounded context for the entire session and only handles stories within its domain — addressing long-context drift without abandoning the long-running multi-story workflow. See `artifacts/design/architecture.md` and ADR-004 / ADR-006.
 
-Wide-team specialization lets you pre-spawn multiple domain-specialized teammates (e.g., one developer dedicated to `backend-auth`, another to `backend-upload`, another to `frontend-dashboard`) instead of recycling one generic developer across many domains. Each specialist holds bounded context for the entire session and only handles stories within its domain — addressing long-context drift without abandoning the long-running multi-story workflow. See `artifacts/design/architecture.md` for the full design and ADR-004 / ADR-006 in `artifacts/design/decisions/` for the schema and story-field details.
-
-**Dynamic mode (default) is unchanged. Wide-team is opt-in.**
-
-**Existing projects without this configuration are unaffected. No automatic migration runs on `bmad-swarm update`.**
-
-### Retrofit procedure (existing projects)
-
-To opt in to wide-team specialization for an existing project:
-
-1. Ensure `artifacts/design/architecture.md` includes a Domain Map section. Run `/feature` or `/plan` and ask the architect to add it if missing.
-2. Edit `swarm.yaml` to add a `team` block (`mode: fixed`, list specializations matching the domain map).
-3. Optionally update existing story files to include a `## Domain:` field, matching one of the declared specialists.
-4. On the next session, the orchestrator will use fixed-mode routing.
+**Dynamic mode (default) is unchanged. Wide-team is opt-in.** Existing projects without this configuration are unaffected; no automatic migration runs on `update`.
 
 ### Worked example: `team` block in `swarm.yaml`
 
@@ -288,76 +354,28 @@ team:
   specializations:               # only meaningful when mode: fixed
     - role: developer
       domain: backend-auth       # required when role is specialized; kebab-case slug
-      description: >             # optional, free-text — passed into the spawn brief
-        OAuth2/PKCE flow, session storage, password reset endpoints.
+      description: OAuth2/PKCE flow, session storage, password reset endpoints.
     - role: developer
       domain: backend-upload
       description: File ingestion pipeline, S3 adapters, virus-scan integration.
     - role: developer
       domain: frontend-dashboard
       description: React dashboard pages, charts, real-time websocket UI.
-    - role: reviewer
-      domain: backend-auth
-      description: >
-        Reviewer dedicated to auth/security stories. (Optional — reviewer
-        continuity is the consistency anchor by default.)
   fallback:
     enabled: true                # default: true — generic dev for unrouted stories
     role: developer
 ```
 
-Stories without a `## Domain:` field route to the generic-dev fallback. Stories whose domain doesn't match any declared specialist trigger the orchestrator's mid-epic injection decision tree (spawn a new specialist if ≥2 stories are anticipated in that domain, otherwise route to fallback). See the orchestrator role doc for routing rules.
+Stories without a `## Domain:` field route to the generic-dev fallback. Stories whose domain doesn't match any declared specialist trigger the orchestrator's mid-epic injection decision tree. See the orchestrator role doc for routing rules.
 
 ### Retrofit tooling for existing projects
 
-Two opt-in tools remove the manual edits when adopting wide-team in a project that already has an architecture: `/retrofit-team` (slash command) proposes the Domain Map and inserts it into `architecture.md`; `bmad-swarm scaffold-team` (CLI) reads that Domain Map and emits the matching `team:` block for `swarm.yaml`. Both are deliberate user actions — neither runs automatically. See `artifacts/design/architecture-retrofit.md` for the full design and ADR-010 / ADR-011 / ADR-012 for the design decisions (overlay-vs-spawn, write safety, parser contract).
+Two opt-in tools remove the manual edits when adopting wide-team in a project that already has an architecture — neither runs automatically:
 
-**`/retrofit-team` (slash command).** Invoked inside a Claude Code session. The orchestrator loads the architect's Domain Map heuristics into its own session, reads the existing `artifacts/design/architecture.md`, and proposes a Domain Map iteratively with you. After explicit human approval (architecture is approval-gated per the project's CLAUDE.md invariant), it spawns one architect teammate whose only job is to insert the approved Domain Map verbatim into `architecture.md` — the architect spawn is a write-delegate, not a designer. Refuses cleanly if the project is already wide-team configured, if `architecture.md` is missing, or if a `## Domain Map` section already exists.
+- **`/retrofit-team`** (slash command) loads the architect's Domain Map heuristics into the orchestrator session, reads `artifacts/design/architecture.md`, and proposes a Domain Map iteratively with you. After explicit human approval (architecture is approval-gated), it spawns one architect teammate whose only job is to insert the approved Domain Map verbatim. Refuses cleanly if the project is already wide-team configured, if `architecture.md` is missing, or if a `## Domain Map` section already exists.
+- **`bmad-swarm scaffold-team`** (CLI) reads that Domain Map and emits the matching `team:` block. Default is read-only (prints YAML to stdout). `--write` backs up to `swarm.yaml.bak`, writes atomically, and round-trips the result through config validation before declaring success. Refuses if `swarm.yaml` already has a `team:` block.
 
-**`bmad-swarm scaffold-team` (CLI).** Reads the `## Domain Map` from `architecture.md` and emits the corresponding `team:` block. Default behavior is read-only — prints YAML to stdout so you can paste-and-edit. Pass `--write` to inject the block into `swarm.yaml`; `--write` first copies the existing file to `swarm.yaml.bak` (rolled, single backup), writes atomically, and round-trips the result through `loadSwarmConfig` to validate before declaring success. Refuses with an exit code and a unified diff if `swarm.yaml` already has a `team:` block — git history is the long-term archive.
-
-**Worked example chain.**
-
-```
-$ # 1. In a Claude Code session:
-> /retrofit-team
-[orchestrator-overlay reads architecture.md; proposes Domain Map]
-[user iterates with the orchestrator on the partition]
-[user approves; orchestrator spawns architect; architect inserts the section]
-> [exits overlay]
-
-$ # 2. Preview the corresponding team: block:
-$ bmad-swarm scaffold-team
-team:
-  mode: fixed
-  specializations:
-    - role: developer
-      domain: backend-auth
-      description: OAuth2/PKCE, sessions, password flows
-    - role: developer
-      domain: backend-upload
-      description: File ingestion, S3, virus scan
-    - role: developer
-      domain: frontend-dashboard
-      description: React dashboard pages
-  fallback:
-    enabled: true
-    role: developer
-
-$ # 3. Inject (after reviewing the preview):
-$ bmad-swarm scaffold-team --write
-Wrote 3 specializations to swarm.yaml
-Backup: swarm.yaml.bak
-Next: review the diff (git diff swarm.yaml), then run `bmad-swarm validate` and `bmad-swarm update`.
-
-$ # 4. Confirm and regenerate:
-$ bmad-swarm validate
-$ bmad-swarm update
-```
-
-Each step is reversible: `architecture.md` edits live in git; `swarm.yaml.bak` lets you undo `--write` once; nothing under `.claude/` is touched until `bmad-swarm update` runs.
-
-**No silent migration.** Neither `bmad-swarm init` nor `bmad-swarm update` invokes either retrofit tool. The user types the slash command, approves the proposed Domain Map, and runs the CLI explicitly — every edit is a deliberate action.
+See `artifacts/design/architecture-retrofit.md` and ADR-010 / ADR-011 / ADR-012.
 
 ## Artifact System
 
@@ -370,7 +388,8 @@ artifacts/
   design/          Architecture, ADRs
   implementation/  Epics, stories
   reviews/         Code reviews, retrospectives, test reports
-  context/         Project context, decision log, lessons learned
+  delivery/        Mission Control / morning reports, night charters
+  context/         Project brain, decision log, ledger (R/L/C), lessons
 ```
 
 <details>
@@ -404,17 +423,13 @@ methodology:
       - innovation
 
   phases:
-    exploration:
-      enabled: true
-    definition:
-      enabled: true
-    design:
-      enabled: true
+    exploration:  { enabled: true }
+    definition:   { enabled: true }
+    design:       { enabled: true }
     implementation:
       enabled: true
       parallel_devs: 2          # Max concurrent developer agents (number, default: 2)
-    delivery:
-      enabled: true
+    delivery:     { enabled: true }
 
   quality:
     require_tests: true
@@ -423,21 +438,22 @@ methodology:
       - prd
       - architecture
 
+# Overnight runtime (off by default)
+sleep:
+  enabled: false                # /sleep arms only when true
+
+# Orchestrator permission allow-list (merged onto the safe default)
+permissions:
+  orchestrator_allow: []        # e.g. ["Bash(cargo check:*)"]
+
 # Agent customization
 agents:
   orchestrator:
     # enabled: true             # Disable an agent entirely (boolean)
-    # model: sonnet             # Preferred model hint (string: haiku, sonnet, opus, fable, inherit)
+    # model: sonnet             # Model hint (haiku | sonnet | opus | fable | inherit)
     # extra_context: ""         # Appended to the agent's prompt (string)
     # extra_rules: []           # Additional behavioral rules (string[])
-  # ideator: { ... }
-  # researcher: { ... }
-  # strategist: { ... }
-  # architect: { ... }
-  # developer: { ... }
-  # reviewer: { ... }
-  # devops: { ... }
-  # security: { ... }
+  # ideator / researcher / strategist / architect / developer / reviewer / devops / security: { ... }
 
 # Output locations
 output:
@@ -454,13 +470,13 @@ Valid model values (for `defaults.model`, `agents.{name}.model`, `team.specializ
 ## Examples
 
 ```bash
-# Greenfield web app -- full lifecycle
+# Greenfield web app — full lifecycle
 mkdir saas-app && cd saas-app && git init
 bmad-swarm init --template next-app
 bmad-swarm start
 > Build a SaaS project management tool with team workspaces
 
-# Add feature to existing project
+# Add a feature to an existing project
 cd my-existing-app
 bmad-swarm init --scan -y
 bmad-swarm start
@@ -476,17 +492,10 @@ bmad-swarm start
 
 To work on bmad-swarm itself (not a project that uses it):
 
-### Setup
-
 ```bash
 git clone https://github.com/ccsmith33/BMAD-Swarm.git
 cd BMAD-Swarm
 npm install
-```
-
-### Run Tests
-
-```bash
 npm test
 ```
 
@@ -495,34 +504,28 @@ npm test
 ```
 bmad-swarm/
   bin/bmad-swarm.js           CLI entry point
-  cli/                        Command implementations (init, update, start, eject, scan, etc.)
-  agents/                     Agent templates (13 agents)
-  methodology/                 Authoritative methodology; a load-bearing subset ships
-                               into generated projects at .claude/bmad/methodology/
-    phases.yaml               Phase definitions, gates, transitions (repo reference)
-    artifact-schemas/          Single source of artifact structure + quality checklists;
-                               spec.yaml is the machine projection the validator consumes
-    quality-gates/             code-quality.md (the other gates folded into artifact-schemas/)
-    testing-knowledge/         Stack-aware testing guides for the reviewer's test-coverage lens
-    decision-classification.md Tactical vs strategic decision framework
-    decision-traceability.md   D-ID system for tracking decisions through artifacts
-    brainstorming-techniques.md  Curated technique library for the ideator
-    elicitation-methods.md     Methods for deepening weak artifact sections
-  templates/                   Template files for code generation (settings.json, CLAUDE.md, rules)
-  generators/                  File generation logic (agents, hooks, commands, settings, rules, claude-md)
-  utils/                       Shared utilities
-  test/                        Test suite (node:test)
+  bin/record.cjs              The ledger tool (D/R/L/C records, night charter, reconcile); ships to .claude/bmad/bin/
+  cli/                        Command implementations (init, update, start, eject, scan, status,
+                              validate, doctor, scaffold-team, phase, recall, lessons, report)
+  agents/                     Agent templates (9 agents)
+  methodology/                Authoritative methodology; a load-bearing subset ships into
+                              generated projects at .claude/bmad/methodology/
+    phases.yaml               Phase definitions, gates, transitions
+    decision-classification.md  Tactical vs strategic + the regime router (D-038)
+    advisory.md               The advisory layer — R-records and delivery modes
+    decision-traceability.md  The D-ID system
+    artifact-schemas/         Single source of artifact structure + quality checklists (incl. claims-table.md)
+    quality-gates/            Code-quality gate
+    testing-knowledge/        Stack-aware testing guides for the reviewer's test-coverage lens
+    brainstorming-techniques.md / elicitation-methods.md
+  hooks (generated)           orchestrator-write-gate, night-floor, user-prompt-submit,
+                              session-start-warmboot, pre/post-compact, task-ledger-writer,
+                              ledger-write-guard, team-assembly-lint, replay-gate, workflow-integrity
+  templates/                  Template files for code generation
+  generators/                 File generation logic (agents, hooks, commands, settings, rules, claude-md)
+  utils/                      Shared utilities
+  test/                       Test suite (node:test)
 ```
-
-### Key areas to modify
-
-**Agents** (`agents/*.md`): Each agent is a Markdown file with Role, Expertise, Inputs, Outputs, Quality Criteria, and Behavioral Rules. Edit these to change how an agent thinks and works. Changes here affect all new projects on `bmad-swarm init` or `bmad-swarm update`.
-
-**Methodology** (`methodology/`): Phase definitions, quality gates, artifact schemas, brainstorming techniques, and decision frameworks. This is the "brain" of the system -- how the orchestrator decides what to do.
-
-**Generators** (`generators/`): JavaScript modules that produce the files `bmad-swarm init` creates. If you want to change what gets generated (e.g., add a new workflow slash command, adjust the hook pipeline, or change the CLAUDE.md format), modify these.
-
-**CLI** (`cli/`): Command implementations. Each file corresponds to a CLI command (`init.js`, `update.js`, `eject.js`, etc.).
 
 ### Eject vs. Development
 
@@ -530,38 +533,30 @@ bmad-swarm/
 |--------------|---------|
 | Change an agent's behavior for **one project** | `bmad-swarm eject agent <name>` in the project |
 | Change an agent's behavior for **all projects** | Edit `agents/<name>.md` in the bmad-swarm repo |
-| Add a new agent | Create `agents/<name>.md`, add to generator, update CLAUDE.md template |
-| Change methodology (phases, gates, techniques) | Edit files in `methodology/` |
+| Change methodology (phases, gates, routing) | Edit files in `methodology/` |
 | Change what `bmad-swarm init` generates | Edit files in `generators/` and `templates/` |
 | Add a new CLI command | Add a file in `cli/`, register in `bin/bmad-swarm.js` |
 
 ### Testing Changes Locally
 
 ```bash
-# Link your local copy globally
-npm link
-
-# Now 'bmad-swarm' points to your local checkout
+npm link                     # 'bmad-swarm' now points to your local checkout
 cd /some/test-project
 bmad-swarm init
-
-# Unlink when done
-npm unlink -g bmad-swarm
+npm unlink -g bmad-swarm      # when done
 ```
 
 ## Relationship to BMAD Method
 
-BMAD Swarm is built on the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) (Breakthrough Method for Agile AI-Driven Development) by Brian Madison.
+bmad-swarm is built on the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) (Breakthrough Method for Agile AI-Driven Development) by Brian Madison.
 
-| | Original BMAD | BMAD Swarm |
+| | Original BMAD | bmad-swarm |
 |---|---|---|
-| **Execution** | One AI, sequential, you switch personas manually | Multiple AI agents working in parallel |
-| **Orchestration** | You manage the process with commands | Claude becomes the orchestrator automatically via the `/identity-orchestrator` slash command after `bmad-swarm start` |
-| **Integration** | Load persona files into your AI session | `bmad-swarm init` once, then `bmad-swarm start` to launch -- no prefixes, no commands |
+| **Execution** | One AI, sequential, you switch personas manually | Complexity-routed: solo session, deterministic Workflow, or a parallel agentic team |
+| **Orchestration** | You manage the process with commands | Claude becomes the orchestrator automatically after `bmad-swarm start` |
+| **Integration** | Load persona files into your AI session | `bmad-swarm init` once, then `bmad-swarm start` — no prefixes, no commands |
 | **Brainstorming** | Structured techniques with named personas | Same techniques, invisible to the user, adaptive to your style |
-| **Documentation** | Rich artifacts as a byproduct of the process | Same, plus decision traceability (D-IDs) across all artifacts |
-
-BMAD Swarm keeps what BMAD does best -- structured brainstorming, rich documentation, phased methodology, quality gates -- and adds what Claude Agent Teams do best -- parallel execution, autonomous orchestration, and adaptive interaction.
+| **Documentation** | Rich artifacts as a byproduct | Same, plus D/R/L/C-ID traceability that survives compaction |
 
 ## Troubleshooting
 
@@ -572,7 +567,7 @@ Run `bmad-swarm update` instead, or delete `swarm.yaml` to start fresh.
 Verify `.claude/settings.json` exists. Re-run `bmad-swarm update` to regenerate it.
 
 **The orchestrator spawns too many agents**
-Set `methodology.autonomy: auto` in `swarm.yaml` and give more specific instructions.
+Set `methodology.autonomy: auto` in `swarm.yaml` and give more specific instructions — low-complexity work should route solo or to a Workflow, not a team.
 
 **Tests are not running / wrong test framework**
 Set `stack.testing` explicitly in `swarm.yaml`.
@@ -583,8 +578,8 @@ Check `overrides/agents/` for ejected files. Run `bmad-swarm uneject agent <name
 **Quality gates blocking progress**
 Check `artifacts/reviews/` for feedback. To relax gates: `methodology.quality.require_review: false` in `swarm.yaml`.
 
-**The orchestrator ignores instructions or uses wrong agent types**
-Make sure you launched with `bmad-swarm start` (not bare `claude`) and that the orchestrator invoked `/identity-orchestrator` as its first action. On a fresh session the `UserPromptSubmit` hook reminder points at this command; if it is missing, run `bmad-swarm update --force` to regenerate `.claude/commands/` and `.claude/hooks/`.
+**The orchestrator ignores instructions or uses the wrong agent types**
+Make sure you launched with `bmad-swarm start` (not bare `claude`) and that it invoked `/identity-orchestrator` first. If the reminder is missing, run `bmad-swarm update --force` to regenerate `.claude/commands/` and `.claude/hooks/`.
 
 ## License
 
