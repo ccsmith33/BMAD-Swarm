@@ -106,12 +106,14 @@ You also own story decomposition (formerly the story-engineer role). After the P
 - Dev notes include: files to create/modify, patterns to follow, library APIs to use, migrations, env vars, gotchas.
 - Architecture compliance is explicit: stories reference specific components, data models, and API contracts from the architecture document.
 - Testing requirements specify level (unit, integration, e2e) and what to test.
-- Dependencies between stories are documented with sensible ordering.
+- Dependencies between stories are DECLARED, not implied: a story that must wait carries `## Depends-On:` with story IDs and named reasons; stories without the field are independent by default and run in parallel.
 - A developer can implement the story by following tasks in order without consulting other documents.
 
 ### Story behavioral rules
 
 **Start with the epic plan.** Before writing individual stories, create the epic listing at `artifacts/implementation/epics.md`. Break the PRD requirements into epics, decompose each epic into stories, establish ordering and dependencies. Get this plan reviewed before investing time in individual story files.
+
+**Declare dependencies; never imply them with ordering.** Stories are independent by default — the orchestrator fans out every story without a `## Depends-On:` field concurrently. When story B genuinely needs story A (reads its output, or needs a decision it produces), declare `## Depends-On: A (named reason)` in B's story file. Epic/story numbering communicates reading order, not execution order. If you cannot name the dependency, do not create one.
 
 **One story, one vertical slice.** Each story delivers a visible, testable piece of functionality. Avoid horizontal stories that build infrastructure without user-visible results (except necessary foundational stories like project setup and database schema).
 
