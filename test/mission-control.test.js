@@ -10,6 +10,7 @@ import {
   renderMissionControl,
   readMissionControlInputs,
   missionControlMarkdown,
+  buildMorningReport,
 } from '../utils/mission-control.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -307,5 +308,58 @@ describe('mission-control: bmad-swarm report command', () => {
       .map((f) => readFileSync(join(ctx, f), 'utf8'));
     assert.deepEqual(storesAfter, storesBefore, 'report must not mutate any durable store');
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// The self-audit-nudge fold (L-5): nudged / nudge-continued / nudge-done rows
+// under the night-nudge pointer collapse into nightLedger.nudges per teammate,
+// with a separate count for nudges that never got a disposition (crash before reply).
+describe('mission-control: self-audit nudge fold (buildMorningReport)', () => {
+  const base = {
+    charter: null, recordLedger: '', decisionLog: '', branches: [],
+    config: { project: { name: 'nudge-fold' } }, now: NOW,
+  };
+
+  it('maps nudge-continued / nudge-done to a per-teammate disposition + detail', () => {
+    const m = buildMorningReport({
+      ...base,
+      ledgerLines: [
+        line('2026-08-13T02:00:00Z', 'night-nudge', 'nudged', 'dev-a', 'episode:2026-08-13T01:00:00Z task:1'),
+        line('2026-08-13T02:01:00Z', 'night-nudge', 'nudge-continued', 'dev-a', 'picked up: add the missing edge-case test'),
+        line('2026-08-13T03:00:00Z', 'night-nudge', 'nudged', 'dev-b', 'episode:2026-08-13T02:30:00Z task:2'),
+        line('2026-08-13T03:01:00Z', 'night-nudge', 'nudge-done', 'dev-b', 'parked: nothing; reason: scope genuinely exhausted'),
+      ],
+    });
+    const byAgent = Object.fromEntries(m.nightLedger.nudges.map((n) => [n.agent, n]));
+    assert.equal(m.nightLedger.nudges.length, 2);
+    assert.deepEqual(byAgent['dev-a'], { agent: 'dev-a', disposition: 'continued', detail: 'picked up: add the missing edge-case test' });
+    assert.deepEqual(byAgent['dev-b'], { agent: 'dev-b', disposition: 'done', detail: 'parked: nothing; reason: scope genuinely exhausted' });
+    assert.equal(m.nightLedger.bareNudged, 0);
+  });
+
+  it('counts a bare nudged row (no reply) without inventing a disposition', () => {
+    const m = buildMorningReport({
+      ...base,
+      ledgerLines: [
+        line('2026-08-13T04:00:00Z', 'night-nudge', 'nudged', 'dev-c', 'episode:2026-08-13T03:30:00Z task:3'),
+      ],
+    });
+    assert.equal(m.nightLedger.nudges.length, 0);
+    assert.equal(m.nightLedger.bareNudged, 1);
+  });
+
+  it('lets a later disposition win for a teammate nudged across two episodes', () => {
+    const m = buildMorningReport({
+      ...base,
+      ledgerLines: [
+        line('2026-08-13T04:00:00Z', 'night-nudge', 'nudged', 'dev-d', 'episode:e1 task:4'),
+        line('2026-08-13T04:05:00Z', 'night-nudge', 'nudge-continued', 'dev-d', 'picked up: spike B'),
+        line('2026-08-13T05:00:00Z', 'night-nudge', 'nudged', 'dev-d', 'episode:e2 task:4'),
+        line('2026-08-13T05:05:00Z', 'night-nudge', 'nudge-done', 'dev-d', 'parked: none; reason: done'),
+      ],
+    });
+    assert.equal(m.nightLedger.nudges.length, 1, 'one teammate, one folded entry');
+    assert.equal(m.nightLedger.nudges[0].disposition, 'done', 'the latest disposition wins');
+    assert.equal(m.nightLedger.bareNudged, 0);
   });
 });

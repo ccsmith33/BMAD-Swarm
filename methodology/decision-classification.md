@@ -205,6 +205,8 @@ the one-way-door test and the stakes, not the class name):
 | Strategic, one-way AND high-stakes (floor signal, contradiction-escalator hit) | **Rung 3 — PARK + ROUTE AROUND:** the decision enters the morning queue as a ≤10-line brief (claim, evidence, cost-both-ways, recommended call, default-if-approved); its dependent subtasks park with it; the scheduler moves to the next independent item. The night loses one work stream, not the night. |
 | Constitutional floors (destructive-action floor, security floor, contradiction escalator) | Invariant across all modes — never priced, never defaulted through. At night they PARK the item rather than stall the run; they can never be raised or narrowed by the night. |
 
+The Night Ladder governs what a night *decision* does; the **self-audit nudge** (`agents/orchestrator.md`, "Night shift") is its per-*stopping-point* companion — when a night teammate goes idle or declares done, the orchestrator prompts it once to weigh its parked work against this same ladder (proceed on reversible value, park the one-way work), so "scope is a floor, not a ceiling" (L-5) is applied at the moment a teammate stops, not only when it decides.
+
 The **Contradiction Escalator** row is the one invariant across every mode and
 every autonomy level: a decision (or recommendation) that crosses an accepted
 D-ID or an explicit human statement can never be silent-proceed by day and can

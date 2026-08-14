@@ -392,6 +392,11 @@ const FORK_EVENTS = new Set(['fork', 'fork-pair']);
 const PARK_EVENTS = new Set(['park', 'parked']);
 const PROPOSAL_EVENTS = new Set(['proposal', 'proposed']);
 const ROUTER_EVENTS = new Set(['router-miss', 'route', 'router-decision', 'router-escalate']);
+// Self-audit nudge events (L-5, D-039 ADVISORY): the orchestrator prompts a night
+// teammate once per stopping point to reconsider before going idle. `nudged` lands
+// even if the teammate dies before replying (a bare nudge with no disposition);
+// `nudge-continued`/`nudge-done` carry the teammate's disposition in `subject`.
+const NUDGE_EVENTS = new Set(['nudged', 'nudge-continued', 'nudge-done']);
 
 // Branches touching these path fragments sort higher and get the heavier review
 // lenses (diverge-overnight §1.1: flagged for attention, NEVER fenced — D-034).
@@ -508,6 +513,27 @@ export function buildMorningReport(inputs = {}) {
     .filter((e) => ROUTER_EVENTS.has(e.event))
     .map((e) => ({ event: e.event, task: e.task, subject: e.subject != null ? String(e.subject) : null }));
 
+  // Self-audit nudges (L-5): fold per teammate. `owner` is the nudged teammate;
+  // `subject` (from --detail) carries the episode anchor on `nudged` and the
+  // disposition text on the reply. A teammate that continued then stopped again
+  // may carry a later disposition (chronological events; last reply wins). A bare
+  // `nudged` with no reply is a crash between nudge and disposition — counted, not
+  // dropped, so the transparency layer shows it (§7 render).
+  const nudgeByAgent = new Map();
+  for (const e of events) {
+    if (!NUDGE_EVENTS.has(e.event)) continue;
+    const agent = e.owner || '(unknown)';
+    if (!nudgeByAgent.has(agent)) nudgeByAgent.set(agent, { agent, nudged: false, disposition: null, detail: null });
+    const rec = nudgeByAgent.get(agent);
+    if (e.event === 'nudged') rec.nudged = true;
+    else if (e.event === 'nudge-continued') { rec.disposition = 'continued'; rec.detail = e.subject != null ? String(e.subject) : null; }
+    else if (e.event === 'nudge-done') { rec.disposition = 'done'; rec.detail = e.subject != null ? String(e.subject) : null; }
+  }
+  const nudges = [...nudgeByAgent.values()]
+    .filter((n) => n.disposition != null)
+    .map((n) => ({ agent: n.agent, disposition: n.disposition, detail: n.detail }));
+  const bareNudged = [...nudgeByAgent.values()].filter((n) => n.nudged && n.disposition == null).length;
+
   // Tokens for TRANSPARENCY, never a cap (D-038). Scheduler mode carries the
   // quota-coupling note; the figure is an estimate, never measured spend.
   const ep = ENTRY_POINT_NAMES.includes(entryPoint) ? entryPoint : 'full-lifecycle';
@@ -544,6 +570,8 @@ export function buildMorningReport(inputs = {}) {
       totalEvents: events.length,
       deniedAttempts,
       routerDecisions,
+      nudges,
+      bareNudged,
       recordsMinted: countRecordsMinted(recordLedger),
       spend,
     },
@@ -677,6 +705,19 @@ export function renderMorningReport(model) {
   out.push(`Router decisions: ${nl.routerDecisions.length === 0 ? '_none logged_' : ''}`);
   for (const r of nl.routerDecisions) out.push(`- ${r.event}${r.subject ? ` — ${r.subject}` : ''}${r.task ? ` · task ${r.task}` : ''}`);
   out.push('');
+  // Self-audit nudges (L-5, ADVISORY) — teammates that considered stopping, and
+  // what they decided. Transparency only: the human reads it, does not act on it.
+  const nudges = nl.nudges || [];
+  const bareNudged = nl.bareNudged || 0;
+  const nudgeTotal = nudges.length + bareNudged;
+  if (nudgeTotal > 0) {
+    out.push(`Self-audit nudges (${nudgeTotal}): considered stopping, then —`);
+    for (const n of nudges) {
+      out.push(`- ${n.agent}: ${n.disposition}${n.detail ? ` — ${n.detail}` : ''}`);
+    }
+    if (bareNudged > 0) out.push(`- ${bareNudged} nudged with no reply (crashed between nudge and disposition).`);
+    out.push('');
+  }
   out.push(`Records minted tonight: ${nl.recordsMinted}`);
   out.push(`Total night events: ${nl.totalEvents}`);
   out.push('');

@@ -230,6 +230,51 @@ describe('morning report: rendering', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Self-audit nudge (L-5): §7 surfaces per-teammate dispositions plus the count
+// of bare nudges that never got a reply (a crash between nudge and disposition).
+// ---------------------------------------------------------------------------
+describe('morning report: self-audit nudges in §7', () => {
+  // A night where three teammates were nudged at a stopping point: one continued,
+  // one reaffirmed done, and one crashed after the nudge before replying.
+  function nudgeLedger() {
+    return [
+      ...nightLedger(),
+      line('2026-08-14T02:30:00Z', 'night-nudge', 'nudged', 'dev-b', 'episode:2026-08-14T02:00:00Z task:5'),
+      line('2026-08-14T02:32:00Z', 'night-nudge', 'nudge-continued', 'dev-b', 'picked up: harden the cache eviction test'),
+      line('2026-08-14T04:30:00Z', 'night-nudge', 'nudged', 'dev-d', 'episode:2026-08-14T04:00:00Z task:7'),
+      line('2026-08-14T04:33:00Z', 'night-nudge', 'nudge-done', 'dev-d', 'parked: FEAT-52 rewrite; reason: blocked on an accepted D-ID'),
+      // dev-e was nudged but the process died before it could answer (bare nudge).
+      line('2026-08-14T05:10:00Z', 'night-nudge', 'nudged', 'dev-e', 'episode:2026-08-14T05:00:00Z task:8'),
+    ];
+  }
+
+  it('folds nudge events per teammate into nightLedger.nudges + a bare-nudged count', () => {
+    const m = buildMorningReport(fixtureInputs({ ledgerLines: nudgeLedger() }));
+    const byAgent = Object.fromEntries(m.nightLedger.nudges.map((n) => [n.agent, n]));
+    assert.equal(m.nightLedger.nudges.length, 2, 'two teammates gave a disposition');
+    assert.equal(byAgent['dev-b'].disposition, 'continued');
+    assert.match(byAgent['dev-b'].detail, /harden the cache eviction test/);
+    assert.equal(byAgent['dev-d'].disposition, 'done');
+    assert.match(byAgent['dev-d'].detail, /blocked on an accepted D-ID/);
+    assert.ok(!byAgent['dev-e'], 'the crashed teammate has no disposition');
+    assert.equal(m.nightLedger.bareNudged, 1, 'dev-e was nudged but never replied');
+  });
+
+  it('renders the continued/done dispositions and the bare-nudged count in §7', () => {
+    const md = renderMorningReport(buildMorningReport(fixtureInputs({ ledgerLines: nudgeLedger() })));
+    assert.match(md, /Self-audit nudges \(3\): considered stopping, then —/);
+    assert.match(md, /dev-b: continued — picked up: harden the cache eviction test/);
+    assert.match(md, /dev-d: done — parked: FEAT-52 rewrite; reason: blocked on an accepted D-ID/);
+    assert.match(md, /1 nudged with no reply/);
+  });
+
+  it('omits the nudge block entirely on a night with no nudges', () => {
+    const md = renderMorningReport(buildMorningReport(fixtureInputs()));
+    assert.ok(!/Self-audit nudges/.test(md), 'no nudge line when nothing was nudged');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // THE ACCEPTANCE TEST (decomposition §3.3 / §10.4): a FRESH process, with the
 // orchestrator that drove the night dead and its in-memory state gone, produces
 // the full seven-section report purely from the durable stores on disk.
