@@ -1,4 +1,4 @@
-<!-- bmad-generated:ac364b30 -->
+<!-- bmad-generated:295666cf -->
 # Decision Classification
 
 When agents encounter decisions during their work, they classify them as **tactical** or **strategic** to determine whether to resolve autonomously or escalate.
@@ -113,27 +113,78 @@ The autonomy level shifts the classification boundary:
 
 Tactical decisions are always auto-resolved regardless of autonomy level. The whole point is that nobody needs to be bothered with them.
 
-## The Regime Router (D-038)
+## The Regime Router (D-038, re-keyed by D-57)
 
 Classification decides *how an agent handles a decision*. The **regime router**
-decides something upstream of that: **how much agency a whole task needs before
-any team is assembled.** The complexity brain (the orchestrator's scoring table)
-is the control law; the native primitives — the solo main session, the
-deterministic Workflow script, the full agentic team — are just actuators. The
-router picks the actuator. This is Unlock 1 of the reinvention vision, amended by
-**D-038** (one priced router) and by spike 3 (the Workflow-tool contract, see
-"Escalation is script logic" below).
+decides something upstream of that: **how a whole task is produced, and — as a
+SEPARATE decision — how hard its result is verified**, before any team is
+assembled. The native primitives — the solo main session, the deterministic
+Workflow script, the full agentic team — are actuators; the router picks among
+them. This is Unlock 1 of the reinvention vision, amended by **D-038** (one priced
+router), spike 3 (the Workflow-tool contract, see "Escalation is script logic"
+below), and **re-keyed by D-57** (the Command Doctrine reframe below).
 
-The orchestrator scores complexity (5–15, per the scoring table in
-`.claude/agents/orchestrator.md`) and routes to exactly one regime:
+#### First, the reframe (the Command Doctrine, D-57)
 
-| Complexity score | Regime | What runs | Cost floor |
+You are routing work for Claude agents, not humans. **Production shape** and
+**verification depth** are INDEPENDENT decisions, and the size of the work
+determines NEITHER. Production defaults to the most direct path — one capable
+agent, one shot; the score only sizes how hard we verify the result. Read
+`.claude/bmad/methodology/operating-doctrine.md`; the creed governs this whole section.
+
+**Decision 1 — production shape (who makes the thing).** Driven ONLY by seams,
+never by the score:
+
+```
+coherent task arrives
+├─ any genuinely independent items?   → fan out: one agent per item, spawned in one batch
+├─ any hard, NAMED dependency edges?  → sequence exactly those edges (Depends-On)
+├─ neither                            → ONE agent, ONE shot, the whole task
+└─ work smaller than the ceremony     → most-direct venue: handle solo in this session
+   (≈ single file, few edits — spawn overhead ~17–21K tokens would dominate)
+```
+
+Phases/stories are NOT a production shape. Stories survive only as (a) units of
+genuine independence (parallelizable), or (b) evidence/review boundaries on a
+shipped unit — a VERIFICATION artifact, not a production fragment. "It feels big"
+is never a reason to split; genuine independence and a hard named dependency are
+the only two seams (L-9). A human "one shot / don't phase it" overrides any
+instinct to fragment.
+
+**Decision 2 — verification depth (how hard the result is checked).** THIS is
+what the complexity score sizes — NOT team size, fragment count, or phases. The
+5-factor table is **redefined from effort proxies to RISK factors**, keeping the
+same **5–15** numeric range so the `bmad-assembly` block's `complexity:` integer
+and the `team-assembly-lint` five-key contract stay untouched:
+
+| Factor | 1 (Low) | 2 (Medium) | 3 (High) |
 |---|---|---|---|
-| **≤ 6**, single-file / well-shaped | **solo** — the main session handles it, no spawn | one agent, no assembly ceremony | ~0 marginal |
-| **7–11**, shaped but multi-step | **Workflow script** — a named `.claude/workflows/` deterministic pipeline with agentic nodes | fixed step graph (reproduce → fix → test → review → ledger), schema-validated node outputs, resumable at node boundaries | 1–2 spawns, resumable |
-| **≥ 12**, or ill-defined / exploratory | **agentic team** — the full assembly (entry-point + complexity tables size it) | full assembly ceremony, justified by the score | full ceremony |
+| **Constraint density** | few independent invariants | several interacting invariants | dense, simultaneously-binding invariants (protocols, migrations, concurrency) |
+| **Blast radius** | contained to one module/task | ripples into other components/agents' work | system-wide, public contract, or data-model reach |
+| **Reversibility** | trivially revertable (branch-local) | revertable with effort | irreversible or world-facing (publish, merge-to-main, data migration, money) |
+| **Verifiability** | errors surface loudly (tests/types catch) | partial coverage; some quiet paths | silent-error prone (numerics, races, security, data loss) |
+| **Ambiguity** | "correct" is fully specified | needs some interpretation | exploratory / correctness is contested |
 
-**Decompose for parallelism at ≥ 7 (D-55 / L-7), but not by size (L-9).** Any regime above solo is multi-step: build a **parallel** task graph by default — serialize a pair only on a **named** dependency (L-5 `Depends-On`); this also governs how the next step is offered to the human. Split production along exactly two seams — genuine INDEPENDENCE (parallelize) or a hard DEPENDENCY (sequence) — never by size or perceived difficulty: the complexity score sizes the REGIME, not the number of phases. Produce coherent work in ONE shot and scale VERIFICATION (review depth, replay, tests) to constraint-density × blast-radius; a human "one shot / don't phase it" overrides the score (L-9). See the planning-time half of the reflex in `.claude/agents/orchestrator.md` ("Orchestrator self-audit").
+Sum the five factors (5–15). The score → **verification tier** (the
+`quality-standards` tier ladder, Layer 4) and **gates**: **5–7 → T0/T1**;
+**8–11 → T2**; **12–15 → T3 and plan approval** (the WS-12 pause, re-keyed
+below). The score **NEVER** sets team size, fragment count, or the number of
+phases — those follow from Decision 1's seams alone. A 400-line one-shot feature
+that is branch-local, loud-failing, and reversible scores LOW; a three-line change
+to an auth boundary or a data migration scores HIGH. Difficulty of *making* the
+change is not the axis; risk of the *result* is.
+
+**The regimes survive as actuators, re-keyed** (the selector is now a shape/risk
+test, never a size band):
+
+| Regime | Old selector | New selector |
+|---|---|---|
+| **solo** (main session) | score ≤ 6 | most-direct-path test: work smaller than the spawn ceremony |
+| **named workflow** | score 7–11 | the task matches a shaped, repeatable pipeline (`.claude/workflows/`) — a SHAPE match, not a size band |
+| **agentic team** | score ≥ 12 | production genuinely fans out (≥2 independent items) OR the verification tier demands independent reviewer/security seats |
+
+See the planning-time half of the reflex in `.claude/agents/orchestrator.md`
+("Orchestrator self-audit") for the read-back that emits both decisions.
 
 **Regime-invariant traceability (the load-bearing property).** Whichever regime
 runs, the work emits the *same* D-IDs, the same ledger lines via `record.cjs`,
@@ -143,14 +194,21 @@ should not care — which regime produced a change. A Workflow node that runs
 Workflow node that spawns an `agent()` is the same review gate the agentic regime
 runs. The regime is a cost decision, never a rigor decision.
 
-**Plan approval at complexity ≥ 12 (WS-12).** When the router lands a task in the
-agentic regime *because* its score is ≥ 12, the orchestrator produces the plan —
-the `bmad-assembly` block and task graph — and **pauses for human approval before
-spawning** (in `auto` mode this is the existing `auto → guided` autonomy override
-in `.claude/agents/orchestrator.md`; the router states it here so the rule lives with the
-routing decision that triggers it). Below 12, the router proceeds without a plan
-gate. This is the single WS-12 rule that rides in the router; the rest of WS-12 is
-deferred.
+**Plan approval at risk score ≥ 12 (WS-12, re-keyed by D-57).** The
+human-approval-before-spawn gate now fires on RISK, not size. When the
+verification score (Decision 2) lands at **12–15** — meaning the work is
+irreversible, high-blast-radius, silent-error-prone, or densely constrained, NOT
+merely *large* — the orchestrator produces the plan (the `bmad-assembly` block and
+task graph) and **pauses for human approval before spawning**. The threshold
+number (12) and the pause itself are unchanged, so the mechanics — and the
+assembly-block schema the lint reads — are identical; what changed is the meaning:
+**the human gates dangerous plans, not big ones.** A large branch-local,
+loud-failing, reversible one-shot proceeds without a gate; a small
+irreversible-or-security-touching change gets the pause. (In `auto` mode this is
+the existing `auto → guided` autonomy override in `.claude/agents/orchestrator.md`; the
+router states it here so the rule lives with the routing decision that triggers
+it.) Below 12, the router proceeds without a plan gate. This is the single WS-12
+rule that rides in the router; the rest of WS-12 is deferred.
 
 **Escalation is script logic, not a platform primitive (spike-3 caveat, honored).**
 Spike 3 verified the Workflow tool live but found **no `escalate: agentic`
