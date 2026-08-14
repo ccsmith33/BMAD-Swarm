@@ -84,6 +84,72 @@ methodology:
     }
   });
 
+  it('renders the proportional review tier ladder (D-57 Seam C)', () => {
+    const { config, paths } = makeProject('rules-review-tiers');
+    generateRules(config, paths);
+
+    const content = readFileSync(join(paths.rulesDir, 'quality-standards.md'), 'utf8');
+
+    // Proportional framing replaces the flat "no exceptions" mandate.
+    assert.ok(/proportional, not mandatory-everything/i.test(content),
+      'Review requirements should be framed as proportional, not mandatory-everything');
+
+    // All four tiers of the ladder render, T0 → T3.
+    assert.ok(content.includes('T0 — self-verify'), 'Should render T0 self-verify tier');
+    assert.ok(content.includes('T1 — light review'), 'Should render T1 light review tier');
+    assert.ok(content.includes('T2 — full adversarial review'), 'Should render T2 full adversarial tier');
+    assert.ok(content.includes('T3 — heavy verification'), 'Should render T3 heavy verification tier');
+
+    // The tier is keyed to the Layer-3 risk score (5–15), not to size.
+    assert.ok(/one rubric, two consumers/i.test(content),
+      'Tier should be tied to the Layer-3 verification score (one rubric, two consumers)');
+  });
+
+  it('renders the constitutional floors that tiering cannot move below (D-57 Seam C)', () => {
+    const { config, paths } = makeProject('rules-review-floors');
+    generateRules(config, paths);
+
+    const content = readFileSync(join(paths.rulesDir, 'quality-standards.md'), 'utf8');
+
+    assert.ok(/Constitutional floors/i.test(content), 'Should render a constitutional floors section');
+    assert.ok(/tiering can only move UP/i.test(content),
+      'Floors should state tiering only moves up, never below them');
+
+    // Floor 1: security-touching never below T2.
+    assert.ok(/Security-touching[\s\S]*never below \*\*T2\*\*/i.test(content),
+      'Security-touching changes floor never below T2');
+    // Floor 2: irreversible / world-facing always human-gated.
+    assert.ok(/Irreversible \/ world-facing actions\*\* are always \*\*human-gated\*\*/i.test(content),
+      'Irreversible / world-facing actions always human-gated');
+    // Floor 3: replay-gated classes stay gated at every tier.
+    assert.ok(/Replay-gated classes[\s\S]*every\*\* tier/i.test(content),
+      'Replay-gated classes stay gated at every tier');
+    // Floor 4: tests always required.
+    assert.ok(/Tests are always required/i.test(content),
+      'Tests always required floor');
+  });
+
+  it('does not render the flat "no exceptions" review mandate when review is required (D-57 Seam C)', () => {
+    const { config, paths } = makeProject('rules-review-flat-gone');
+    generateRules(config, paths);
+
+    const content = readFileSync(join(paths.rulesDir, 'quality-standards.md'), 'utf8');
+    assert.ok(!content.includes('All code must pass adversarial review before merge.'),
+      'The flat adversarial-review-no-exceptions mandate should be replaced by the tier ladder');
+  });
+
+  it('renders review-recommended text when review is not required (unchanged branch)', () => {
+    const { config, paths } = makeProject('rules-review-off');
+    config.methodology.quality.require_review = false;
+    generateRules(config, paths);
+
+    const content = readFileSync(join(paths.rulesDir, 'quality-standards.md'), 'utf8');
+    assert.ok(content.includes('Code review is recommended but not required'),
+      'Should render the review-recommended text when require_review is false');
+    assert.ok(!content.includes('T0 — self-verify'),
+      'Tier ladder should not render when review is not required');
+  });
+
   it('adds bmad-generated hash header', () => {
     const { config, paths } = makeProject('rules-hash');
     generateRules(config, paths);
