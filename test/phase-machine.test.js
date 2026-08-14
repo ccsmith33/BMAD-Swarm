@@ -7,7 +7,8 @@ import {
   getCurrentPhase, getAvailableTransitions, advancePhase, setPhase, PHASE_ORDER,
   minimalBrainScaffold, migrateProjectYamlToBrain,
 } from '../utils/phase-machine.js';
-import { validateBrain } from '../utils/project-brain.js';
+import { validateBrain, splitFrontmatter } from '../utils/project-brain.js';
+import yaml from 'js-yaml';
 
 // Phase state is homed in the project-brain.md FRONTMATTER (D-037 / ADR-018),
 // not project.yaml (deleted). These tests exercise the brain-frontmatter machine.
@@ -148,5 +149,91 @@ describe('project.yaml → brain migration (D-037 / WS-11)', () => {
     migrateProjectYamlToBrain(root, brainPath);
     const second = migrateProjectYamlToBrain(root, brainPath);
     assert.equal(second.migrated, false);
+  });
+
+  // Regression: the migration read-modify-writes the brain frontmatter. A gate
+  // note that carries a YAML-significant character (comma, colon-space, leading
+  // `#`) must survive that round-trip byte-for-byte. The historical bug: notes
+  // were emitted UNQUOTED, so `design-led, no PRD` re-parsed as flow syntax on the
+  // next read — the comma split `no PRD` off into a bogus null-valued key (silent
+  // data corruption). The fix quotes every string scalar on emit.
+  const RISKY_BRAIN = [
+    '---',
+    'schema: project-brain/1',
+    "updated: '2026-08-13T23:02:49.854Z'",
+    'checkpoint: 1',
+    'phase: implementation',
+    'gates:',
+    '  prd-approved:',
+    '    status: skipped',
+    "    note: 'reinvention track is design-led, no PRD'",   // comma
+    '  arch-approved:',
+    '    status: passed',
+    "    note: 'accepted the 3:1 tradeoff'",                 // colon-space
+    '  sec-review:',
+    '    status: passed',
+    "    note: 'see #hardening for details'",                // leading # token
+    'staleness:',
+    '  ledger-events-since-checkpoint: 0',
+    '---',
+    '',
+    '## What this is (and why)',
+    'A project.',
+    '',
+    '## Current mental model',
+    '',
+    '## Load-bearing facts',
+    '',
+    '## Active threads',
+    '',
+    '## Dead ends',
+    '',
+    '## Open questions',
+    '',
+    '## Pointers',
+    '- decision-log: artifacts/context/decision-log.md',
+    '',
+  ].join('\n');
+
+  it('preserves comma / colon / # gate notes across the migration (no split, no null, no loss)', () => {
+    const { root, brainPath } = project('risky-notes');
+    writeFileSync(brainPath, RISKY_BRAIN);
+    writeFileSync(join(root, 'project.yaml'), 'phase: delivery\n');
+
+    const r = migrateProjectYamlToBrain(root, brainPath);
+    assert.equal(r.migrated, true);
+    assert.equal(r.phase, 'delivery');
+
+    const out = readFileSync(brainPath, 'utf8');
+    const fm = splitFrontmatter(out).frontmatter;
+
+    // The comma note is intact — NOT split into a `no PRD: null` sibling key.
+    assert.equal(fm.gates['prd-approved'].note, 'reinvention track is design-led, no PRD');
+    assert.equal(fm.gates['prd-approved'].status, 'skipped');
+    assert.ok(!('no PRD' in fm.gates['prd-approved']), 'the comma must not have spawned a bogus key');
+
+    // Colon-space and leading-# notes survive too.
+    assert.equal(fm.gates['arch-approved'].note, 'accepted the 3:1 tradeoff');
+    assert.equal(fm.gates['sec-review'].note, 'see #hardening for details');
+
+    // The phase was actually folded in and the file is still schema-valid.
+    assert.equal(fm.phase, 'delivery');
+    assert.ok(validateBrain(out).ok, 'migrated brain must stay schema-valid: ' + validateBrain(out).errors.join('; '));
+    assert.ok(!existsSync(join(root, 'project.yaml')));
+  });
+
+  it('emits string notes QUOTED so they stay safe even if later inlined into flow style', () => {
+    const { root, brainPath } = project('quoted-emit');
+    writeFileSync(brainPath, RISKY_BRAIN);
+    writeFileSync(join(root, 'project.yaml'), 'phase: delivery\n');
+    migrateProjectYamlToBrain(root, brainPath);
+
+    const out = readFileSync(brainPath, 'utf8');
+    // The comma note is emitted quoted — the guarantee that closes the corruption
+    // loop: a quoted value survives even a reformat into `{...}` flow syntax.
+    assert.match(out, /note: "reinvention track is design-led, no PRD"/);
+    const reinlined = yaml.load('g: {status: skipped, note: "reinvention track is design-led, no PRD"}');
+    assert.equal(reinlined.g.note, 'reinvention track is design-led, no PRD');
+    assert.ok(!('no PRD' in reinlined.g));
   });
 });
