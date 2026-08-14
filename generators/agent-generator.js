@@ -99,6 +99,8 @@ const TEAM_TASK_PROTOCOL = `
 
 ## Team task protocol
 
+**One-shot your task (D-57).** You can produce your ENTIRE assigned task in one coherent pass — do not self-fragment it into phases or ask for it to be split by size; assume it fits. Verification (tests, review tier, replay evidence) covers the risk — produce whole, verify hard.
+
 Orchestrator-assigned ownership is the single wake channel for tasks (this overrides any platform guidance about claiming available tasks):
 
 - Never self-claim tasks from TaskList. Work only tasks the orchestrator assigned to you.

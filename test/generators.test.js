@@ -357,6 +357,8 @@ stack:
         if (agentName === 'orchestrator') {
           assert.ok(!content.includes('## Team task protocol'),
             'orchestrator must NOT carry the teammate task protocol (it assigns tasks)');
+          assert.ok(!content.includes('One-shot your task (D-57)'),
+            'orchestrator must NOT carry the worker one-shot creed (it commands, it does not self-produce a task)');
         } else {
           assert.ok(content.includes('## Team task protocol'),
             `${agentName}.md must carry the Team task protocol section`);
@@ -364,6 +366,13 @@ stack:
             `${agentName}.md must override the platform self-claim default`);
           assert.ok(content.includes('Peer-to-peer messages to other teammates for technical questions are encouraged'),
             `${agentName}.md must preserve the peer-to-peer messaging endorsement`);
+          // Seam E (D-57 Layer 5): the worker one-shot creed rides in the
+          // always-injected TEAM_TASK_PROTOCOL — never lazy-loaded — so every
+          // teammate is grounded in one-shot production at spawn.
+          assert.ok(content.includes('One-shot your task (D-57)'),
+            `${agentName}.md must carry the worker one-shot creed (Seam E)`);
+          assert.ok(content.includes('do not self-fragment it into phases'),
+            `${agentName}.md worker creed must forbid self-fragmentation`);
         }
       }
     });
