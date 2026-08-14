@@ -53,6 +53,20 @@
 // NOT writable (F-020): .claude/settings.local.json (self-ungate surface).
 // project.yaml was REMOVED from the writable set (ADR-017 Amendment 1 / Stream B
 // cutover — D-037 retires the file; phase writes flow through the CLI).
+//
+// Harness memory carve-out (F-015): the orchestrator's own persistent memory
+// lives OUTSIDE the repo, at <configDir>/projects/<slug>/memory/ where
+// configDir = $CLAUDE_CONFIG_DIR || $HOME/.claude and <slug> is the project
+// dir with every `/` and `.` replaced by `-` (Claude Code's project-slug
+// encoding). Writing a memory markdown file there is neither code, a
+// teammate-owned artifact, nor self-legislation, so the FILE tools may write
+// it. Scoped TIGHTLY: only the `/memory/` subtree of THIS project's slug — NOT
+// the slug root (which holds session .jsonl transcripts), NOT other projects,
+// NOT the rest of .claude/**. The carve-out is FILE-TOOLS-ONLY: shell
+// redirection into the memory dir stays denied (isShellWritable is unchanged),
+// since the orchestrator persists memory through the Write tool, never a shell
+// redirect. `..` is rejected (resolveTarget) and a symlinked ancestor is caught
+// by realpath (realpathAnchored), same as the in-tree writable set.
 
 const path = require('node:path');
 const fs = require('node:fs');
@@ -166,7 +180,9 @@ process.stdin.on('end', () => {
 
   // File-writing tools: Edit / Write / MultiEdit / NotebookEdit.
   const filePath = toolInput.file_path || toolInput.notebook_path || toolInput.path || '';
-  if (isAllowedWrite(filePath, projectRoot)) { process.exit(0); }
+  // F-015: the harness memory carve-out is FILE-TOOLS-ONLY (not folded into
+  // isAllowedWrite, so isShellWritable/redirects never inherit it).
+  if (isAllowedWrite(filePath, projectRoot) || isHarnessMemoryWrite(filePath, projectRoot)) { process.exit(0); }
   deny(
     'Blocked: orchestrator role cannot write ' + filePath + '. Delegate code/artifact changes to a teammate spawned via the Agent tool (subagent_type). Allowed orchestrator writes: artifacts/**, swarm.yaml, .gitignore.',
   );
@@ -256,6 +272,57 @@ function isShellWritable(rawPath, projectRoot) {
   const root = path.posix.normalize(normalizeSlashes(projectRoot));
   if (isSerialized(abs, root)) return false;
   return isAllowedWrite(rawPath, projectRoot);
+}
+
+// F-015 harness memory dir: <configDir>/projects/<slug>/memory, where
+// configDir = $CLAUDE_CONFIG_DIR || $HOME/.claude and <slug> is projectRoot
+// with every `/` and `.` replaced by `-` (Claude Code's project-slug encoding).
+// Returns null when neither $CLAUDE_CONFIG_DIR nor $HOME is set — fail closed,
+// the carve-out simply does not match.
+function harnessMemoryDir(projectRoot) {
+  const home = process.env.HOME ? normalizeSlashes(process.env.HOME) : '';
+  const cfg = process.env.CLAUDE_CONFIG_DIR
+    ? normalizeSlashes(process.env.CLAUDE_CONFIG_DIR)
+    : (home ? home + '/.claude' : '');
+  if (!cfg) return null;
+  const root = path.posix.normalize(normalizeSlashes(projectRoot));
+  const slug = root.replace(/[/.]/g, '-');
+  return path.posix.normalize(cfg + '/projects/' + slug + '/memory');
+}
+
+// Realpath the nearest EXISTING ancestor, re-appending the not-yet-created tail
+// — so a symlinked ancestor is resolved even when the leaf does not exist yet
+// (F-017 pattern, mirrors night-floor's realpathAnchored). Both the candidate
+// and the memory dir are resolved this way so symlinks (e.g. a symlinked $HOME)
+// cancel out consistently on both sides of the comparison.
+function realpathAnchored(absPosix) {
+  let cur = absPosix;
+  const tail = [];
+  for (;;) {
+    try { return [normalizeSlashes(fs.realpathSync(cur)), ...tail].join('/').replace(/\/+/g, '/'); }
+    catch (e) {
+      if (e.code !== 'ENOENT') return absPosix;
+      const slash = cur.lastIndexOf('/');
+      if (slash <= 0) return absPosix;
+      tail.unshift(cur.slice(slash + 1));
+      cur = cur.slice(0, slash);
+    }
+  }
+}
+
+// True iff rawPath is a write into THIS project's harness memory subtree. FILE
+// TOOLS ONLY (never the shell path). Lexically anchored to the `/memory/`
+// subdir — never the slug root (session transcripts) or the rest of .claude/**
+// — then realpath-verified so a symlinked ancestor cannot alias out.
+function isHarnessMemoryWrite(rawPath, projectRoot) {
+  const abs = resolveTarget(rawPath, projectRoot); // rejects `..`
+  if (!abs) return false;
+  const memDir = harnessMemoryDir(projectRoot);
+  if (!memDir) return false;
+  if (!(abs === memDir || abs.startsWith(memDir + '/'))) return false;
+  const realMem = realpathAnchored(memDir);
+  const real = realpathAnchored(abs);
+  return real === realMem || real.startsWith(realMem + '/');
 }
 
 // F-FINAL-1: confirm a lexically-under-/tmp target is GENUINELY under /tmp after
