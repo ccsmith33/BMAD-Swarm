@@ -70,18 +70,31 @@ describe('Methodology role references', () => {
 describe('Regime router (decision-classification.md)', () => {
   const doc = readFileSync(join(methodologyDir, 'decision-classification.md'), 'utf8');
 
-  it('routes the three regimes by complexity band', () => {
+  it('keeps the three regimes as re-keyed actuators (shape/risk, not size)', () => {
     assert.match(doc, /The Regime Router/);
     assert.match(doc, /\*\*solo\*\*/);
-    assert.match(doc, /Workflow script/);
+    assert.match(doc, /named workflow/i);
     assert.match(doc, /agentic team/);
-    assert.match(doc, /≤ 6/);
-    assert.match(doc, /7–11/);
-    assert.match(doc, /≥ 12/);
   });
 
-  it('carries the WS-12 plan-approval-at-complexity-≥12 rule', () => {
-    assert.match(doc, /Plan approval at complexity ≥ 12/);
+  it('splits production shape from verification depth (D-57 reframe)', () => {
+    assert.match(doc, /Decision 1 — production shape/);
+    assert.match(doc, /Decision 2 — verification depth/);
+    // production shape is seam-driven, never score-driven
+    assert.match(doc, /Driven ONLY by seams/);
+    // the 5-factor table is redefined to RISK factors...
+    assert.match(doc, /Constraint density/);
+    assert.match(doc, /Blast radius/);
+    assert.match(doc, /Reversibility/);
+    assert.match(doc, /Verifiability/);
+    assert.match(doc, /Ambiguity/);
+    // ...while preserving the 5–15 range so the assembly block + lint stay untouched
+    assert.match(doc, /5–15/);
+  });
+
+  it('re-keys WS-12 to risk-not-size at the same threshold (≥ 12)', () => {
+    assert.match(doc, /Plan approval at risk score ≥ 12/);
+    assert.match(doc, /gates dangerous plans, not big ones/);
   });
 
   it('encodes escalation-as-script-logic and the router-miss calibration event', () => {
